@@ -14,6 +14,9 @@
 #include "Argument.h"
 #include "RDom.h"
 #include "JITCompiledModule.h"
+// LH
+#include "Image.h"
+#include "Util.h"
 
 namespace Halide {
         
@@ -695,6 +698,18 @@ public:
         (*this)() = e;
     }
 
+    // LH Extensions 
+    // Extension to use Image<T> as a Func object without explicit conversion.
+    // This constructor 
+    template <typename T>
+    Func(Image<T> image) : func(Internal::unique_name("image")), error_handler(NULL), custom_malloc(NULL), custom_free(NULL)
+    {
+        Var x("x"), y("y");
+
+        operator()(x,y) = image(x,y);
+        return;
+    }
+    
 };
 
 
