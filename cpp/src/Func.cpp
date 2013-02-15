@@ -699,6 +699,11 @@ private:
 };
 
 void Func::realize(Buffer dst) {
+	// LH: Type check the buffer against the function type
+    assert(value().defined() && "Can't realize undefined function");
+    assert(dst.defined() && "Can't realize into undefined buffer");
+	assert(value().type() == dst.type() && "Can't realize: buffer type does not match function type");
+
     if (!compiled_module.wrapped_function) compile_jit();
 
     assert(compiled_module.wrapped_function);
