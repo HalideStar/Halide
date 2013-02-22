@@ -576,12 +576,25 @@ Stmt add_image_checks(Stmt s, Function f) {
                                   << " is unbounded in dimension " << i << std::endl;
                         assert(false);
                     }
+# if 0
                     ostringstream error_msg;
                     error_msg << bufs[i] << " is accessed out of bounds in dimension " << j;
                     Stmt check = new AssertStmt((actual_min <= min_used) &&
                                                 (actual_min + actual_extent >= min_used + extent_used), 
                                                 error_msg.str());
                     s = new Block(check, s);
+# else
+                    ostringstream error_msg;
+                    error_msg << bufs[i] << " is accessed below bounds in dimension " << j;
+                    Stmt check = new AssertStmt((actual_min <= min_used), 
+                                                error_msg.str());
+                    s = new Block(check, s);
+                    ostringstream error_msg2;
+                    error_msg2 << bufs[i] << " is accessed above bounds in dimension " << j;
+                    Stmt check2 = new AssertStmt((actual_min + actual_extent >= min_used + extent_used), 
+                                                error_msg2.str());
+                    s = new Block(check2, s);
+# endif
                 }
             }
         } else {
