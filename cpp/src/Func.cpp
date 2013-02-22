@@ -148,7 +148,15 @@ void ScheduleHandle::set_dim_type(Var var, For::ForType t) {
             dims[i].for_type = t;
         }
     }
-        
+    
+    if (! found) // LH provide more information if cannot find dimensions
+    {
+        Internal::log(0) << "Searched for " << var.name() << " in";
+        for (size_t i = 0; (!found) && i < dims.size(); i++) {
+            Internal::log(0) << " " << dims[i].var;
+        }
+        Internal::log(0) << "\n";
+    }
     assert(found && "Could not find dimension in argument list for function");
 }
 
