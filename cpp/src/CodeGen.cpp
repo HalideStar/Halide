@@ -82,12 +82,17 @@ CodeGen::CodeGen() :
     if (!llvm_initialized) {            
         InitializeNativeTarget();
         LLVMInitializeX86Target();
+        LLVMInitializeX86TargetInfo();
         LLVMInitializeX86AsmPrinter();
         LLVMInitializeX86TargetMC();
+        
         LLVMInitializeARMTarget();
+        LLVMInitializeARMTargetInfo();
         LLVMInitializeARMAsmPrinter();
         LLVMInitializeARMTargetMC();
+
         LLVMInitializeNVPTXTarget();
+        LLVMInitializeNVPTXTargetInfo();
         LLVMInitializeNVPTXAsmPrinter();
         LLVMInitializeNVPTXTargetMC();
         llvm_initialized = true;
@@ -306,10 +311,16 @@ void CodeGen::compile_to_native(const string &filename, bool assembly) {
     // Get the target specific parser.
     string error_string;
     log(1) << "Compiling to native code...\n";
-    // cout << module->getTargetTriple() << endl;
+    log(2) << "Target triple: " << module->getTargetTriple() << "\n";
+
     const Target *target = TargetRegistry::lookupTarget(module->getTargetTriple(), error_string);
-    if (!target) cout << error_string << endl;
+    if (!target) {
+        cout << error_string << endl;
+        TargetRegistry::printRegisteredTargetsForVersion();   
+    }
     assert(target && "Could not create target");
+
+    log(2) << "Selected target: " << target->getName() << "\n";
 
     TargetOptions options;
     options.LessPreciseFPMADOption = true;
@@ -1225,9 +1236,12 @@ void CodeGen::visit(const For *op) {
 
         // Make a new basic block for the loop
         BasicBlock *loop_bb = BasicBlock::Create(context, op->name + "_loop", function);
+        // Create the block that comes after the loop
+        BasicBlock *after_bb = BasicBlock::Create(context, op->name + "_after_loop", function);
 
-        // Fall through to the loop bb
-        builder->CreateBr(loop_bb);
+        // If min < max, fall through to the loop bb
+        Value *enter_condition = builder->CreateICmpSLT(min, max);
+        builder->CreateCondBr(enter_condition, loop_bb, after_bb);
         builder->SetInsertPoint(loop_bb);
 
         // Make our phi node
@@ -1242,9 +1256,6 @@ void CodeGen::visit(const For *op) {
 
         // Update the counter
         Value *next_var = builder->CreateAdd(phi, ConstantInt::get(i32, 1));
-
-        // Create the block that comes after the loop
-        BasicBlock *after_bb = BasicBlock::Create(context, op->name + "_after_loop", function);
 
         // Add the back-edge to the phi node
         phi->addIncoming(next_var, builder->GetInsertBlock());
