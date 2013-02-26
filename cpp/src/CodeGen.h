@@ -114,6 +114,9 @@ protected:
 
     /** Add a definition of buffer_t to the module if it isn't already there */
     void define_buffer_t();
+
+    /** Codegen an assertion. If false, it bails out and calls the error handler. */
+    void create_assertion(llvm::Value *condition, const std::string &message);
        
     /** Given an llvm value representing a pointer to a buffer_t, extract various subfields */
     // @{
@@ -134,6 +137,8 @@ protected:
 
     /** Return the llvm version of a halide type */
     llvm::Type *llvm_type_of(Type type);
+
+    using IRVisitor::visit;
 
     /** Generate code for various IR nodes. These can be overridden by
      * architecture-specific code to perform peephole

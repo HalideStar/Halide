@@ -8,10 +8,10 @@
 #include "Log.h"
 #include <iostream>
 
-using std::string;
-
 namespace Halide { 
 namespace Internal {
+
+using std::string;
 
 bool is_simple_const(Expr e) {
     return is_const(e) && (!e.as<Cast>());
@@ -44,6 +44,8 @@ int do_indirect_int_cast(Type t, int x) {
 class Simplify : public IRMutator {
 
     Scope<Expr> scope;
+
+    using IRMutator::visit;
 
     void visit(const IntImm *op) {
         IRMutator::visit(op);

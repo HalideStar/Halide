@@ -8,11 +8,11 @@
 #include "Log.h"
 #include "Scope.h"
 
-using std::pair;
-using std::make_pair;
-
 namespace Halide {
 namespace Internal {
+
+using std::pair;
+using std::make_pair;
 
 class Deinterleaver : public IRMutator {
 public:
@@ -21,6 +21,8 @@ public:
     bool failed;
 private:
     Scope<int> internal;
+
+    using IRMutator::visit;
 
     void visit(const Broadcast *op) {
         expr = new Broadcast(op->value, new_width);
@@ -83,6 +85,8 @@ Expr extract_even_lanes(Expr e) {
 
 class Interleaver : public IRMutator {
     Scope<ModulusRemainder> alignment_info;
+
+    using IRMutator::visit;
 
     void visit(const Let *op) {
         Expr value = mutate(op->value);

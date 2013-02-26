@@ -1,10 +1,10 @@
 #include "Tracing.h"
 #include "IRMutator.h"
 
-using std::vector;
-
 namespace Halide {
 namespace Internal {
+
+using std::vector;
 
 class InjectTracing : public IRMutator {
 public:
@@ -16,6 +16,8 @@ public:
 
 
 private:
+    using IRMutator::visit;
+
     void visit(const Call *op) {
         expr = op;
     }
