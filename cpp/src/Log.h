@@ -24,14 +24,22 @@ namespace Internal {
  * tracing everything that occurs. The verbosity with which to print
  * is determined by the value of the environment variable
  * HL_DEBUG_CODEGEN
+ *
+ * LH: Log with sections
+ * log(verbosity,section) << ...
+ * This log message is controlled by HL_DEBUG_<section> in addition to
+ * HL_DEBUG_CODEGEN.  
  */
 
 struct log {
     static int debug_level;
     static bool initialized;
-    int verbosity;
+    //int verbosity;
+    bool do_logging; // A boolean to avoid repeating the decision.
+    static std::string section_name;
+    static int section_debug_level;
 
-    log(int v) : verbosity(v) {
+    log(int verbosity) {
         if (!initialized) {
             // Read the debug level from the environment
             if (char *lvl = getenv("HL_DEBUG_CODEGEN")) {
@@ -41,11 +49,36 @@ struct log {
             }
             initialized = true;
         }
+        do_logging = verbosity <= debug_level;
+    }
+
+    log(int verbosity, std::string section) {
+        if (!initialized) {
+            // Read the debug level from the environment
+            if (char *lvl = getenv("HL_DEBUG_CODEGEN")) {
+                debug_level = atoi(lvl);
+            } else {
+                debug_level = 0;
+            }
+            initialized = true;
+        }
+        // A single cache of the section, since we assume that we are operating in stages
+        if (section != section_name)
+        {
+            // Read the debug level from the environment
+            if (char *lvl = getenv(("HL_DEBUG_" + section).c_str())) {
+                section_debug_level = atoi(lvl);
+            } else {
+                section_debug_level = 0;
+            }
+            section_name = section;
+        }
+        do_logging = verbosity <= debug_level || verbosity <= section_debug_level;
     }
 
     template<typename T>
     log &operator<<(T x) {
-        if (verbosity > debug_level) return *this;
+        if (! do_logging) return *this;
         std::cerr << x;
         return *this;
     }
