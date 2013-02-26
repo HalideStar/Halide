@@ -416,6 +416,27 @@ public:
     }
 };
 
+/* Find all the internal halide calls in an expr, recursively */
+class FindCallsRec : public IRVisitor {
+public:
+    FindCallsRec(Expr e) {e.accept(this);}
+    map<string, Function> calls;
+    void visit(const Call *call) {                
+        IRVisitor::visit(call); // Do the default handling to visit the index expressions
+        if (call->call_type == Call::Halide) {
+            map<string, Function>::iterator iter = calls.find(call->name);
+            if (iter == calls.end()) {
+                calls[call->name] = call->func;
+                // Recursively find all the calls in that function also.
+                call->func.value().accept(this);
+            } else {
+                assert(iter->second.same_as(call->func) && 
+                       "Can't compile a pipeline using multiple functions with same name");
+            }
+        }
+    }
+};
+
 /* Find all the externally referenced buffers in a stmt */
 class FindBuffers : public IRVisitor {
 public:
