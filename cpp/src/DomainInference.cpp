@@ -21,6 +21,8 @@ namespace Internal {
 class ForwardDomainInference : public IRVisitor {
 
 private:
+    using IRVisitor::visit;
+    
     // The important methods are the visit methods that define handling of 
     // different tree nodes.
     
@@ -28,7 +30,7 @@ private:
     // e.g. g(x,y) = f(x,y-1);
     // From the expression y-1 we determine that the y bounds of g are
     // shifted compared to the y bounds of f.
-    virtual void visit (const Call *func_call)
+    void visit (const Call *func_call)
     {
         // Arguments are in std::vector<Expr> func_call->args
         // If it is a call to another Halide function, Function func_call->func points to it
@@ -71,7 +73,9 @@ public:
         xmin(axmin), xmax(axmax), cmin(axmin), cmax(axmax), varname(""), poison(false) {}
 
 private:
-    virtual void visit(const Variable *var)
+    using IRVisitor::visit;
+    
+    void visit(const Variable *var)
     {
         // Variable node defines the varname string.
         varname = var->name;
@@ -79,7 +83,7 @@ private:
         cmax = xmax;
     }
     
-    virtual void visit(const Add *op)
+    void visit(const Add *op)
     {
         op->a.accept(this);
         Expr cmin_a = cmin, cmax_a = cmax;

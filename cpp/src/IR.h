@@ -583,6 +583,13 @@ struct Allocate : public StmtNode<Allocate> {
     }
 };
 
+/** An interval.  Includes all numbers from min to max inclusive. */
+struct Interval {
+    Expr min, max;
+    Interval(Expr min, Expr max) : min(min), max(max) {}
+    Interval();
+};
+
 /** A single-dimensional span. Includes all numbers between min and
  * (min + extent - 1) */
 struct Range {

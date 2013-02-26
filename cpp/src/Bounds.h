@@ -15,12 +15,6 @@
 namespace Halide {
 namespace Internal {
 
-struct Interval {
-    Expr min, max;
-    Interval(Expr min, Expr max) : min(min), max(max) {}
-    Interval();
-};
-
 /** Given an expression in some variables, and a map from those
  * variables to their bounds (in the form of (minimum possible value,
  * maximum possible value)), compute two expressions that give the
