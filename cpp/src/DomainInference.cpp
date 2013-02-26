@@ -4,6 +4,7 @@
 #include "IRVisitor.h"
 #include "IRPrinter.h"
 #include "log.h"
+#include "Var.h"
 
 using std::string;
 
@@ -52,8 +53,33 @@ void domain_inference(Expr e)
     e.accept(&infers);
 }
 
+
+/* Notes
+Difference between Var and Variable.  Variable is a parse tree node.
+Var is just a name.
+*/
+
+void infer_domain(Expr e, Expr xmin, Expr xmax, Expr &cmin, Expr &cmax, std::string &v)
+{
+    // Simplest assumption.  Just a single Var expression.
+    cmin = xmin;
+    cmax = xmax;
+    const Variable *var_e = e.as<Variable>();
+    if (var_e != NULL)
+        v = var_e->name;
+    return;
+}
+
 void domain_inference_test()
 {
+    Var x("x");
+    std::string v = "<dummy>";
+    Expr cmin, cmax;
+    
+    infer_domain(x, 0, 100, cmin, cmax, v);
+    std::cout << "cmin: " << cmin << std::endl;
+    std::cout << "cmax: " << cmax << std::endl;
+    std::cout << "v: " << v << std::endl;
     std::cout << "Domain inference test passed" << std::endl;
     return;
 }
