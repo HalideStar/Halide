@@ -1,5 +1,6 @@
 #include "DomainInference.h"
 #include "IR.h"
+#include "IREquality.h"
 #include "IROperator.h"
 #include "IRVisitor.h"
 #include "IRPrinter.h"
@@ -64,30 +65,37 @@ class BackwardIntervalInference : public IRVisitor {
 public:
     Expr xmin;
     Expr xmax;
-    Expr cmin;
-    Expr cmax;
     std::string varname;
     bool poison;
     
     BackwardIntervalInference(Expr axmin, Expr axmax) : 
-        xmin(axmin), xmax(axmax), cmin(axmin), cmax(axmax), varname(""), poison(false) {}
+        xmin(axmin), xmax(axmax), varname(""), poison(false) {}
 
 private:
     using IRVisitor::visit;
     
     void visit(const Variable *var)
     {
-        // Variable node defines the varname string.
+        // Variable node defines the varname string - the variable for which we are
+        // building the inverse function.
         varname = var->name;
-        cmin = xmin;
-        cmax = xmax;
     }
     
     void visit(const Add *op)
     {
-        op->a.accept(this);
-        Expr cmin_a = cmin, cmax_a = cmax;
-        op->b.accept(this);
+        if (is_const(op->b))
+        {
+            // Looking for constant on RHS of Add node.
+            xmin = xmin - op->b;
+            xmax = xmax - op->b;
+            // Process the tree recursively
+            op->a.accept(this);
+        }
+        else
+        {
+            assert(! is_const(op->a) && "Simplify did not put constant on RHS of Add");
+            poison = true; // Expression cannot be solved as it has branches not simplified out.
+        }
     }
 };
 
@@ -96,21 +104,48 @@ Difference between Var and Variable.  Variable is a parse tree node.
 Var is just a name.
 */
 
-void infer_domain(Expr e, Expr xmin, Expr xmax, Expr &cmin, Expr &cmax, std::string &v)
+Interval backwards_interval(Expr e, Expr xmin, Expr xmax, std::string &v)
 {
     BackwardIntervalInference infers(xmin, xmax);
     Expr e1 = simplify(e);
     
-    std::cout << "e: " << e << std::endl;
-    std::cout << "e1: " << e1 << std::endl;
-    
     e1.accept(&infers);
     
-    cmin = infers.cmin;
-    cmax = infers.cmax;
+    Interval result(infers.xmin, infers.xmax);
+    if (result.min.defined()) result.min = simplify(result.min);
+    if (result.max.defined()) result.max = simplify(result.max);
     v = infers.varname;
 
-    return;
+    return result;
+}
+
+void check_interval(Expr e, Expr xmin, Expr xmax, 
+                    Expr correct_min, Expr correct_max, std::string correct_varname)
+{
+    std::string v;
+    Interval result = backwards_interval(e, xmin, xmax, v);
+    
+    Expr e1 = simplify(e); // Duplicate simplification for debugging only
+    log(0,"LH") << "e: " << e << "    ";
+    log(0,"LH") << "e1: " << e1 << '\n';
+    //log(0,"LH") << "min: " << result.min << "    ";
+    //log(0,"LH") << "max: " << result.max << '\n';
+    
+    log(0,"LH") << "min: " << result.min << "    ";
+    log(0,"LH") << "max: " << result.max << '\n';
+    
+    bool success = true;
+    if (!equal(result.min, correct_min)) {
+        std::cout << "Incorrect min: " << result.min << std::endl
+                  << "Should have been: " << correct_min << std::endl;
+        success = false;
+    }
+    if (!equal(result.max, correct_max)) {
+        std::cout << "Incorrect max: " << result.max << std::endl
+                  << "Should have been: " << correct_max << std::endl;
+        success = false;
+    }
+    assert(success && "Domain inference test failed");
 }
 
 void domain_inference_test()
@@ -119,19 +154,17 @@ void domain_inference_test()
     std::string v = "<dummy>";
     Expr cmin, cmax;
     
-    infer_domain(x, 0, 100, cmin, cmax, v);
-    infer_domain(x + 1, 0, 100, cmin, cmax, v);
-    infer_domain(1 + x, 0, 100, cmin, cmax, v);
-    infer_domain(x + x, 0, 100, cmin, cmax, v);
-    infer_domain(2 * x, 0, 100, cmin, cmax, v);
-    infer_domain(x * 2, 0, 100, cmin, cmax, v);
-    infer_domain(x / 2, 0, 100, cmin, cmax, v);
-    infer_domain((x + 1) / 2, 0, 100, cmin, cmax, v);
-    infer_domain((x + 2) / 2, 0, 100, cmin, cmax, v);
-    infer_domain((2 * x + 4) / 2, 0, 100, cmin, cmax, v);
-    std::cout << "cmin: " << cmin << std::endl;
-    std::cout << "cmax: " << cmax << std::endl;
-    std::cout << "v: " << v << std::endl;
+    // Tests of backward interval inference
+    check_interval(x, 0, 100, 0, 100, "x");
+    check_interval(x + 1, 0, 100, -1, 99, "x");
+    check_interval(1 + x, 0, 100, -1, 99, "x");
+    //check_interval(x + x, 0, 100, cmin, cmax, v);
+    check_interval(2 * x, 0, 100, 0, 50, "x");
+    check_interval(x * 2, 0, 100, 0, 50, "x");
+    check_interval(x / 2, 0, 100, 0, 201, "x");
+    //check_interval((x + 1) / 2, 0, 100, cmin, cmax, v);
+    //check_interval((x + 2) / 2, 0, 100, cmin, cmax, v);
+    //check_interval((2 * x + 4) / 2, 0, 100, cmin, cmax, v);
     std::cout << "Domain inference test passed" << std::endl;
     return;
 }

@@ -421,6 +421,9 @@ class FindCallsRec : public IRVisitor {
 public:
     FindCallsRec(Expr e) {e.accept(this);}
     map<string, Function> calls;
+
+    using IRVisitor::visit;
+
     void visit(const Call *call) {                
         IRVisitor::visit(call); // Do the default handling to visit the index expressions
         if (call->call_type == Call::Halide) {
