@@ -5,6 +5,7 @@
 #include "IRPrinter.h"
 #include "log.h"
 #include "Var.h"
+#include "Simplify.h"
 
 using std::string;
 
@@ -18,7 +19,6 @@ namespace Internal {
 
 // Class ForwardDomainInference is only for internal use in this module.
 class ForwardDomainInference : public IRVisitor {
-
 
 private:
     // The important methods are the visit methods that define handling of 
@@ -54,6 +54,39 @@ void domain_inference(Expr e)
 }
 
 
+// BackwardIntervalInference walks an argument expression and
+// determines the domain interval in the callee based on the
+// domain interval in the caller, which is passed to it.
+
+class BackwardIntervalInference : public IRVisitor {
+public:
+    Expr xmin;
+    Expr xmax;
+    Expr cmin;
+    Expr cmax;
+    std::string varname;
+    bool poison;
+    
+    BackwardIntervalInference(Expr axmin, Expr axmax) : 
+        xmin(axmin), xmax(axmax), cmin(axmin), cmax(axmax), varname(""), poison(false) {}
+
+private:
+    virtual void visit(const Variable *var)
+    {
+        // Variable node defines the varname string.
+        varname = var->name;
+        cmin = xmin;
+        cmax = xmax;
+    }
+    
+    virtual void visit(const Add *op)
+    {
+        op->a.accept(this);
+        Expr cmin_a = cmin, cmax_a = cmax;
+        op->b.accept(this);
+    }
+};
+
 /* Notes
 Difference between Var and Variable.  Variable is a parse tree node.
 Var is just a name.
@@ -61,12 +94,18 @@ Var is just a name.
 
 void infer_domain(Expr e, Expr xmin, Expr xmax, Expr &cmin, Expr &cmax, std::string &v)
 {
-    // Simplest assumption.  Just a single Var expression.
-    cmin = xmin;
-    cmax = xmax;
-    const Variable *var_e = e.as<Variable>();
-    if (var_e != NULL)
-        v = var_e->name;
+    BackwardIntervalInference infers(xmin, xmax);
+    Expr e1 = simplify(e);
+    
+    std::cout << "e: " << e << std::endl;
+    std::cout << "e1: " << e1 << std::endl;
+    
+    e1.accept(&infers);
+    
+    cmin = infers.cmin;
+    cmax = infers.cmax;
+    v = infers.varname;
+
     return;
 }
 
@@ -77,6 +116,15 @@ void domain_inference_test()
     Expr cmin, cmax;
     
     infer_domain(x, 0, 100, cmin, cmax, v);
+    infer_domain(x + 1, 0, 100, cmin, cmax, v);
+    infer_domain(1 + x, 0, 100, cmin, cmax, v);
+    infer_domain(x + x, 0, 100, cmin, cmax, v);
+    infer_domain(2 * x, 0, 100, cmin, cmax, v);
+    infer_domain(x * 2, 0, 100, cmin, cmax, v);
+    infer_domain(x / 2, 0, 100, cmin, cmax, v);
+    infer_domain((x + 1) / 2, 0, 100, cmin, cmax, v);
+    infer_domain((x + 2) / 2, 0, 100, cmin, cmax, v);
+    infer_domain((2 * x + 4) / 2, 0, 100, cmin, cmax, v);
     std::cout << "cmin: " << cmin << std::endl;
     std::cout << "cmax: " << cmax << std::endl;
     std::cout << "v: " << v << std::endl;
