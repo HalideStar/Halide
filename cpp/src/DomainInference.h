@@ -7,6 +7,9 @@
 namespace Halide {
 namespace Internal {
 void domain_inference(Expr e);
+
+void domain_inference_test();
+
 }
 }
 #endif

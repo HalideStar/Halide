@@ -10,6 +10,8 @@
 #include "Deinterleave.h"
 #include "ModulusRemainder.h"
 
+#include "DomainInference.h"
+
 using namespace Halide;
 using namespace Halide::Internal;
 
@@ -24,5 +26,7 @@ int main(int argc, const char **argv) {
     expr_match_test();
     deinterleave_vector_test();
     modulus_remainder_test();
+    
+    domain_inference_test();
     return 0;
 }

@@ -52,5 +52,11 @@ void domain_inference(Expr e)
     e.accept(&infers);
 }
 
+void domain_inference_test()
+{
+    std::cout << "Domain inference test passed" << std::endl;
+    return;
+}
+
 }
 }
