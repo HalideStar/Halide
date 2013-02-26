@@ -15,12 +15,14 @@ CXX_FLAGS = $(shell $(LLVM_CONFIG) --cflags) -Wall -Werror -fno-rtti -Os
 LIBS = -L $(shell $(LLVM_CONFIG) --libdir) $(shell $(LLVM_CONFIG) --libs jit bitwriter bitreader x86 arm linker nvptx ipo)
 
 SOURCE_FILES = CodeGen.cpp CodeGen_X86.cpp CodeGen_Posix.cpp CodeGen_ARM.cpp IR.cpp IRMutator.cpp IRPrinter.cpp IRVisitor.cpp CodeGen_C.cpp Substitute.cpp ModulusRemainder.cpp Bounds.cpp Derivative.cpp Func.cpp Simplify.cpp IREquality.cpp Util.cpp Function.cpp IROperator.cpp Lower.cpp Log.cpp Parameter.cpp Reduction.cpp RDom.cpp Tracing.cpp RemoveDeadLets.cpp StorageFlattening.cpp VectorizeLoops.cpp UnrollLoops.cpp BoundsInference.cpp IRMatch.cpp StmtCompiler.cpp integer_division_table.cpp SlidingWindow.cpp StorageFolding.cpp InlineReductions.cpp RemoveTrivialForLoops.cpp Deinterleave.cpp
+LH_SOURCE_FILES = DomainInference.cpp
 
 HEADER_FILES = Util.h Type.h Argument.h Bounds.h BoundsInference.h Buffer.h buffer_t.h CodeGen_C.h CodeGen.h CodeGen_X86.h Deinterleave.h Derivative.h Extern.h Func.h Function.h Image.h InlineReductions.h integer_division_table.h IntrusivePtr.h IREquality.h IR.h IRMatch.h IRMutator.h IROperator.h IRPrinter.h IRVisitor.h JITCompiledModule.h Lambda.h Log.h Lower.h MainPage.h ModulusRemainder.h Parameter.h Param.h RDom.h Reduction.h RemoveDeadLets.h RemoveTrivialForLoops.h Schedule.h Scope.h Simplify.h SlidingWindow.h StmtCompiler.h StorageFlattening.h StorageFolding.h Substitute.h Tracing.h UnrollLoops.h Var.h VectorizeLoops.h CodeGen_Posix.h CodeGen_ARM.h
+LH_HEADER_FILES = DomainInference.h
 
-SOURCES = $(SOURCE_FILES:%.cpp=src/%.cpp)
-OBJECTS = $(SOURCE_FILES:%.cpp=build/%.o)
-HEADERS = $(HEADER_FILES:%.h=src/%.h)
+SOURCES = $(SOURCE_FILES:%.cpp=src/%.cpp) $(LH_SOURCE_FILES:%.cpp=src/%.cpp)
+OBJECTS = $(SOURCE_FILES:%.cpp=build/%.o) $(LH_SOURCE_FILES:%.cpp=build/%.o)
+HEADERS = $(HEADER_FILES:%.h=src/%.h) $(LH_HEADER_FILES:%.h=src/%.h)
 
 STDLIB_ARCHS = x86 x86_avx ptx ptx_dev arm arm_android
 
@@ -45,7 +47,7 @@ bin/libHalide.so: bin/libHalide.a
 
 include/Halide.h: $(HEADERS) bin/build_halide_h
 	mkdir -p include
-	cd src; ../bin/build_halide_h $(HEADER_FILES) > ../include/Halide.h; cd ..
+	cd src; ../bin/build_halide_h $(HEADER_FILES) $(LH_HEADER_FILES) > ../include/Halide.h; cd ..
 
 bin/build_halide_h: src/build_halide_h.cpp
 	g++ $< -o $@
