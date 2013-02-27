@@ -15,6 +15,35 @@ using std::string;
 namespace Halide { 
 namespace Internal {
 
+// VarInterval: Represents an interval associated with a variable, including
+// the name of the variable and a poison flag for dead intervals.
+void VarInterval::update(VarInterval result) {
+    assert(result.varname == varname && "Trying to update incorrect variable in Domain");
+    if (equal(poison, const_true()))
+        return; // Already poisoned. No more information can be collected.
+    if (equal(result.poison, const_true())) {
+        poison = const_true(); // Has become poisoned now.
+    }
+    if (! equal(result.poison, const_false())) { // Poison expression combination
+        poison = poison || result.poison;
+        poison = simplify(poison);
+    }
+    if (! imin.defined()) { // Hack representation of infinity
+        imin = result.imin;
+    }
+    else if (result.imin.defined()) {
+        imin = max(imin, result.imin); // Update min as maximum of both expressions
+        imin = simplify(imin);
+    }
+    if (! imax.defined()) {
+        imax = result.imax;
+    }
+    else if (result.imax.defined()) {
+        imax = min(imax, result.imax);
+        imax = simplify(imax);
+    }
+}
+
 // Domain: Represents a domain whether valid, defined or some other.
 Domain::Domain() {
     intervals.clear();
@@ -37,6 +66,12 @@ Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
                     VarInterval(zvarname, zpoisoned, zmin, zmax));
 }
 
+int Domain::find(std::string v) {
+    for (size_t i = 0; i < intervals.size(); i++)
+        if (v == intervals[i].varname)
+            return i;
+    return -1;
+}
 
 // BackwardIntervalInference walks an argument expression and
 // determines the domain interval in the callee based on the
@@ -169,6 +204,30 @@ private:
 #endif
 };
 
+VarInterval backwards_interval(Expr e, Expr xmin, Expr xmax) {
+    //log(0) << "e: " << e << "    min: " << xmin << "    max: " << xmax << '\n';
+    BackwardIntervalInference infers(xmin, xmax);
+    Expr e1 = simplify(e);
+    
+    e1.accept(&infers);
+    
+    VarInterval result(infers.varname, infers.poison, infers.xmin, infers.xmax);
+    if (result.imin.defined()) result.imin = simplify(result.imin);
+    if (result.imax.defined()) result.imax = simplify(result.imax);
+    if (result.poison.defined()) {
+        result.poison = result.poison || make_bool(infers.defaulted);
+        result.poison = simplify(result.poison);
+    }
+    else
+        result.poison = make_bool(infers.defaulted);
+
+    return result;
+}
+
+
+
+
+
 // ForwardDomainInference walks the parse tree inferring forward domain bounds
 // for functions.
 // This operates on the very raw parse tree before functions are realized etc
@@ -224,7 +283,30 @@ private:
             // Perform backward interval analysis on the argument expression.
             // Have to know the valid domain for the actual argument of the function.
             // For now, just use image dimensions.
-            //VarInterval result = backwards_interval(func_call->args[i], 
+            if (func_call->call_type == Call::Image)
+            {
+                VarInterval result = backwards_interval(func_call->args[i],
+                                        func_call->image.min(i), 
+                                        func_call->image.min(i) + func_call->image.extent(i) - 1);
+                log(0) << "arg: " << func_call->args[i] << "    ";
+                if (equal(result.poison, const_true()))
+                    log(0,"LH") << "poison\n";
+                else {
+                    log(0,"LH") << "imin: " << result.imin << "    ";
+                    log(0,"LH") << "imax: " << result.imax << "    ";
+                    log(0,"LH") << "v: " << result.varname;
+                    if (! equal(result.poison, const_false()))
+                        log(0,"LH") << "    poison: " << result.poison << '\n';
+                    else
+                        log(0,"LH") << '\n';
+                }
+                
+                // Search through the variables in the Domain and update the appropriate one
+                size_t index = dom.find(result.varname);
+                assert(index >= 0 && "Could not find free variable in domain variable list");
+                
+                dom.intervals[i].update(result);
+            }
         }
     }
 };
@@ -235,25 +317,6 @@ private:
 Difference between Var and Variable.  Variable is a parse tree node.
 Var is just a name.
 */
-
-VarInterval backwards_interval(Expr e, Expr xmin, Expr xmax) {
-    BackwardIntervalInference infers(xmin, xmax);
-    Expr e1 = simplify(e);
-    
-    e1.accept(&infers);
-    
-    VarInterval result(infers.varname, infers.poison, infers.xmin, infers.xmax);
-    if (result.min.defined()) result.min = simplify(result.min);
-    if (result.max.defined()) result.max = simplify(result.max);
-    if (result.poison.defined()) {
-        result.poison = result.poison || make_bool(infers.defaulted);
-        result.poison = simplify(result.poison);
-    }
-    else
-        result.poison = make_bool(infers.defaulted);
-
-    return result;
-}
 
 Domain domain_inference(std::vector<std::string> variables, Expr e)
 {
@@ -282,8 +345,8 @@ void check_interval(Expr e, Expr xmin, Expr xmax,
     if (equal(result.poison, const_true()))
         log(0,"LH") << "poison\n";
     else {
-        log(0,"LH") << "min: " << result.min << "    ";
-        log(0,"LH") << "max: " << result.max << "    ";
+        log(0,"LH") << "imin: " << result.imin << "    ";
+        log(0,"LH") << "imax: " << result.imax << "    ";
         log(0,"LH") << "v: " << result.varname;
         if (! equal(result.poison, const_false()))
             log(0,"LH") << "    poison: " << result.poison << '\n';
@@ -299,13 +362,13 @@ void check_interval(Expr e, Expr xmin, Expr xmax,
     }
     if (! correct_poison_bool) {
         // Only bother to check the details if it is not supposed to be poison
-        if (!equal(result.min, correct_min)) {
-            std::cout << "Incorrect min: " << result.min << "    "
+        if (!equal(result.imin, correct_min)) {
+            std::cout << "Incorrect imin: " << result.imin << "    "
                       << "Should have been: " << correct_min << std::endl;
             success = false;
         }
-        if (!equal(result.max, correct_max)) {
-            std::cout << "Incorrect max: " << result.max << "    "
+        if (!equal(result.imax, correct_max)) {
+            std::cout << "Incorrect imax: " << result.imax << "    "
                       << "Should have been: " << correct_max << std::endl;
             success = false;
         }
@@ -377,14 +440,40 @@ void check_domain_expr(std::vector<std::string> variables, Expr e, Domain d) {
     Domain edom = domain_inference(variables, e);
     
     std::cout << "e: " << e << '\n';
+    for (size_t i = 0; i < edom.intervals.size(); i++)
+        std::cout << "    " << edom.intervals[i].varname 
+                  << ": imin: " << edom.intervals[i].imin 
+                  << "  imax: " << edom.intervals[i].imax 
+                  << "  poison: " << edom.intervals[i].poison << '\n';
     
     // Compare the computed domain with the expected domain
     bool success = true;
-    if (d.intervals.size() != edom.intervals.size())
-    {
-        std::cout << "Incorrect domain size: " << edom.intervals.size() 
-            << "    Should have been: " << d.intervals.size() << '\n';
+    if (d.intervals.size() != edom.intervals.size()) {
+        std::cout << "Incorrect domain size: " << edom.intervals.size()
+                  << "    Should have been: " << d.intervals.size() << '\n';
         success = false;
+    }
+    for (size_t i = 0; i < edom.intervals.size(); i++) {
+        if (edom.intervals[i].varname != variables[i]) {
+            std::cout << "Incorrect variable name: " << edom.intervals[i].varname
+                      << "    Should have been: " << variables[i] << '\n';
+        }
+        if (edom.intervals[i].varname != d.intervals[i].varname) {
+            std::cout << "Incorrect variable name: " << edom.intervals[i].varname
+                      << "    Template answer: " << d.intervals[i].varname << '\n';
+        }
+        if (! equal(edom.intervals[i].poison, d.intervals[i].poison)) {
+            std::cout << "Incorrect poison: " << edom.intervals[i].poison
+                      << "    Should have been: " << d.intervals[i].poison << '\n';
+        }
+        if (! equal(edom.intervals[i].imin, d.intervals[i].imin)) {
+            std::cout << "Incorrect imin: " << edom.intervals[i].imin
+                      << "    Should have been: " << d.intervals[i].imin << '\n';
+        }
+        if (! equal(edom.intervals[i].imax, d.intervals[i].imax)) {
+            std::cout << "Incorrect imax: " << edom.intervals[i].imax
+                      << "    Should have been: " << d.intervals[i].imax << '\n';
+        }
     }
     assert(success && "Domain inference test failed");
 }
@@ -394,9 +483,13 @@ void domain_expr_test()
     Image<uint8_t> in(20,40);
     Func f("f");
     Var x("x"), y("y");
+    Expr False = make_bool(false);
+    Expr True = make_bool(true);
     
-    check_domain_expr(vecS("iv.0", "iv.1"), in, Domain("iv.0", false, 0, 19, "iv.1", false, 0, 39));
-    check_domain_expr(vecS("x", "y"), in(x-2,y), Domain("x", false, 2, 21, "y", false, 0, 39));
+    check_domain_expr(vecS("iv.0", "iv.1"), in, Domain("iv.0", False, 0, 19, "iv.1", False, 0, 39));
+    check_domain_expr(vecS("x", "y"), in(x-2,y), Domain("x", False, 2, 21, "y", False, 0, 39));
+    check_domain_expr(vecS("x", "y"), in(x-2,y) + in(x,y), Domain("x", False, 2, 19, "y", False, 0, 39));
+    check_domain_expr(vecS("x", "y"), in(x-2,y) + in(x,y) + in(x,y+5), Domain("x", False, 2, 19, "y", False, 0, 34));
     
     return;
 }
