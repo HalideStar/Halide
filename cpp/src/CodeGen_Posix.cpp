@@ -12,7 +12,9 @@
 
 #include <llvm/Config/config.h>
 
-#if LLVM_VERSION_MINOR < 3
+// Temporary affordance to compile with both llvm 3.2 and 3.3.
+// Protected as at least one installation of llvm elides version macros.
+#if defined(LLVM_VERSION_MINOR) && LLVM_VERSION_MINOR < 3
 #include <llvm/Value.h>
 #include <llvm/Module.h>
 #include <llvm/Function.h>
@@ -40,9 +42,23 @@ using std::string;
 using namespace llvm;
 
 CodeGen_Posix::CodeGen_Posix() : CodeGen() {
+    i8x8 = VectorType::get(i8, 8);
+    i8x16 = VectorType::get(i8, 16);
+    i8x32 = VectorType::get(i8, 32);
+    i16x4 = VectorType::get(i16, 4);
+    i16x8 = VectorType::get(i16, 8);
+    i16x16 = VectorType::get(i16, 16);
+    i32x2 = VectorType::get(i32, 2);
     i32x4 = VectorType::get(i32, 4);
     i32x8 = VectorType::get(i32, 8);
- 
+    i64x2 = VectorType::get(i64, 2);
+    i64x4 = VectorType::get(i64, 4);    
+    f32x2 = VectorType::get(f32, 2);
+    f32x4 = VectorType::get(f32, 4);
+    f32x8 = VectorType::get(f32, 8);
+    f64x2 = VectorType::get(f64, 2);
+    f64x4 = VectorType::get(f64, 4);    
+
     wild_i8x8 = new Variable(Int(8, 8), "*");
     wild_i8x16 = new Variable(Int(8, 16), "*");
     wild_i8x32 = new Variable(Int(8, 32), "*");
@@ -65,6 +81,7 @@ CodeGen_Posix::CodeGen_Posix() : CodeGen() {
     wild_u64x2 = new Variable(UInt(64, 2), "*");
     wild_i64x2 = new Variable(Int(64, 2), "*");
 
+    wild_f32x2 = new Variable(Float(32, 2), "*");
     wild_f32x4 = new Variable(Float(32, 4), "*");
     wild_f32x8 = new Variable(Float(32, 8), "*");
     wild_f64x2 = new Variable(Float(64, 2), "*");
@@ -99,7 +116,7 @@ void CodeGen_Posix::visit(const Allocate *alloc) {
     } else {
         // call malloc
         llvm::Function *malloc_fn = module->getFunction("fast_malloc");
-        Value *sz = builder->CreateIntCast(size, i64, false);
+        Value *sz = builder->CreateIntCast(size, malloc_fn->arg_begin()->getType(), false);
         ptr = builder->CreateCall(malloc_fn, sz);
         heap_allocations.push(ptr);
     }

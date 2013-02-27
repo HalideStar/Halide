@@ -74,6 +74,10 @@ protected:
      * generated llvm value. */
     //@{
     static bool llvm_initialized;
+    static bool llvm_X86_enabled;
+    static bool llvm_ARM_enabled;
+    static bool llvm_NVPTX_enabled;
+
     llvm::Module *module;
     bool owns_module;
     llvm::Function *function;
@@ -81,6 +85,9 @@ protected:
     llvm::IRBuilder<true, llvm::ConstantFolder, llvm::IRBuilderDefaultInserter<true> > *builder;
     llvm::Value *value;
     //@}
+
+    /** Run all of llvm's optimization passes on the module */
+    void optimize_module();
 
     /** Add an entry to the symbol table, hiding previous entries with
      * the same name. Call this when new values come into scope. */

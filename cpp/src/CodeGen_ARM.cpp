@@ -9,11 +9,14 @@
 #include "Util.h"
 #include "Var.h"
 #include "Param.h"
+#include "Simplify.h"
 #include "integer_division_table.h"
 
 #include <llvm/Config/config.h>
 
-#if LLVM_VERSION_MINOR < 3
+// Temporary affordance to compile with both llvm 3.2 and 3.3.
+// Protected as at least one installation of llvm elides version macros.
+#if defined(LLVM_VERSION_MINOR) && LLVM_VERSION_MINOR < 3
 #include <llvm/Value.h>
 #include <llvm/Module.h>
 #include <llvm/Function.h>
@@ -71,6 +74,7 @@ bool is_const_power_of_two(Expr e, int *bits) {
 using namespace llvm;
 
 CodeGen_ARM::CodeGen_ARM(bool android) : CodeGen_Posix(), use_android(android) {
+    assert(llvm_ARM_enabled && "llvm build not configured with ARM target enabled.");
 }
 
 void CodeGen_ARM::compile(Stmt stmt, string name, const vector<Argument> &args) {
@@ -104,6 +108,7 @@ void CodeGen_ARM::compile(Stmt stmt, string name, const vector<Argument> &args) 
 }
 
 namespace {
+// cast operators
 Expr _i64(Expr e) {
     return cast(Int(64, e.type().width), e);
 }
@@ -142,6 +147,34 @@ Expr _f32(Expr e) {
 Expr _f64(Expr e) {
     return cast(Float(64, e.type().width), e);
 }
+
+// saturating cast operators
+Expr _i8q(Expr e) {
+    return cast(Int(8, e.type().width), clamp(e, -128, 127));
+}
+
+Expr _u8q(Expr e) {
+    if (e.type().is_uint()) {
+        return cast(UInt(8, e.type().width), min(e, 255));
+    } else {
+        return cast(UInt(8, e.type().width), clamp(e, 0, 255));
+    }
+}
+
+Expr _i16q(Expr e) {
+    return cast(Int(16, e.type().width), clamp(e, -32768, 32767));
+}
+
+Expr _u16q(Expr e) {
+    if (e.type().is_uint()) {
+        return cast(UInt(16, e.type().width), min(e, 65535));
+    } else {
+        return cast(UInt(16, e.type().width), clamp(e, 0, 65535));
+    }
+}
+
+
+
 }
 
 Value *CodeGen_ARM::call_intrin(Type result_type, const string &name, vector<Expr> args) {    
@@ -150,10 +183,12 @@ Value *CodeGen_ARM::call_intrin(Type result_type, const string &name, vector<Exp
         arg_values[i] = codegen(args[i]);
     }
 
-    return call_intrin(result_type, name, arg_values);
+    return call_intrin(llvm_type_of(result_type), name, arg_values);
 }
 
-Value *CodeGen_ARM::call_intrin(Type result_type, const string &name, vector<Value *> arg_values) {
+Value *CodeGen_ARM::call_intrin(llvm::Type *result_type, 
+                                const string &name, 
+                                vector<Value *> arg_values) {
     vector<llvm::Type *> arg_types(arg_values.size());
     for (size_t i = 0; i < arg_values.size(); i++) {
         arg_types[i] = arg_values[i]->getType();
@@ -162,14 +197,14 @@ Value *CodeGen_ARM::call_intrin(Type result_type, const string &name, vector<Val
     llvm::Function *fn = module->getFunction("llvm.arm.neon." + name);
 
     if (!fn) {
-        FunctionType *func_t = FunctionType::get(llvm_type_of(result_type), arg_types, false);    
+        FunctionType *func_t = FunctionType::get(result_type, arg_types, false);    
         fn = llvm::Function::Create(func_t, 
                                     llvm::Function::ExternalLinkage, 
                                     "llvm.arm.neon." + name, module);
         fn->setCallingConv(CallingConv::C);
     }
 
-    return builder->CreateCall(fn, arg_values);
+    return builder->CreateCall(fn, arg_values, name);
 }
  
 void CodeGen_ARM::call_void_intrin(const string &name, vector<Expr> args) {    
@@ -208,20 +243,96 @@ void CodeGen_ARM::visit(const Cast *op) {
     struct Pattern {
         string intrin;
         Expr pattern;
-        int shift;
+        bool shift;
     };
 
     Pattern patterns[] = {
+        {"vaddhn.v8i8", _i8((wild_i16x8 + wild_i16x8)/256), false},
+        {"vaddhn.v4i16", _i16((wild_i32x4 + wild_i32x4)/65536), false},
+        {"vaddhn.v8i8", _u8((wild_u16x8 + wild_u16x8)/256), false},
+        {"vaddhn.v4i16", _u16((wild_u32x4 + wild_u32x4)/65536), false},
         {"vsubhn.v8i8", _i8((wild_i16x8 - wild_i16x8)/256), false},
         {"vsubhn.v4i16", _i16((wild_i32x4 - wild_i32x4)/65536), false},
         {"vsubhn.v8i8", _u8((wild_u16x8 - wild_u16x8)/256), false},
         {"vsubhn.v4i16", _u16((wild_u32x4 - wild_u32x4)/65536), false},
+        {"vrhadds.v8i8", _i8((_i16(wild_i8x8) + _i16(wild_i8x8) + 1)/2), false},
+        {"vrhaddu.v8i8", _u8((_u16(wild_u8x8) + _u16(wild_u8x8) + 1)/2), false},
+        {"vrhadds.v4i16", _i16((_i32(wild_i16x4) + _i32(wild_i16x4) + 1)/2), false},
+        {"vrhaddu.v4i16", _u16((_u32(wild_u16x4) + _u32(wild_u16x4) + 1)/2), false},
+        {"vrhadds.v2i32", _i32((_i64(wild_i32x2) + _i64(wild_i32x2) + 1)/2), false},
+        {"vrhaddu.v2i32", _u32((_u64(wild_u32x2) + _u64(wild_u32x2) + 1)/2), false},
+        {"vrhadds.v16i8",   _i8((_i16(wild_i8x16) + _i16(wild_i8x16) + 1)/2), false},
+        {"vrhaddu.v16i8",   _u8((_u16(wild_u8x16) + _u16(wild_u8x16) + 1)/2), false},
+        {"vrhadds.v8i16", _i16((_i32(wild_i16x8) + _i32(wild_i16x8) + 1)/2), false},
+        {"vrhaddu.v8i16", _u16((_u32(wild_u16x8) + _u32(wild_u16x8) + 1)/2), false},
+        {"vrhadds.v4i32", _i32((_i64(wild_i32x4) + _i64(wild_i32x4) + 1)/2), false},
+        {"vrhaddu.v4i32", _u32((_u64(wild_u32x4) + _u64(wild_u32x4) + 1)/2), false},
+
+        {"vhadds.v8i8", _i8((_i16(wild_i8x8) + _i16(wild_i8x8))/2), false},
+        {"vhaddu.v8i8", _u8((_u16(wild_u8x8) + _u16(wild_u8x8))/2), false},
+        {"vhadds.v4i16", _i16((_i32(wild_i16x4) + _i32(wild_i16x4))/2), false},
+        {"vhaddu.v4i16", _u16((_u32(wild_u16x4) + _u32(wild_u16x4))/2), false},
+        {"vhadds.v2i32", _i32((_i64(wild_i32x2) + _i64(wild_i32x2))/2), false},
+        {"vhaddu.v2i32", _u32((_u64(wild_u32x2) + _u64(wild_u32x2))/2), false},
+        {"vhadds.v16i8", _i8((_i16(wild_i8x16) + _i16(wild_i8x16))/2), false},
+        {"vhaddu.v16i8", _u8((_u16(wild_u8x16) + _u16(wild_u8x16))/2), false},
+        {"vhadds.v8i16", _i16((_i32(wild_i16x8) + _i32(wild_i16x8))/2), false},
+        {"vhaddu.v8i16", _u16((_u32(wild_u16x8) + _u32(wild_u16x8))/2), false},
+        {"vhadds.v4i32", _i32((_i64(wild_i32x4) + _i64(wild_i32x4))/2), false},
+        {"vhaddu.v4i32", _u32((_u64(wild_u32x4) + _u64(wild_u32x4))/2), false},
+        {"vhsubs.v8i8", _i8((_i16(wild_i8x8) - _i16(wild_i8x8))/2), false},
+        {"vhsubu.v8i8", _u8((_u16(wild_u8x8) - _u16(wild_u8x8))/2), false},
+        {"vhsubs.v4i16", _i16((_i32(wild_i16x4) - _i32(wild_i16x4))/2), false},
+        {"vhsubu.v4i16", _u16((_u32(wild_u16x4) - _u32(wild_u16x4))/2), false},
+        {"vhsubs.v2i32", _i32((_i64(wild_i32x2) - _i64(wild_i32x2))/2), false},
+        {"vhsubu.v2i32", _u32((_u64(wild_u32x2) - _u64(wild_u32x2))/2), false},
+        {"vhsubs.v16i8", _i8((_i16(wild_i8x16) - _i16(wild_i8x16))/2), false},
+        {"vhsubu.v16i8", _u8((_u16(wild_u8x16) - _u16(wild_u8x16))/2), false},
+        {"vhsubs.v8i16", _i16((_i32(wild_i16x8) - _i32(wild_i16x8))/2), false},
+        {"vhsubu.v8i16", _u16((_u32(wild_u16x8) - _u32(wild_u16x8))/2), false},
+        {"vhsubs.v4i32", _i32((_i64(wild_i32x4) - _i64(wild_i32x4))/2), false},
+        {"vhsubu.v4i32", _u32((_u64(wild_u32x4) - _u64(wild_u32x4))/2), false},
+
+        {"vqadds.v8i8", _i8q(_i16(wild_i8x8) + _i16(wild_i8x8)), false},
+        {"vqaddu.v8i8", _u8q(_u16(wild_u8x8) + _u16(wild_u8x8)), false},
+        {"vqadds.v4i16", _i16q(_i32(wild_i16x4) + _i32(wild_i16x4)), false},
+        {"vqaddu.v4i16", _u16q(_u32(wild_u16x4) + _u32(wild_u16x4)), false},
+        {"vqadds.v16i8", _i8q(_i16(wild_i8x16) + _i16(wild_i8x16)), false},
+        {"vqaddu.v16i8", _u8q(_u16(wild_u8x16) + _u16(wild_u8x16)), false},
+        {"vqadds.v8i16", _i16q(_i32(wild_i16x8) + _i32(wild_i16x8)), false},
+        {"vqaddu.v8i16", _u16q(_u32(wild_u16x8) + _u32(wild_u16x8)), false},
+
+        // N.B. Saturating subtracts of unsigned types are expressed
+        // by widening to a *signed* type
+        {"vqsubs.v8i8", _i8q(_i16(wild_i8x8) - _i16(wild_i8x8)), false},
+        {"vqsubu.v8i8", _u8q(_i16(wild_u8x8) - _i16(wild_u8x8)), false},
+        {"vqsubs.v4i16", _i16q(_i32(wild_i16x4) - _i32(wild_i16x4)), false},
+        {"vqsubu.v4i16", _u16q(_i32(wild_u16x4) - _i32(wild_u16x4)), false},
+        {"vqsubs.v16i8", _i8q(_i16(wild_i8x16) - _i16(wild_i8x16)), false},
+        {"vqsubu.v16i8", _u8q(_i16(wild_u8x16) - _i16(wild_u8x16)), false},
+        {"vqsubs.v8i16", _i16q(_i32(wild_i16x8) - _i32(wild_i16x8)), false},
+        {"vqsubu.v8i16", _u16q(_i32(wild_u16x8) - _i32(wild_u16x8)), false},
+
+        {"vqmovns.v8i8", _i8q(wild_i16x8), false},
+        {"vqmovns.v4i16", _i16q(wild_i32x4), false},
+        {"vqmovnu.v8i8", _u8q(wild_u16x8), false},
+        {"vqmovnu.v4i16", _u16q(wild_u32x4), false},
+        {"vqmovnsu.v8i8", _u8q(wild_i16x8), false},
+        {"vqmovnsu.v4i16", _u16q(wild_i32x4), false},
+
         {"vshiftn.v8i8", _i8(wild_i16x8/wild_i16x8), true},
         {"vshiftn.v4i16", _i16(wild_i32x4/wild_i32x4), true},
         {"vshiftn.v2i32", _i32(wild_i64x2/wild_i64x2), true},
         {"vshiftn.v8i8", _u8(wild_u16x8/wild_u16x8), true},
         {"vshiftn.v4i16", _u16(wild_u32x4/wild_u32x4), true},
         {"vshiftn.v2i32", _u32(wild_u64x2/wild_u64x2), true},
+
+        {"vqshiftns.v8i8", _i8q(wild_i16x8/wild_i16x8), true},
+        {"vqshiftns.v4i16", _i16q(wild_i32x4/wild_i32x4), true},
+        {"vqshiftnu.v8i8", _u8q(wild_u16x8/wild_u16x8), true},
+        {"vqshiftnu.v4i16", _u16q(wild_u32x4/wild_u32x4), true},
+        {"vqshiftnsu.v8i8", _u8q(wild_i16x8/wild_i16x8), true},
+        {"vqshiftnsu.v4i16", _u16q(wild_i32x4/wild_i32x4), true},
         {"sentinel", 0}
 
     };
@@ -235,7 +346,8 @@ void CodeGen_ARM::visit(const Cast *op) {
                 bool power_of_two = is_const_power_of_two(divisor, &shift_amount);
                 if (power_of_two && shift_amount < matches[0].type().bits) {
                     Value *shift = ConstantInt::get(llvm_type_of(matches[0].type()), -shift_amount);
-                    value = call_intrin(pattern.pattern.type(), pattern.intrin, 
+                    value = call_intrin(llvm_type_of(pattern.pattern.type()), 
+                                        pattern.intrin, 
                                         vec(codegen(matches[0]), shift));
                     return;
                 }
@@ -267,70 +379,70 @@ void CodeGen_ARM::visit(const Mul *op) {
     if (power_of_two && cast_a && 
         cast_a->type == Int(16, 8) && cast_a->value.type() == Int(8, 8)) {
         Value *lhs = codegen(cast_a->value);
-        value = call_intrin(Int(16, 8), "vshiftls.v8i16", vec(lhs, shift));
+        value = call_intrin(i16x8, "vshiftls.v8i16", vec(lhs, shift));
     } else if (power_of_two && cast_a && 
                cast_a->type == Int(32, 4) && cast_a->value.type() == Int(16, 4)) {
         Value *lhs = codegen(cast_a->value);
-        value = call_intrin(Int(32, 4), "vshiftls.v4i32", vec(lhs, shift));
+        value = call_intrin(i32x4, "vshiftls.v4i32", vec(lhs, shift));
     } else if (power_of_two && cast_a && 
                cast_a->type == Int(64, 2) && cast_a->value.type() == Int(32, 2)) {
         Value *lhs = codegen(cast_a->value);
-        value = call_intrin(Int(64, 2), "vshiftls.v2i64", vec(lhs, shift));
+        value = call_intrin(i64x2, "vshiftls.v2i64", vec(lhs, shift));
     } else if (power_of_two && cast_a && 
                cast_a->type == UInt(16, 8) && cast_a->value.type() == UInt(8, 8)) {
         Value *lhs = codegen(cast_a->value);
-        value = call_intrin(UInt(16, 8), "vshiftlu.v8i16", vec(lhs, shift));
+        value = call_intrin(i16x8, "vshiftlu.v8i16", vec(lhs, shift));
     } else if (power_of_two && cast_a && 
                cast_a->type == UInt(32, 4) && cast_a->value.type() == UInt(16, 4)) {
         Value *lhs = codegen(cast_a->value);
-        value = call_intrin(UInt(32, 4), "vshiftlu.v4i32", vec(lhs, shift));
+        value = call_intrin(i32x4, "vshiftlu.v4i32", vec(lhs, shift));
     } else if (power_of_two && cast_a && 
                cast_a->type == UInt(64, 2) && cast_a->value.type() == UInt(32, 2)) {
         Value *lhs = codegen(cast_a->value);
-        value = call_intrin(UInt(64, 2), "vshiftlu.v2i64", vec(lhs, shift));
+        value = call_intrin(i64x2, "vshiftlu.v2i64", vec(lhs, shift));
     } else if (power_of_two && op->a.type() == Int(8, 8)) {
         // Non-widening left shifts
         Value *lhs = codegen(op->a);
-        value = call_intrin(Int(8, 8), "vshifts.v8i8", vec(lhs, shift));
+        value = call_intrin(i8x8, "vshifts.v8i8", vec(lhs, shift));
     } else if (power_of_two && op->a.type() == Int(16, 4)) {
         Value *lhs = codegen(op->a);
-        value = call_intrin(Int(16, 4), "vshifts.v4i16", vec(lhs, shift));
+        value = call_intrin(i16x4, "vshifts.v4i16", vec(lhs, shift));
     } else if (power_of_two && op->a.type() == Int(32, 2)) {
         Value *lhs = codegen(op->a);
-        value = call_intrin(Int(32, 2), "vshifts.v2i32", vec(lhs, shift));
+        value = call_intrin(i32x2, "vshifts.v2i32", vec(lhs, shift));
     } else if (power_of_two && op->a.type() == Int(8, 16)) {
         Value *lhs = codegen(op->a);
-        value = call_intrin(Int(8, 16), "vshifts.v16i8", vec(lhs, shift));
+        value = call_intrin(i8x16, "vshifts.v16i8", vec(lhs, shift));
     } else if (power_of_two && op->a.type() == Int(16, 8)) {
         Value *lhs = codegen(op->a);
-        value = call_intrin(Int(16, 8), "vshifts.v8i16", vec(lhs, shift));
+        value = call_intrin(i16x8, "vshifts.v8i16", vec(lhs, shift));
     } else if (power_of_two && op->a.type() == Int(32, 4)) {
         Value *lhs = codegen(op->a);
-        value = call_intrin(Int(32, 4), "vshifts.v4i32", vec(lhs, shift));
+        value = call_intrin(i32x4, "vshifts.v4i32", vec(lhs, shift));
     } else if (power_of_two && op->a.type() == Int(64, 2)) {
         Value *lhs = codegen(op->a);
-        value = call_intrin(Int(64, 2), "vshifts.v2i64", vec(lhs, shift));
+        value = call_intrin(i64x2, "vshifts.v2i64", vec(lhs, shift));
     } else if (power_of_two && op->a.type() == UInt(8, 8)) {
         Value *lhs = codegen(op->a);
-        value = call_intrin(UInt(8, 8), "vshiftu.v8i8", vec(lhs, shift));
+        value = call_intrin(i8x8, "vshiftu.v8i8", vec(lhs, shift));
     } else if (power_of_two && op->a.type() == UInt(16, 4)) {
         Value *lhs = codegen(op->a);
-        value = call_intrin(UInt(16, 4), "vshiftu.v4i16", vec(lhs, shift));
+        value = call_intrin(i16x4, "vshiftu.v4i16", vec(lhs, shift));
     } else if (power_of_two && op->a.type() == UInt(32, 2)) {
         Value *lhs = codegen(op->a);
-        value = call_intrin(UInt(32, 2), "vshiftu.v2i32", vec(lhs, shift));
+        value = call_intrin(i32x2, "vshiftu.v2i32", vec(lhs, shift));
     } else if (power_of_two && op->a.type() == UInt(8, 16)) {
         Value *lhs = codegen(op->a);
-        value = call_intrin(UInt(8, 16), "vshiftu.v16i8", vec(lhs, shift));
+        value = call_intrin(i8x16, "vshiftu.v16i8", vec(lhs, shift));
     } else if (power_of_two && op->a.type() == UInt(16, 8)) {
         Value *lhs = codegen(op->a);
-        value = call_intrin(UInt(16, 8), "vshiftu.v8i16", vec(lhs, shift));
+        value = call_intrin(i16x8, "vshiftu.v8i16", vec(lhs, shift));
     } else if (power_of_two && op->a.type() == UInt(32, 4)) {
         Value *lhs = codegen(op->a);
-        value = call_intrin(UInt(32, 4), "vshiftu.v4i32", vec(lhs, shift));
+        value = call_intrin(i32x4, "vshiftu.v4i32", vec(lhs, shift));
     } else if (power_of_two && op->a.type() == UInt(64, 2)) {
         Value *lhs = codegen(op->a);
-        value = call_intrin(UInt(64, 2), "vshiftu.v2i64", vec(lhs, shift));
+        value = call_intrin(i64x2, "vshiftu.v2i64", vec(lhs, shift));
     } else {
         CodeGen::visit(op);
     }
@@ -338,7 +450,46 @@ void CodeGen_ARM::visit(const Mul *op) {
 
 void CodeGen_ARM::visit(const Div *op) {    
 
+    // First check if it's an averaging op
+    struct Pattern {
+        string op;
+        Expr pattern;
+    };
+    Pattern averagings[] = {
+        {"vhadds.v8i8", (wild_i8x8 + wild_i8x8)/2},
+        {"vhaddu.v8i8", (wild_u8x8 + wild_u8x8)/2},
+        {"vhadds.v4i16", (wild_i16x4 + wild_i16x4)/2},
+        {"vhaddu.v4i16", (wild_u16x4 + wild_u16x4)/2},
+        {"vhadds.v2i32", (wild_i32x2 + wild_i32x2)/2},
+        {"vhaddu.v2i32", (wild_u32x2 + wild_u32x2)/2},
+        {"vhadds.v16i8", (wild_i8x16 + wild_i8x16)/2},
+        {"vhaddu.v16i8", (wild_u8x16 + wild_u8x16)/2},
+        {"vhadds.v8i16", (wild_i16x8 + wild_i16x8)/2},
+        {"vhaddu.v8i16", (wild_u16x8 + wild_u16x8)/2},
+        {"vhadds.v4i32", (wild_i32x4 + wild_i32x4)/2},
+        {"vhaddu.v4i32", (wild_u32x4 + wild_u32x4)/2},
+        {"vhsubs.v8i8", (wild_i8x8 - wild_i8x8)/2},
+        {"vhsubu.v8i8", (wild_u8x8 - wild_u8x8)/2},
+        {"vhsubs.v4i16", (wild_i16x4 - wild_i16x4)/2},
+        {"vhsubu.v4i16", (wild_u16x4 - wild_u16x4)/2},
+        {"vhsubs.v2i32", (wild_i32x2 - wild_i32x2)/2},
+        {"vhsubu.v2i32", (wild_u32x2 - wild_u32x2)/2},
+        {"vhsubs.v16i8", (wild_i8x16 - wild_i8x16)/2},
+        {"vhsubu.v16i8", (wild_u8x16 - wild_u8x16)/2},
+        {"vhsubs.v8i16", (wild_i16x8 - wild_i16x8)/2},
+        {"vhsubu.v8i16", (wild_u16x8 - wild_u16x8)/2},
+        {"vhsubs.v4i32", (wild_i32x4 - wild_i32x4)/2},
+        {"vhsubu.v4i32", (wild_u32x4 - wild_u32x4)/2}};
     
+    if (is_two(op->b) && (op->a.as<Add>() || op->a.as<Sub>())) {
+        vector<Expr> matches;
+        for (size_t i = 0; i < sizeof(averagings)/sizeof(averagings[0]); i++) {
+            if (expr_match(averagings[i].pattern, op, matches)) {
+                value = call_intrin(matches[0].type(), averagings[i].op, matches);
+                return;
+            }
+        }
+    }
 
     // Detect if it's a small int division
     const Broadcast *broadcast = op->b.as<Broadcast>();
@@ -359,6 +510,13 @@ void CodeGen_ARM::visit(const Div *op) {
         } else {
             value = call_intrin(Float(32, 4), "vrecpe.v4f32", vec(op->b));
         }
+    } else if (op->type == Float(32, 2) && is_one(op->a)) {
+        // Reciprocal and reciprocal square root
+        if (expr_match(new Call(Float(32, 2), "sqrt_f32", vec(wild_f32x2)), op->b, matches)) {
+            value = call_intrin(Float(32, 2), "vrsqrte.v2f32", matches);
+        } else {
+            value = call_intrin(Float(32, 2), "vrecpe.v2f32", vec(op->b));
+        }
     } else if (power_of_two && op->type.is_int()) {
         Value *numerator = codegen(op->a);
         Constant *shift = ConstantInt::get(llvm_type_of(op->type), shift_amount);
@@ -378,9 +536,9 @@ void CodeGen_ARM::visit(const Div *op) {
         Value *mult;
         if (multiplier != 0) {
             mult = codegen(cast(op->type, multiplier));
-            mult = call_intrin(Int(32, 4), "vmulls.v4i32", vec(val, mult));
+            mult = call_intrin(i32x4, "vmulls.v4i32", vec(val, mult));
             Value *sixteen = ConstantVector::getSplat(4, ConstantInt::get(i32, -16));
-            mult = call_intrin(Int(16, 4), "vshiftn.v4i16", vec(mult, sixteen));
+            mult = call_intrin(i16x4, "vshiftn.v4i16", vec(mult, sixteen));
 
             // Possibly add a correcting factor
             if (method == 1) {
@@ -412,9 +570,9 @@ void CodeGen_ARM::visit(const Div *op) {
         Value *mult = val;
         if (method > 0) {
             mult = codegen(cast(op->type, multiplier));
-            mult = call_intrin(Int(32, 4), "vmullu.v4i32", vec(val, mult));
+            mult = call_intrin(i32x4, "vmullu.v4i32", vec(val, mult));
             Value *sixteen = ConstantVector::getSplat(4, ConstantInt::get(i32, -16));
-            mult = call_intrin(Int(16, 4), "vshiftn.v4i16", vec(mult, sixteen));
+            mult = call_intrin(i16x4, "vshiftn.v4i16", vec(mult, sixteen));
 
             // Possibly add a correcting factor
             if (method == 2) {
@@ -648,6 +806,69 @@ void CodeGen_ARM::visit(const Store *op) {
 }
 
 void CodeGen_ARM::visit(const Load *op) {
+    const Ramp *ramp = op->index.as<Ramp>();
+
+    // strided loads (vld2)
+    if (ramp && is_two(ramp->stride)) {
+        // Check alignment on the base. 
+        Expr base = ramp->base;
+        bool odd = false;
+        ModulusRemainder mod_rem = modulus_remainder(ramp->base);
+        if ((mod_rem.remainder & 1) && !(mod_rem.modulus & 1)) {
+            // If we can guarantee it's odd-aligned, we should round
+            // down by one in order to possibly share this vld2 with
+            // an adjacent one. (e.g. averaging down patterns like
+            // f(2*x) + f(2*x+1))
+            base = simplify(base - 1);
+            mod_rem.remainder--;
+            odd = true;
+        }
+        const Add *add = base.as<Add>();
+        if (!odd && add && is_one(add->b) && (mod_rem.modulus & 1)) {
+            // If it just ends in +1, but we can't analyze the base,
+            // it's probably still worth removing that +1 to encourage
+            // sharing.
+            base = add->a;
+            odd = true;
+        }
+
+        int alignment = op->type.bits / 8;
+        alignment *= gcd(gcd(mod_rem.modulus, mod_rem.remainder), 32);
+        Value *align = ConstantInt::get(i32, alignment);
+
+        Value *ptr = codegen_buffer_pointer(op->name, op->type.element_of(), codegen(base));
+        ptr = builder->CreatePointerCast(ptr, i8->getPointerTo());
+
+        llvm::StructType *result_type = 
+            StructType::get(context, vec(llvm_type_of(op->type),
+                                         llvm_type_of(op->type)));
+       
+        Value *pair = NULL;
+        if (op->type == Int(8, 8) || op->type == UInt(8, 8)) {
+            pair = call_intrin(result_type, "vld2.v8i8", vec(ptr, align));
+        } else if (op->type == Int(16, 4) || op->type == UInt(16, 4)) {
+            pair = call_intrin(result_type, "vld2.v4i16", vec(ptr, align));
+        } else if (op->type == Int(32, 2) || op->type == UInt(32, 2)) {
+            pair = call_intrin(result_type, "vld2.v2i32", vec(ptr, align));
+        } else if (op->type == Float(32, 2)) {
+            pair = call_intrin(result_type, "vld2.v2f32", vec(ptr, align));
+        } else if (op->type == Int(8, 16) || op->type == UInt(8, 16)) {
+            pair = call_intrin(result_type, "vld2.v16i8", vec(ptr, align));
+        } else if (op->type == Int(16, 8) || op->type == UInt(16, 8)) {
+            pair = call_intrin(result_type, "vld2.v8i16", vec(ptr, align));
+        } else if (op->type == Int(32, 4) || op->type == UInt(32, 4)) {
+            pair = call_intrin(result_type, "vld2.v4i32", vec(ptr, align));
+        } else if (op->type == Float(32, 4)) {
+            pair = call_intrin(result_type, "vld2.v4f32", vec(ptr, align));
+        }
+
+        if (pair) {            
+            unsigned int idx = odd ? 1 : 0;
+            value = builder->CreateExtractValue(pair, vec(idx));
+            return;
+        }
+    }
+
     CodeGen::visit(op);
 }
 

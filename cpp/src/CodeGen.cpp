@@ -24,7 +24,9 @@
 #include <llvm/Transforms/IPO/PassManagerBuilder.h>
 #include <llvm/Transforms/IPO.h>
 
-#if LLVM_VERSION_MINOR < 3
+// Temporary affordance to compile with both llvm 3.2 and 3.3.
+// Protected as at least one installation of llvm elides version macros.
+#if defined(LLVM_VERSION_MINOR) && LLVM_VERSION_MINOR < 3
 #include <llvm/Value.h>
 #include <llvm/Module.h>
 #include <llvm/Function.h>
@@ -61,8 +63,30 @@ LLVMContext &get_global_context() {
     if (!c) c = new LLVMContext;
     return *c;    
 }
+
+// Define a local empty inline function for each target
+// to disable initialization.
+#define LLVM_TARGET(target)             \
+    void inline Initialize##target##Target() { \
+    }
+
+#include <llvm/Config/Targets.def>
+
+#undef LLVM_TARGET
+
 }
 
+#define InitializeTarget(target)              \
+        LLVMInitialize##target##Target();     \
+        LLVMInitialize##target##TargetInfo(); \
+        LLVMInitialize##target##AsmPrinter(); \
+        LLVMInitialize##target##TargetMC();   \
+        llvm_##target##_enabled = true;
+
+// Override above empty init function with macro for supported targets.
+#define InitializeX86Target()   InitializeTarget(X86)
+#define InitializeARMTarget()   InitializeTarget(ARM)
+#define InitializeNVPTXTarget() InitializeTarget(NVPTX)
 
 CodeGen::CodeGen() : 
     module(NULL), function(NULL), context(get_global_context()), 
@@ -78,23 +102,18 @@ CodeGen::CodeGen() :
     f32 = llvm::Type::getFloatTy(context);
     f64 = llvm::Type::getDoubleTy(context);
 
-    // Initialize the targets we want to generate code for
+    // Initialize the targets we want to generate code for which are enabled
+    // in llvm configuration
     if (!llvm_initialized) {            
         InitializeNativeTarget();
-        LLVMInitializeX86Target();
-        LLVMInitializeX86TargetInfo();
-        LLVMInitializeX86AsmPrinter();
-        LLVMInitializeX86TargetMC();
-        
-        LLVMInitializeARMTarget();
-        LLVMInitializeARMTargetInfo();
-        LLVMInitializeARMAsmPrinter();
-        LLVMInitializeARMTargetMC();
 
-        LLVMInitializeNVPTXTarget();
-        LLVMInitializeNVPTXTargetInfo();
-        LLVMInitializeNVPTXAsmPrinter();
-        LLVMInitializeNVPTXTargetMC();
+        #define LLVM_TARGET(target)         \
+            Initialize##target##Target();   \
+
+        #include <llvm/Config/Targets.def>
+
+        #undef LLVM_TARGET
+
         llvm_initialized = true;
     }
 }
@@ -110,6 +129,9 @@ CodeGen::~CodeGen() {
 }
 
 bool CodeGen::llvm_initialized = false;
+bool CodeGen::llvm_X86_enabled = false;
+bool CodeGen::llvm_ARM_enabled = false;
+bool CodeGen::llvm_NVPTX_enabled = false;
 
 void CodeGen::compile(Stmt stmt, string name, const vector<Argument> &args) {
     assert(module && "The CodeGen subclass should have made an initial module before calling CodeGen::compile");
@@ -132,6 +154,16 @@ void CodeGen::compile(Stmt stmt, string name, const vector<Argument> &args) {
     function_name = name;
     FunctionType *func_t = FunctionType::get(void_t, arg_types, false);
     function = llvm::Function::Create(func_t, llvm::Function::ExternalLinkage, name, module);
+
+    // Mark the buffer args as no alias
+    // TODO: This may not be true, leave it out for now
+    /*
+    for (size_t i = 0; i < args.size(); i++) {
+        if (args[i].is_buffer) {
+            function->setDoesNotAlias(i+1);
+        }
+    }
+    */
 
     // Make the initial basic block
     BasicBlock *block = BasicBlock::Create(context, "entry", function);
@@ -237,30 +269,15 @@ void destroy<JITModuleHolder>(const JITModuleHolder *f) {delete f;}
 JITCompiledModule CodeGen::compile_to_function_pointers() {
     assert(module && "No module defined. Must call compile before calling compile_to_function_pointer");
                
-    FunctionPassManager function_pass_manager(module);
-    PassManager module_pass_manager;
+    optimize_module();
 
     log(1) << "JIT compiling...\n";
 
     IntrusivePtr<JITModuleHolder> module_holder(new JITModuleHolder(module));
     ExecutionEngine *execution_engine = module_holder.ptr->execution_engine;
 
-    // Make sure things marked as always-inline get inlined
-    module_pass_manager.add(createAlwaysInlinerPass());
-        
-    PassManagerBuilder b;
-    b.OptLevel = 3;
-    b.populateFunctionPassManager(function_pass_manager);
-    b.populateModulePassManager(module_pass_manager);
-                
     llvm::Function *fn = module->getFunction(function_name);
     assert(fn && "Could not find function inside llvm module");
-        
-    // Run optimization passes
-    module_pass_manager.run(*module);        
-    function_pass_manager.doInitialization();
-    function_pass_manager.run(*fn);
-    function_pass_manager.doFinalization();
 
     JITCompiledModule m;
     void *f = execution_engine->getPointerToFunction(fn);
@@ -299,8 +316,35 @@ JITCompiledModule CodeGen::compile_to_function_pointers() {
     return m;
 }
 
+void CodeGen::optimize_module() {
+    FunctionPassManager function_pass_manager(module);
+    PassManager module_pass_manager;
+
+    // Make sure things marked as always-inline get inlined
+    module_pass_manager.add(createAlwaysInlinerPass());
+        
+    PassManagerBuilder b;
+    b.OptLevel = 3;
+    b.populateFunctionPassManager(function_pass_manager);
+    b.populateModulePassManager(module_pass_manager);
+                
+    llvm::Function *fn = module->getFunction(function_name);
+    assert(fn && "Could not find function inside llvm module");
+        
+    // Run optimization passes
+    module_pass_manager.run(*module);        
+    function_pass_manager.doInitialization();
+    function_pass_manager.run(*fn);
+    function_pass_manager.doFinalization();
+
+    if (log::debug_level >= 3) {
+        module->dump();
+    }
+}
+
 void CodeGen::compile_to_bitcode(const string &filename) {
     assert(module && "No module defined. Must call compile before calling compile_to_bitcode");        
+
     string error_string;
     raw_fd_ostream out(filename.c_str(), error_string);
     WriteBitcodeToFile(module, out);
@@ -308,6 +352,9 @@ void CodeGen::compile_to_bitcode(const string &filename) {
 
 void CodeGen::compile_to_native(const string &filename, bool assembly) {
     assert(module && "No module defined. Must call compile before calling compile_to_native");
+
+    optimize_module();
+    
     // Get the target specific parser.
     string error_string;
     log(1) << "Compiling to native code...\n";
@@ -348,7 +395,7 @@ void CodeGen::compile_to_native(const string &filename, bool assembly) {
         target->createTargetMachine(module->getTargetTriple(), 
                                     mcpu(), mattrs(),
                                     options, 
-                                    Reloc::Default, 
+                                    Reloc::PIC_, 
                                     CodeModel::Default, 
                                     CodeGenOpt::Aggressive);
                                 
@@ -368,7 +415,7 @@ void CodeGen::compile_to_native(const string &filename, bool assembly) {
     // Add an appropriate TargetLibraryInfo pass for the module's triple.
     pass_manager.add(new TargetLibraryInfo(Triple(module->getTargetTriple())));       
 
-    #if LLVM_VERSION_MINOR < 3
+    #if defined(LLVM_VERSION_MINOR) && LLVM_VERSION_MINOR < 3
     pass_manager.add(new TargetTransformInfo(target_machine->getScalarTargetTransformInfo(),
                                              target_machine->getVectorTargetTransformInfo()));
     #else
@@ -407,13 +454,19 @@ void CodeGen::sym_pop(const string &name) {
 void CodeGen::unpack_buffer(string name, llvm::Value *buffer) {
     Value *host_ptr = buffer_host(buffer);
 
+    /*
     // Check it's 32-byte aligned
+
+    // Andrew: There's no point. External buffers come in with unknown
+    // mins, so accesses to them are never aligned anyway.
+
     Value *base = builder->CreatePtrToInt(host_ptr, i64);
     Value *check_alignment = builder->CreateAnd(base, 0x1f);
     check_alignment = builder->CreateIsNull(check_alignment);
                                             
     string error_message = "Buffer " + name + " is not 32-byte aligned";
     create_assertion(check_alignment, error_message);
+    */
 
     sym_push(name + ".host", host_ptr);
     sym_push(name + ".dev", buffer_dev(buffer));
@@ -806,9 +859,13 @@ void CodeGen::visit(const Load *op) {
         const Ramp *ramp = op->index.as<Ramp>();
         const IntImm *stride = ramp ? ramp->stride.as<IntImm>() : NULL;
 
-        if (ramp) {
+        bool internal = !op->image.defined() && !op->param.defined();
+
+        if (ramp && internal) {            
+            // If it's an internal allocation, we can boost the
+            // alignment using the results of the modulus remainder
+            // analysis
             ModulusRemainder mod_rem = modulus_remainder(ramp->base);
-            // Boost the alignment using the results of the modulus remainder analysis
             alignment *= gcd(gcd(mod_rem.modulus, mod_rem.remainder), 32); 
         }
                     
@@ -837,9 +894,11 @@ void CodeGen::visit(const Load *op) {
             Value *base = codegen(ramp->base - ramp->width + 1);
 
             // Re-do alignment analysis for the flipped index
-            alignment = op->type.bits / 8;
-            ModulusRemainder mod_rem = modulus_remainder(ramp->base - ramp->width + 1);
-            alignment *= gcd(gcd(mod_rem.modulus, mod_rem.remainder), 32);             
+            if (internal) {
+                alignment = op->type.bits / 8;
+                ModulusRemainder mod_rem = modulus_remainder(ramp->base - ramp->width + 1);
+                alignment *= gcd(gcd(mod_rem.modulus, mod_rem.remainder), 32);             
+            }
 
             Value *ptr = codegen_buffer_pointer(op->name, op->type.element_of(), base);
             ptr = builder->CreatePointerCast(ptr, llvm_type_of(op->type)->getPointerTo());
