@@ -87,6 +87,10 @@ Expr make_const(Type t, int val) {
     return new Cast(t, val);
 }
         
+Expr make_bool(bool val, int w) {
+    return make_const(UInt(1, w), val);
+}
+
 Expr make_zero(Type t) {
     return make_const(t, 0);
 }

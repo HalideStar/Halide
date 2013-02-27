@@ -40,6 +40,16 @@ bool is_two(Expr e);
 /** Construct a const of the given type */
 Expr make_const(Type t, int val);
 
+/** Construct a boolean constant from a C++ boolean value.
+ * May also be a vector if width is given.
+ * It is not possible to coerce a C++ boolean to Expr because
+ * if we provide such a path then char objects can ambiguously
+ * be converted to Halide Expr or to std::string.  The problem
+ * is that C++ does not have a real bool type - it is in fact
+ * close enough to char that C++ does not know how to distinguish them.
+ * make_bool is the explicit coercion. */
+Expr make_bool(bool val, int width = 1);
+
 /** Construct the representation of zero in the given type */
 Expr make_zero(Type t);
 
