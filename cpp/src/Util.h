@@ -79,6 +79,14 @@ std::vector<T> vec(T a, T b, T c, T d, T e, T f) {
     v[5] = f;
     return v;
 }
+
+
+// Similar functions specifically for conveniently constructing vectors of strings from literals
+std::vector<std::string> vecS(std::string a);
+std::vector<std::string> vecS(std::string a, std::string b);
+std::vector<std::string> vecS(std::string a, std::string b, std::string c);
+std::vector<std::string> vecS(std::string a, std::string b, std::string c, std::string d);
+
 // @}
 
 /** Generate a unique name starting with the given character. It's

@@ -1,11 +1,13 @@
 #include "DomainInference.h"
+#include "Var.h"
+#include "Func.h"
+#include "Image.h"
 #include "IR.h"
 #include "IREquality.h"
 #include "IROperator.h"
 #include "IRVisitor.h"
 #include "IRPrinter.h"
 #include "log.h"
-#include "Var.h"
 #include "Simplify.h"
 
 using std::string;
@@ -13,47 +15,26 @@ using std::string;
 namespace Halide { 
 namespace Internal {
 
-// ForwardDomainInference walks the parse tree inferring forward domain bounds
-// for functions.
-// This operates on the very raw parse tree before functions are realized etc
-// so that we can interpret the index expressions.
+// Domain: Represents a domain whether valid, defined or some other.
+Domain::Domain() {
+    intervals.clear();
+}
+Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax) {
+    intervals = vec(VarInterval(xvarname, xpoisoned, xmin, xmax));
+}
 
-// Class ForwardDomainInference is only for internal use in this module.
-class ForwardDomainInference : public IRVisitor {
+Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
+               std::string yvarname, Expr ypoisoned, Expr ymin, Expr ymax) {
+    intervals = vec(VarInterval(xvarname, xpoisoned, xmin, xmax),
+                    VarInterval(yvarname, ypoisoned, ymin, ymax));
+}
 
-private:
-    using IRVisitor::visit;
-    
-    // The important methods are the visit methods that define handling of 
-    // different tree nodes.
-    
-    // Call to a function, image buffer or image parameter.
-    // e.g. g(x,y) = f(x,y-1);
-    // From the expression y-1 we determine that the y bounds of g are
-    // shifted compared to the y bounds of f.
-    void visit (const Call *func_call)
-    {
-        // Arguments are in std::vector<Expr> func_call->args
-        // If it is a call to another Halide function, Function func_call->func points to it
-        // If it is a direct reference to an image, Buffer func_call->image is the buffer
-        // and if it is an image parameter, Parameter func_call->param is that.
-        // To check use ->func.value().defined(), ->image.defined() and ->param.defined().
-        
-        // Each of the argument expressions must be processed in turn.
-        for (size_t i = 0; i < func_call->args.size(); i++)
-        {
-            // func_call->args[i] is the i'th dimension index expression for the call.
-            // For now, just print it out.
-            log(4,"LH") << "arg " << i << ": " << func_call->args[i] << '\n';
-        }
-    }
-};
-
-void domain_inference(Expr e)
-{
-    ForwardDomainInference infers;
-    
-    e.accept(&infers);
+Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
+               std::string yvarname, Expr ypoisoned, Expr ymin, Expr ymax,
+               std::string zvarname, Expr zpoisoned, Expr zmin, Expr zmax) {
+    intervals = vec(VarInterval(xvarname, xpoisoned, xmin, xmax),
+                    VarInterval(yvarname, ypoisoned, ymin, ymax),
+                    VarInterval(zvarname, zpoisoned, zmin, zmax));
 }
 
 
@@ -188,22 +169,72 @@ private:
 #endif
 };
 
+// ForwardDomainInference walks the parse tree inferring forward domain bounds
+// for functions.
+// This operates on the very raw parse tree before functions are realized etc
+// so that we can interpret the index expressions.
+
+// Class ForwardDomainInference is only for internal use in this module.
+class ForwardDomainInference : public IRVisitor {
+public:
+    Domain dom; // The domain that we are building.
+    
+    ForwardDomainInference(std::vector<std::string> variables) {
+        for (size_t i = 0; i < variables.size(); i++)
+            dom.intervals.push_back(VarInterval(variables[i], make_bool(false), Expr(), Expr()));
+    }
+
+private:
+
+    using IRVisitor::visit;
+    
+    // The important methods are the visit methods that define handling of 
+    // different tree nodes.
+    
+    // Call to a function, image buffer or image parameter.
+    // e.g. g(x,y) = f(x,y-1);
+    // From the expression y-1 we determine that the y bounds of g are
+    // shifted compared to the y bounds of f.
+    void visit (const Call *func_call)
+    {
+        // Arguments are in std::vector<Expr> func_call->args
+        // If it is a call to another Halide function, Function func_call->func points to it
+        // If it is a direct reference to an image, Buffer func_call->image is the buffer
+        // and if it is an image parameter, Parameter func_call->param is that.
+        // To check use ->func.value().defined(), ->image.defined() and ->param.defined().
+        
+        log(0,"LH") << "Call: " << func_call->name;
+        // Look at the call type 
+        if (func_call->call_type == Call::Image)
+            log(0) << " image";
+        else if (func_call->call_type == Call::Extern)
+            log(0) << " extern";
+        else if (func_call->call_type == Call::Halide)
+            log(0) << " halide";
+        else
+            log(0) << " unknown";
+        log(0) << '\n';
+        // Each of the argument expressions must be processed in turn.
+        for (size_t i = 0; i < func_call->args.size(); i++)
+        {
+            // func_call->args[i] is the i'th dimension index expression for the call.
+            // For now, just print it out.
+            log(0,"LH") << "arg " << i << ": " << func_call->args[i] << '\n';
+            
+            // Perform backward interval analysis on the argument expression.
+            // Have to know the valid domain for the actual argument of the function.
+            // For now, just use image dimensions.
+            //VarInterval result = backwards_interval(func_call->args[i], 
+        }
+    }
+};
+
+
+
 /* Notes
 Difference between Var and Variable.  Variable is a parse tree node.
 Var is just a name.
 */
-
-struct VarInterval
-{
-    // min and max are the range of the interval.
-    // poison evaluates to true when the range is meaningless and, in fact, poisoned.
-    // varname is the name of the variable described by the interval.
-    Expr min, max, poison;
-    std::string varname;
-    VarInterval(Expr emin, Expr emax, Expr poisoned, std::string v) : 
-        min(emin), max(emax), poison(poisoned), varname(v) {}
-    VarInterval();
-};
 
 VarInterval backwards_interval(Expr e, Expr xmin, Expr xmax) {
     BackwardIntervalInference infers(xmin, xmax);
@@ -211,7 +242,7 @@ VarInterval backwards_interval(Expr e, Expr xmin, Expr xmax) {
     
     e1.accept(&infers);
     
-    VarInterval result(infers.xmin, infers.xmax, infers.poison, infers.varname);
+    VarInterval result(infers.varname, infers.poison, infers.xmin, infers.xmax);
     if (result.min.defined()) result.min = simplify(result.min);
     if (result.max.defined()) result.max = simplify(result.max);
     if (result.poison.defined()) {
@@ -223,6 +254,19 @@ VarInterval backwards_interval(Expr e, Expr xmin, Expr xmax) {
 
     return result;
 }
+
+Domain domain_inference(std::vector<std::string> variables, Expr e)
+{
+    // At this level, we use a list of variables passed in.
+    ForwardDomainInference infers(variables);
+    
+    e.accept(&infers);
+    
+    return infers.dom;
+}
+
+
+
 
 void check_interval(Expr e, Expr xmin, Expr xmax, 
                     bool correct_poison_bool, Expr correct_min, Expr correct_max, 
@@ -274,7 +318,7 @@ void check_interval(Expr e, Expr xmin, Expr xmax,
     assert(success && "Domain inference test failed");
 }
 
-void domain_inference_test() {
+void backward_interval_test() {
     Var x("x"), y("y");
     std::string v = "<dummy>";
     Expr cmin, cmax;
@@ -321,8 +365,47 @@ void domain_inference_test() {
     // Expression is poison because it contains more than one variable
     // Actually, it is detected as poison by Add node because it is not x + k
     check_interval(x + y, 0, 100, true, 0, 0, "");
-    std::cout << "Domain inference test passed" << std::endl;
     return;
+}
+
+
+
+
+
+void check_domain_expr(std::vector<std::string> variables, Expr e, Domain d) {
+    // Compute the domain of the expression using forward domain inference.
+    Domain edom = domain_inference(variables, e);
+    
+    std::cout << "e: " << e << '\n';
+    
+    // Compare the computed domain with the expected domain
+    bool success = true;
+    if (d.intervals.size() != edom.intervals.size())
+    {
+        std::cout << "Incorrect domain size: " << edom.intervals.size() 
+            << "    Should have been: " << d.intervals.size() << '\n';
+        success = false;
+    }
+    assert(success && "Domain inference test failed");
+}
+
+void domain_expr_test()
+{
+    Image<uint8_t> in(20,40);
+    Func f("f");
+    Var x("x"), y("y");
+    
+    check_domain_expr(vecS("iv.0", "iv.1"), in, Domain("iv.0", false, 0, 19, "iv.1", false, 0, 39));
+    check_domain_expr(vecS("x", "y"), in(x-2,y), Domain("x", false, 2, 21, "y", false, 0, 39));
+    
+    return;
+}
+
+void domain_inference_test()
+{
+    backward_interval_test();
+    domain_expr_test();
+    std::cout << "Domain inference test passed" << std::endl;
 }
 
 }

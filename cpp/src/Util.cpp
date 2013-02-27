@@ -10,6 +10,38 @@ namespace Internal {
 using std::string;
 using std::ostringstream;
 
+// Similar functions specifically for conveniently constructing vectors of strings from literals
+std::vector<std::string> vecS(std::string a) {
+    std::vector<std::string> v(1);
+    v[0] = a;
+    return v;
+}
+
+std::vector<std::string> vecS(std::string a, std::string b) {
+    std::vector<std::string> v(2);
+    v[0] = a;
+    v[1] = b;
+    return v;
+}
+
+std::vector<std::string> vecS(std::string a, std::string b, std::string c) {
+    std::vector<std::string> v(3);
+    v[0] = a;
+    v[1] = b;
+    v[2] = c;
+    return v;
+}
+
+std::vector<std::string> vecS(std::string a, std::string b, std::string c, std::string d) {
+    std::vector<std::string> v(4);
+    v[0] = a;
+    v[1] = b;
+    v[2] = c;
+    v[3] = d;
+    return v;
+}
+
+
 string unique_name(char prefix) {
     // arrays with static storage duration should be initialized to zero automatically
     static int instances[256]; 
