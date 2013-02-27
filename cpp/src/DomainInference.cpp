@@ -75,11 +75,18 @@ private:
 
     using IRVisitor::visit;
     
+    // Not visited:
+    // constants (IntImm, FloatImm) because they do not provide information about the
+    // bounds of a variable except as they occur in known constructs (e.g. x + k).
+    // Call, including abs, sin etc.
+    //     abs is difficult because it can produce a domain broken into pieces.
+    //     It would be used to mirror the domain.  A better result is to use a border
+    //     handling function to reflect the borders.
+    
     void visit(const Variable *op) {
         // Variable node defines the varname string - the variable for which we are
         // building the inverse function.
         if (varname != "") {
-            log(0,"LH") << "Set poison to true in Variable\n";
             poison = const_true(); // Have already seen a variable in another branch
         }
         varname = op->name;
@@ -97,14 +104,13 @@ private:
         }
         else {
             assert(! is_const(op->a) && "Simplify did not put constant on RHS of Add");
-            log(0,"LH") << "Set poison to true in Add\n";
             poison = const_true(); // Expression cannot be solved as it has branches not simplified out.
         }
     }
     
     void visit(const Sub *op) {
         // Simplify should convert x - 5 to x + -5.
-        assert(! is_const(op->b) && "Simplify left Sub of a constant");
+        assert(! is_const(op->b) && "Simplify did not convert Sub of constant into negative Add");
         if (is_const(op->a)) {
             // e = k - x
             // x = k - e
@@ -150,6 +156,36 @@ private:
             // e = k / x is not handled because it is not a linear transformation
             poison = const_true();
     }
+
+#if 0
+    // Implementation of Mod is difficult: at the time when this
+    // pass is run, xmin and/or xmax may be expressions.
+    // A conservative result is to always use the intersection of
+    // the range of e with the range 0 to k-1, but that gives an
+    // interval that is too small in real situations.
+    void visit(const Mod *op) {
+        if (is_const(op->b)) {
+            // e = x % k
+            // If the range of e is 0 to k-1 or bigger then
+            // the range of x is unconstrained.
+            // If the range of e is smaller than 0 to k-1 then
+            // the range of x is broken into pieces, of which the
+            // canonical piece is the intersection of intervals 0 to k-1 and
+            // xmin to xmax.
+        }
+        else
+            // e = k % x is not handled because it is not linear
+            poison = const_true();
+    }
+    
+    // Max
+    // e = max(x,k) to be in range(a,b)
+    // then x to be in range(c,b) where
+    // if a <= k (i.e. max applied to x enforces the limit a effectively) then c = -infinity
+    // else (i.e. max applied to x does not enforce the limit a) then c = a.
+    
+    // Min: analogous to Max.
+#endif
 };
 
 /* Notes
@@ -161,23 +197,7 @@ Interval backwards_interval(Expr e, Expr xmin, Expr xmax, std::string &v, Expr &
     BackwardIntervalInference infers(xmin, xmax);
     Expr e1 = simplify(e);
     
-    // Special cases.
-    const IntImm *intimm = e1.as<IntImm>();
-    if (intimm) {
-        // A tree that is entirely a constant results in either infinite or empty interval.
-        // Constant expression means that it is either always out of bounds in the
-        // callee or always in bounds.
-        // This is only valid if the constant expression is the top of the tree;
-        // encountering a constant leaf node lower in the tree is not invertible.
-        // Set the range to be undefined and set to poison if it would be out of
-        // bounds on the callee.
-        infers.poison = intimm->value < xmin || intimm->value > xmax;
-        infers.xmin = Expr();
-        infers.xmax = Expr(); 
-    }
-    else
-        // General case: inversion of the expression.
-        e1.accept(&infers);
+    e1.accept(&infers);
     
     Interval result(infers.xmin, infers.xmax);
     if (result.min.defined()) result.min = simplify(result.min);
@@ -185,9 +205,7 @@ Interval backwards_interval(Expr e, Expr xmin, Expr xmax, std::string &v, Expr &
     v = infers.varname;
     poison = infers.poison;
     if (poison.defined()) {
-        //log(0,"LH") << "Poison = " << poison;
         poison = poison || make_bool(infers.defaulted);
-        //log(0,"LH") << "    simplify " << poison << '\n';
         poison = simplify(poison);
     }
     else
@@ -211,10 +229,13 @@ void check_interval(Expr e, Expr xmin, Expr xmax,
     if (equal(poison, const_true()))
         log(0,"LH") << "poison\n";
     else {
-        log(0,"LH") << "poison: " << poison << "    ";
         log(0,"LH") << "min: " << result.min << "    ";
         log(0,"LH") << "max: " << result.max << "    ";
-        log(0,"LH") << "v: " << v << '\n';
+        log(0,"LH") << "v: " << v;
+        if (! equal(poison, const_false()))
+            log(0,"LH") << "    poison: " << poison << '\n';
+        else
+            log(0,"LH") << '\n';
     }
     
     bool success = true;
@@ -250,11 +271,10 @@ void domain_inference_test() {
     Expr cmin, cmax;
     
     // Tests of backward interval inference
-    check_interval(5, 0, 100, false, Expr(), Expr(), "");
-    check_interval(105, 0, 100, true, Expr(), Expr(), "");
     check_interval(x, 0, 100, false, 0, 100, "x");
     check_interval(x + 1, 0, 100, false, -1, 99, "x");
     check_interval(1 + x, 0, 100, false, -1, 99, "x");
+    check_interval(1 + x + 1, 0, 100, false, -2, 98, "x");
     check_interval(x - 1, 0, 100, false, 1, 101, "x");
     check_interval(1 - x, 0, 100, false, -99, 1, "x");
     //check_interval(x + x, 0, 100, cmin, cmax, v);
@@ -277,7 +297,15 @@ void domain_inference_test() {
     // x = 5  e = (15 + 5) / 2 = 10
     // x = 65  e = (195 + 5) / 2 = 100   but x = 66 is too big
     check_interval((3 * x + 5) / 2, 10, 100, false, 5, 65, "x");
+    // x = 7  e = (21 + 5) / 2 - 2 = 11  but x=6 e=(18+5)/2-2 = 9
+    // x = 66  e = (198 + 5) / 2 - 2 = 99   but x=67 e=(201+5)/2-2=101
+    check_interval((3 * x + 5) / 2 - 2, 10, 100, false, 7, 66, "x");
     
+    // Constant expressions are poison. They provide no constraint on the caller's
+    // variables, although they may result in out-of-bounds errors on the callee.
+    // But checking for out-of-bounds errors is a separate task.
+    check_interval(Expr(5) + 7, 0, 100, true, Expr(), Expr(), "");
+    check_interval(105, 0, 100, true, Expr(), Expr(), "");
     // Expression is poison because it contains a node type that 
     // is not explicitly handled
     check_interval(sin(x), 10, 100, true, 0, 0, "");
