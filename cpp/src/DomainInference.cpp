@@ -466,13 +466,16 @@ void check_domain_expr(std::vector<std::string> variables, Expr e, Domain d) {
             std::cout << "Incorrect poison: " << edom.intervals[i].poison
                       << "    Should have been: " << d.intervals[i].poison << '\n';
         }
-        if (! equal(edom.intervals[i].imin, d.intervals[i].imin)) {
-            std::cout << "Incorrect imin: " << edom.intervals[i].imin
-                      << "    Should have been: " << d.intervals[i].imin << '\n';
-        }
-        if (! equal(edom.intervals[i].imax, d.intervals[i].imax)) {
-            std::cout << "Incorrect imax: " << edom.intervals[i].imax
-                      << "    Should have been: " << d.intervals[i].imax << '\n';
+        if (! equal(d.intervals[i].poison, const_true())) {
+            // Only check the numeric range if poison is not known to be true
+            if (! equal(edom.intervals[i].imin, d.intervals[i].imin)) {
+                std::cout << "Incorrect imin: " << edom.intervals[i].imin
+                          << "    Should have been: " << d.intervals[i].imin << '\n';
+            }
+            if (! equal(edom.intervals[i].imax, d.intervals[i].imax)) {
+                std::cout << "Incorrect imax: " << edom.intervals[i].imax
+                          << "    Should have been: " << d.intervals[i].imax << '\n';
+            }
         }
     }
     assert(success && "Domain inference test failed");
@@ -489,7 +492,12 @@ void domain_expr_test()
     check_domain_expr(vecS("iv.0", "iv.1"), in, Domain("iv.0", False, 0, 19, "iv.1", False, 0, 39));
     check_domain_expr(vecS("x", "y"), in(x-2,y), Domain("x", False, 2, 21, "y", False, 0, 39));
     check_domain_expr(vecS("x", "y"), in(x-2,y) + in(x,y), Domain("x", False, 2, 19, "y", False, 0, 39));
-    check_domain_expr(vecS("x", "y"), in(x-2,y) + in(x,y) + in(x,y+5), Domain("x", False, 2, 19, "y", False, 0, 34));
+    check_domain_expr(vecS("x", "y"), in(x-2,y) + in(x,y) + in(x,y+5), 
+                        Domain("x", False, 2, 19, "y", False, 0, 34));
+    check_domain_expr(vecS("x", "y"), in(x-2,y) + in(x,y) + in(x,min(y+5,15)), 
+                        Domain("x", False, 2, 19, "y", True, 0, 34));
+    check_domain_expr(vecS("x", "y"), in(x-2,max(y,1)) + in(max(x,0),y) + in(min(x,9),y+5), 
+                        Domain("x", True, 2, 19, "y", True, 0, 34));
     
     return;
 }
