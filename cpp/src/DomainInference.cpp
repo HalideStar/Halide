@@ -193,23 +193,33 @@ Difference between Var and Variable.  Variable is a parse tree node.
 Var is just a name.
 */
 
-Interval backwards_interval(Expr e, Expr xmin, Expr xmax, std::string &v, Expr &poison) {
+struct VarInterval
+{
+    // min and max are the range of the interval.
+    // poison evaluates to true when the range is meaningless and, in fact, poisoned.
+    // varname is the name of the variable described by the interval.
+    Expr min, max, poison;
+    std::string varname;
+    VarInterval(Expr emin, Expr emax, Expr poisoned, std::string v) : 
+        min(emin), max(emax), poison(poisoned), varname(v) {}
+    VarInterval();
+};
+
+VarInterval backwards_interval(Expr e, Expr xmin, Expr xmax) {
     BackwardIntervalInference infers(xmin, xmax);
     Expr e1 = simplify(e);
     
     e1.accept(&infers);
     
-    Interval result(infers.xmin, infers.xmax);
+    VarInterval result(infers.xmin, infers.xmax, infers.poison, infers.varname);
     if (result.min.defined()) result.min = simplify(result.min);
     if (result.max.defined()) result.max = simplify(result.max);
-    v = infers.varname;
-    poison = infers.poison;
-    if (poison.defined()) {
-        poison = poison || make_bool(infers.defaulted);
-        poison = simplify(poison);
+    if (result.poison.defined()) {
+        result.poison = result.poison || make_bool(infers.defaulted);
+        result.poison = simplify(result.poison);
     }
     else
-        poison = infers.defaulted;
+        result.poison = make_bool(infers.defaulted);
 
     return result;
 }
@@ -217,30 +227,29 @@ Interval backwards_interval(Expr e, Expr xmin, Expr xmax, std::string &v, Expr &
 void check_interval(Expr e, Expr xmin, Expr xmax, 
                     bool correct_poison_bool, Expr correct_min, Expr correct_max, 
                     std::string correct_varname) {
-    std::string v;
-    Expr poison, correct_poison;
+    Expr correct_poison;
     correct_poison = make_bool(correct_poison_bool);
-    Interval result = backwards_interval(e, xmin, xmax, v, poison);
+    VarInterval result = backwards_interval(e, xmin, xmax);
     
     Expr e1 = simplify(e); // Duplicate simplification for debugging only
     log(0,"LH") << "e: " << e << "    ";
     log(0,"LH") << "e1: " << e1 << "    ";
     
-    if (equal(poison, const_true()))
+    if (equal(result.poison, const_true()))
         log(0,"LH") << "poison\n";
     else {
         log(0,"LH") << "min: " << result.min << "    ";
         log(0,"LH") << "max: " << result.max << "    ";
-        log(0,"LH") << "v: " << v;
-        if (! equal(poison, const_false()))
-            log(0,"LH") << "    poison: " << poison << '\n';
+        log(0,"LH") << "v: " << result.varname;
+        if (! equal(result.poison, const_false()))
+            log(0,"LH") << "    poison: " << result.poison << '\n';
         else
             log(0,"LH") << '\n';
     }
     
     bool success = true;
-    if (! equal(poison, correct_poison)) {
-        std::cout << "Incorrect poison: " << poison << "    "
+    if (! equal(result.poison, correct_poison)) {
+        std::cout << "Incorrect poison: " << result.poison << "    "
                   << "Should have been: " << correct_poison << std::endl;
         success = false;
     }
@@ -256,8 +265,8 @@ void check_interval(Expr e, Expr xmin, Expr xmax,
                       << "Should have been: " << correct_max << std::endl;
             success = false;
         }
-        if (v != correct_varname) {
-            std::cout << "Incorrect variable name: " << v << "    "
+        if (result.varname != correct_varname) {
+            std::cout << "Incorrect variable name: " << result.varname << "    "
                       << "Should have been: " << correct_varname << std::endl;
             success = false;
         }
