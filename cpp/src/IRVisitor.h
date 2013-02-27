@@ -55,6 +55,15 @@ struct Block;
  */
 class IRVisitor {
 public:
+    // Sometimes, you need to know if IRVisitor has adopted
+    // the default behaviour of visiting all the children
+    // of a node for which no explicit visit method is defined.
+    // Boolean defaulted is set to true so the caller can detect that
+    // this has happened and take some action.
+    // Of course, if the derived class uses the base class to visit the
+    // children then that will also set defaulted to true.
+    bool defaulted;
+    IRVisitor();
     virtual ~IRVisitor();
     virtual void visit(const IntImm *);
     virtual void visit(const FloatImm *);
