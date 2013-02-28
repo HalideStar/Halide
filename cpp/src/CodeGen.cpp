@@ -688,7 +688,53 @@ void CodeGen::visit(const Div *op) {
     } else if (op->type.is_uint()) {
         value = builder->CreateUDiv(codegen(op->a), codegen(op->b));
     } else {
+#if ! HALIDE_USE_MODULUS_DIVISION
         value = builder->CreateSDiv(codegen(op->a), codegen(op->b));
+#else
+        // If dividing by a power of two, can use arithmetic shift directly.
+        // Detect if it's a small int division
+        const Broadcast *broadcast = op->b.as<Broadcast>();
+        const Cast *cast_b = broadcast ? broadcast->value.as<Cast>() : NULL;    
+        const IntImm *int_imm = cast_b ? cast_b->value.as<IntImm>() : NULL;
+        int const_divisor = int_imm ? int_imm->value : 0;
+        if (const_divisor > 0)
+        {
+            int bshift;
+            for (bshift = 0; const_divisor > 1; bshift++) {
+                if (const_divisor & 1)
+                    break; // Not a pure power of two.
+                const_divisor >>= 1;
+            }
+            if (const_divisor == 1) {
+                // Use bit shift operation for pure power of 2 divisor.
+                // Arithmetic right shift has modulus semantics.
+                value = builder->CreateAShr(codegen(op->a), codegen(cast(op->type, bshift)));
+                return;
+            }
+            // Note fall through
+        }
+        
+        // Implementation of modulus semantics by correcting division.
+        // This implementation uses the sign of the denominator and the sign
+        // of the remainder from the division.
+        Value *a = codegen(op->a);
+        Value *b = codegen(op->b);
+        Value *q1 = builder->CreateSDiv(codegen(op->a), codegen(op->b));
+        Value *r = builder->CreateSRem(a, b);
+        
+        // Shift the sign bit of the remainder throughout the entire word.
+        Value *sr = builder->CreateAShr(r, codegen(cast(op->type, op->type.bits-1)));
+        // Apply the same to the sign bit of the denominator b
+        Value *sb = builder->CreateAShr(b, codegen(cast(op->type, op->type.bits-1)));
+        // And with 2 to get 0 or 2 as the result.
+        Value *sband = builder->CreateAnd(sb, codegen(cast(op->type, 2)));
+        // Subtract 1 to get -1 or 1 as the amount to be added when sr is non-zero
+        Value *sbaddend = builder->CreateSub(sband, codegen(cast(op->type, 1)));
+        // And with sr to get 1 or -1 to be added only when sr is non-zero
+        Value *addend = builder->CreateAnd(sr, sbaddend);
+        // Finally add the correction
+        value = builder->CreateAdd(q1, addend);
+#endif
     }
 }
 

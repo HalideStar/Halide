@@ -1,6 +1,12 @@
 #ifndef HALIDE_CODEGEN_H
 #define HALIDE_CODEGEN_H
 
+// Set HALIDE_USE_MODULUS_DIVISION to true: Halide will use modulus semantics for
+// integer division.  This means that the after q = n / d has been computed,
+// q * d <= n will hold and q % d == n - q * d will also hold because Halide
+// has always used modulus semantics for %.
+# define HALIDE_USE_MODULUS_DIVISION 1
+
 /** \file
  * 
  * Defines the base-class for all architecture-specific code
