@@ -32,18 +32,20 @@ STDLIB_SOURCES = \
 	src/architecture.posix.stdlib.cpp
 INITIAL_MODULES = $(STDLIB_ARCHS:%=build/architecture.%.initmod.o)
 
-.PHONY: all
-all: bin/libHalide.a bin/libHalide.so include/Halide.h test_internal
+NAME = HalideStar
 
-bin/libHalide.a: $(OBJECTS) $(INITIAL_MODULES)
+.PHONY: all
+all: bin/lib$(NAME).a bin/lib$(NAME).so include/Halide.h test_internal
+
+bin/lib$(NAME).a: $(OBJECTS) $(INITIAL_MODULES)
 	@-mkdir -p bin
 	ld -r -o build/Halide.o $(OBJECTS) $(INITIAL_MODULES) $(LIBS)
-	rm -f bin/libHalide.a
-	ar q bin/libHalide.a build/Halide.o
-	ranlib bin/libHalide.a
+	rm -f bin/lib$(NAME).a
+	ar q bin/lib$(NAME).a build/Halide.o
+	ranlib bin/lib$(NAME).a
 
-bin/libHalide.so: bin/libHalide.a
-	$(CXX) -shared $(OBJECTS) $(INITIAL_MODULES) $(LIBS) -o bin/libHalide.so
+bin/lib$(NAME).so: bin/lib$(NAME).a
+	$(CXX) -shared $(OBJECTS) $(INITIAL_MODULES) $(LIBS) -o bin/lib$(NAME).so
 
 include/Halide.h: $(HEADERS) bin/build_halide_h
 	mkdir -p include
@@ -91,11 +93,11 @@ TESTS = $(shell ls test/*.cpp)
 
 tests: $(TESTS:test/%.cpp=test_%)
 
-bin/test_internal: test/internal.cpp bin/libHalide.so
-	$(CXX) $(CXX_FLAGS) -rdynamic $< -Isrc -Lbin -lHalide -lpthread -ldl -o $@	
+bin/test_internal: test/internal.cpp bin/lib$(NAME).so
+	$(CXX) $(CXX_FLAGS) -rdynamic $< -Isrc -Lbin -l$(NAME) -lpthread -ldl -o $@	
 
-bin/test_%: test/%.cpp bin/libHalide.so include/Halide.h
-	$(CXX) -g $< -rdynamic -Iinclude -Lbin -lHalide -lpthread -ldl -o $@	
+bin/test_%: test/%.cpp bin/lib$(NAME).so include/Halide.h
+	$(CXX) -g $< -rdynamic -Iinclude -Lbin -l$(NAME) -lpthread -ldl -o $@	
 
 test_%: bin/test_%
 	@-mkdir -p tmp
@@ -104,7 +106,7 @@ test_%: bin/test_%
 
 
 .PHONY: test_apps
-test_apps: bin/libHalide.a
+test_apps: bin/lib$(NAME).a
 	make -C apps/bilateral_grid clean
 	make -C apps/bilateral_grid out.png
 	make -C apps/local_laplacian clean
