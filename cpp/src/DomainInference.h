@@ -1,9 +1,6 @@
 #ifndef HALIDE_DOMAININFERENCE_H
 #define HALIDE_DOMAININFERENCE_H
 
-#include "IR.h"
-#include "Function.h"
-
 namespace Halide {
 namespace Internal {
 struct VarInterval
@@ -22,9 +19,10 @@ struct VarInterval
     
     void update(VarInterval result);
 };
+}
 
 struct Domain {
-    std::vector<VarInterval> intervals;
+    std::vector<Halide::Internal::VarInterval> intervals;
     
     Domain();
     Domain(std::string xv, Expr xpoisoned, Expr xmin, Expr xmax);
@@ -37,10 +35,10 @@ struct Domain {
     int find(std::string v);
 };
 
+namespace Internal {
 Domain domain_inference(std::vector<std::string> variables, Expr e);
 
 void domain_inference_test();
-
 }
 }
 #endif

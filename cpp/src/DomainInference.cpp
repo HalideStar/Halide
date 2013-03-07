@@ -1,4 +1,3 @@
-#include "DomainInference.h"
 #include "Var.h"
 #include "Func.h"
 #include "Image.h"
@@ -43,27 +42,28 @@ void VarInterval::update(VarInterval result) {
         imax = simplify(imax);
     }
 }
+}
 
 // Domain: Represents a domain whether valid, defined or some other.
 Domain::Domain() {
     intervals.clear();
 }
 Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax) {
-    intervals = vec(VarInterval(xvarname, xpoisoned, xmin, xmax));
+    intervals = vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax));
 }
 
 Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
                std::string yvarname, Expr ypoisoned, Expr ymin, Expr ymax) {
-    intervals = vec(VarInterval(xvarname, xpoisoned, xmin, xmax),
-                    VarInterval(yvarname, ypoisoned, ymin, ymax));
+    intervals = vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax),
+                    Internal::VarInterval(yvarname, ypoisoned, ymin, ymax));
 }
 
 Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
                std::string yvarname, Expr ypoisoned, Expr ymin, Expr ymax,
                std::string zvarname, Expr zpoisoned, Expr zmin, Expr zmax) {
-    intervals = vec(VarInterval(xvarname, xpoisoned, xmin, xmax),
-                    VarInterval(yvarname, ypoisoned, ymin, ymax),
-                    VarInterval(zvarname, zpoisoned, zmin, zmax));
+    intervals = vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax),
+                    Internal::VarInterval(yvarname, ypoisoned, ymin, ymax),
+                    Internal::VarInterval(zvarname, zpoisoned, zmin, zmax));
 }
 
 int Domain::find(std::string v) {
@@ -73,6 +73,7 @@ int Domain::find(std::string v) {
     return -1;
 }
 
+namespace Internal {
 // BackwardIntervalInference walks an argument expression and
 // determines the domain interval in the callee based on the
 // domain interval in the caller, which is passed to it.

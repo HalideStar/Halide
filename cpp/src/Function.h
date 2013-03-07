@@ -29,7 +29,7 @@ struct FunctionContents {
 	// The valid domain is the domain over which this function is useful and meaningful.
 	// For example, the valid domain of an edge detector would normally be the same as the input image
 	// with border handling used to provide useful results at the borders of the image.
-	Domain valid;
+	Halide::Domain valid;
 	// The computable domain is the domain over which this function is known to be computable.
 	// For example, the valid domain may be extended indefinitely by replicating the border pixels.
 	Domain computable;

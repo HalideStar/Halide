@@ -720,6 +720,10 @@ struct Block : public StmtNode<Block> {
 
 }
 }
+
+//LH Include the definition of a Domain
+#include "DomainInference.h"
+
 // Now that we've defined an Expr and ForType, we can include the definition of a function
 #include "Function.h"
 
