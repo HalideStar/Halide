@@ -20,6 +20,7 @@
 #include "StorageFolding.h"
 #include "RemoveTrivialForLoops.h"
 #include "Deinterleave.h"
+#include "DebugToFile.h"
 
 namespace Halide {
 namespace Internal {
@@ -701,6 +702,10 @@ Stmt lower(Function f) {
     s = storage_folding(s);
     log(2) << "Storage folding:\n" << s << '\n';
 
+    log(1) << "Injecting debug_to_file calls...\n";
+    s = debug_to_file(s, env);
+    log(2) << "Injected debug_to_file calls:\n" << s << '\n';
+
     log(1) << "Performing storage flattening...\n";
     s = storage_flattening(s);
     log(2) << "Storage flattening: " << '\n' << s << "\n\n";
@@ -729,7 +734,7 @@ Stmt lower(Function f) {
     s = simplify(s);
     s = remove_trivial_for_loops(s);
     s = remove_dead_lets(s);
-    log(2) << "Simplified: \n" << s << "\n\n";
+    log(1) << "Simplified: \n" << s << "\n\n";
 
     return s;
 } 

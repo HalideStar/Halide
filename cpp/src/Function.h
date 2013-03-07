@@ -38,6 +38,8 @@ struct FunctionContents {
     std::vector<Expr> reduction_args;
     Schedule reduction_schedule;
     ReductionDomain reduction_domain;
+
+    std::string debug_file;
 };        
 
 /** A reference-counted handle to Halide's internal representation of
@@ -158,6 +160,16 @@ public:
     /** Equality of identity */
     bool same_as(const Function &other) const {
         return contents.same_as(other.contents);
+    }
+
+    /** Get a const handle to the debug filename */
+    const std::string &debug_file() const {
+        return contents.ptr->debug_file;
+    }
+
+    /** Get a handle to the debug filename */
+    std::string &debug_file() {
+        return contents.ptr->debug_file;
     }
 };
 
