@@ -67,10 +67,15 @@ protected:
     void visit(const FloatImm *);
     void visit(const Cast *);
     void visit(const Variable *);
+    void visit(const BitAnd *); //LH
+    void visit(const BitOr *); //LH
+    void visit(const BitXor *); //LH
+    void visit(const SignFill *); //LH
     void visit(const Add *);
     void visit(const Sub *);
     void visit(const Mul *);
     void visit(const Div *);
+    void visit(const HDiv *); //LH
     void visit(const Mod *);
     void visit(const Min *);
     void visit(const Max *);

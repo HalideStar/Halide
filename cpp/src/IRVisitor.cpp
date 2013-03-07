@@ -28,6 +28,33 @@ void IRVisitor::visit(const Variable *) {
     defaulted = true;
 }
 
+//LH
+void IRVisitor::visit(const BitAnd *op) {
+    defaulted = true;
+    op->a.accept(this);
+    op->b.accept(this);
+}
+
+//LH
+void IRVisitor::visit(const BitOr *op) {
+    defaulted = true;
+    op->a.accept(this);
+    op->b.accept(this);
+}
+
+//LH
+void IRVisitor::visit(const BitXor *op) {
+    defaulted = true;
+    op->a.accept(this);
+    op->b.accept(this);
+}
+
+//LH
+void IRVisitor::visit(const SignFill *op) {
+    defaulted = true;
+    op->value.accept(this);
+}
+
 void IRVisitor::visit(const Add *op) {
     defaulted = true;
     op->a.accept(this);
@@ -47,6 +74,13 @@ void IRVisitor::visit(const Mul *op) {
 }
 
 void IRVisitor::visit(const Div *op) {
+    defaulted = true;
+    op->a.accept(this);
+    op->b.accept(this);
+}
+
+//LH
+void IRVisitor::visit(const HDiv *op) {
     defaulted = true;
     op->a.accept(this);
     op->b.accept(this);

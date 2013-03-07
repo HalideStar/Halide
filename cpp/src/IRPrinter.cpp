@@ -155,6 +155,40 @@ void IRPrinter::visit(const Variable *op) {
     stream << op->name;
 }
     
+//LH
+void IRPrinter::visit(const BitAnd *op) {
+    stream << '(';
+    print(op->a);
+    stream << " & ";
+    print(op->b);
+    stream << ')';
+}
+
+//LH
+void IRPrinter::visit(const BitOr *op) {
+    stream << '(';
+    print(op->a);
+    stream << " | ";
+    print(op->b);
+    stream << ')';
+}
+
+//LH
+void IRPrinter::visit(const BitXor *op) {
+    stream << '(';
+    print(op->a);
+    stream << " ^ ";
+    print(op->b);
+    stream << ')';
+}
+
+//LH
+void IRPrinter::visit(const SignFill *op) {
+    stream << "signfill(";
+    print(op->value);
+    stream << ')';
+}
+
 void IRPrinter::visit(const Add *op) {
     stream << '(';
     print(op->a);
@@ -183,6 +217,15 @@ void IRPrinter::visit(const Div *op) {
     stream << '(';
     print(op->a);
     stream << "/";
+    print(op->b);
+    stream << ')';
+}
+
+//LH
+void IRPrinter::visit(const HDiv *op) {
+    stream << "hdiv(";
+    print(op->a);
+    stream << ",";
     print(op->b);
     stream << ')';
 }

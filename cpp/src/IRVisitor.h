@@ -16,10 +16,15 @@ struct IntImm;
 struct FloatImm;
 struct Cast;
 struct Variable;
+struct BitAnd; //LH
+struct BitOr; //LH
+struct BitXor; //LH
+struct SignFill; //LH
 struct Add;
 struct Sub;
 struct Mul;
 struct Div;
+struct HDiv; //LH
 struct Mod;
 struct Min;
 struct Max;
@@ -69,10 +74,15 @@ public:
     virtual void visit(const FloatImm *);
     virtual void visit(const Cast *);
     virtual void visit(const Variable *);
+    virtual void visit(const BitAnd *);
+    virtual void visit(const BitOr *);
+    virtual void visit(const BitXor *);
+    virtual void visit(const SignFill *);
     virtual void visit(const Add *);
     virtual void visit(const Sub *);
     virtual void visit(const Mul *);
     virtual void visit(const Div *);
+    virtual void visit(const HDiv *);
     virtual void visit(const Mod *);
     virtual void visit(const Min *);
     virtual void visit(const Max *);

@@ -15,6 +15,19 @@
 #include "Parameter.h"
 #include "Util.h"
 
+//LH
+/* --------------------------------------
+ * How to add tree nodes to the IR.
+ *
+ * 1. Add the node itself in this file.  Add to the templates in IR.cpp.
+ * 2. Add the node to the two lists in IRVisitor.h and an implementation in IRVisitor.cpp.
+ * 3. Add the node to the list in IRPrinter.h and define a visitor for it in IRPrinter.cpp.
+ * 4. Add a visitor in IRMutator.h and IRMutator.cpp
+ * 5. If code generation is required (usually, it is); add visitor to CodeGen.cpp and CodeGen.h
+ *    If code generation is not required because the node should not remain at code generation
+ *    time, should add a visitor and assert an error.
+ */
+
 namespace Halide {
 
 namespace Internal {
@@ -180,6 +193,56 @@ struct Cast : public ExprNode<Cast> {
     }
 };
 
+//LH
+/** Bit-wise AND */
+struct BitAnd : public ExprNode<BitAnd> {
+    Expr a, b;
+
+    BitAnd(Expr _a, Expr _b) : ExprNode<BitAnd>(_a.type()), a(_a), b(_b) {
+        assert(a.defined() && "BitAnd of undefined");
+        assert(b.defined() && "BitAnd of undefined");
+        assert((a.type().is_int() || a.type().is_uint()) && "lhs of BitAnd is not an integer type");
+        assert((b.type().is_int() || b.type().is_uint()) && "rhs of BitAnd is not an integer type");
+    }
+};
+
+//LH
+/** Bit-wise OR */
+struct BitOr : public ExprNode<BitOr> {
+    Expr a, b;
+
+    BitOr(Expr _a, Expr _b) : ExprNode<BitOr>(_a.type()), a(_a), b(_b) {
+        assert(a.defined() && "BitOr of undefined");
+        assert(b.defined() && "BitOr of undefined");
+        assert((a.type().is_int() || a.type().is_uint()) && "lhs of BitOr is not an integer type");
+        assert((b.type().is_int() || b.type().is_uint()) && "rhs of BitOr is not an integer type");
+    }
+};
+
+//LH
+/** Bit-wise XOR */
+struct BitXor : public ExprNode<BitXor> {
+    Expr a, b;
+
+    BitXor(Expr _a, Expr _b) : ExprNode<BitXor>(_a.type()), a(_a), b(_b) {
+        assert(a.defined() && "BitXor of undefined");
+        assert(b.defined() && "BitXor of undefined");
+        assert((a.type().is_int() || a.type().is_uint()) && "lhs of BitXor is not an integer type");
+        assert((b.type().is_int() || b.type().is_uint()) && "rhs of BitXor is not an integer type");
+    }
+};
+
+//LH
+/** Fill integer with the sign bit */
+struct SignFill : public ExprNode<SignFill> {
+    Expr value;
+
+    SignFill(Expr _value) : ExprNode<SignFill>(_value.type()), value(_value) {
+        assert(value.defined() && "SignFill of undefined");
+        assert((value.type().is_int() || value.type().is_uint()) && "parameter of SignFill is not an integer type");
+    }
+};
+
 /** The sum of two expressions */
 struct Add : public ExprNode<Add> {
     Expr a, b;
@@ -224,8 +287,26 @@ struct Div : public ExprNode<Div> {
     }
 };
 
+//LH
+/** The ratio of two expressions: For integers, an integer division compatible with Halide Mod
+ * and more useful than native division for operations such as image zoom and
+ * histogram buckets. Whereas the sign of the remainder of Div is the same as
+ * the sign of the dividend, the sign of the remainder of HDiv is the same as
+ * the sign of the divisor.
+ */
+struct HDiv : public ExprNode<HDiv> {
+    Expr a, b;
+
+    HDiv(Expr _a, Expr _b) : ExprNode<HDiv>(_a.type()), a(_a), b(_b) {
+        assert(a.defined() && "HDiv of undefined");
+        assert(b.defined() && "HDiv of undefined");
+        assert(b.type() == type && "HDiv of mismatched types");
+    }
+};
+
 /** The remainder of a / b. Mostly equivalent to '%' in C, except that
- * the result here is always positive. For floats, this is equivalent
+ * the result here is always positive (//LH: actually, not quite correct.
+ * It has the same sign as the modulus b). For floats, this is equivalent
  * to calling fmod. */
 struct Mod : public ExprNode<Mod> { 
     Expr a, b;

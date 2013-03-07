@@ -161,10 +161,15 @@ protected:
     virtual void visit(const FloatImm *);
     virtual void visit(const Cast *);
     virtual void visit(const Variable *);
+    virtual void visit(const BitAnd *); //LH
+    virtual void visit(const BitOr *); //LH
+    virtual void visit(const BitXor *); //LH
+    virtual void visit(const SignFill *); //LH
     virtual void visit(const Add *);
     virtual void visit(const Sub *);
     virtual void visit(const Mul *);
     virtual void visit(const Div *);
+    virtual void visit(const HDiv *); //LH
     virtual void visit(const Mod *);
     virtual void visit(const Min *);
     virtual void visit(const Max *);

@@ -658,6 +658,29 @@ void CodeGen::visit(const Variable *op) {
     value = symbol_table.get(op->name);
 }
 
+//LH 
+// Bit-wise operators on integers
+void CodeGen::visit(const BitAnd *op) {
+    assert(! op->type.is_float() && "Code generator found BitAnd with floating point type");
+    value = builder->CreateAnd(codegen(op->a), codegen(op->b));
+}
+
+void CodeGen::visit(const BitOr *op) {
+    assert(! op->type.is_float() && "Code generator found BitOr with floating point type");
+    value = builder->CreateOr(codegen(op->a), codegen(op->b));
+}
+
+void CodeGen::visit(const BitXor *op) {
+    assert(! op->type.is_float() && "Code generator found BitXor with floating point type");
+    value = builder->CreateXor(codegen(op->a), codegen(op->b));
+}
+
+void CodeGen::visit(const SignFill *op) {
+    assert(op->type.is_int() && "Code generator found SignFill that is not signed integer type");
+    // Arithmetic shift right by one less than the number of bits of the data type.
+    value = builder->CreateAShr(codegen(op->value), codegen(make_const(op->type, op->type.bits-1)));
+}
+
 void CodeGen::visit(const Add *op) {
     if (op->type.is_float()) {
         value = builder->CreateFAdd(codegen(op->a), codegen(op->b));
@@ -688,9 +711,79 @@ void CodeGen::visit(const Div *op) {
     } else if (op->type.is_uint()) {
         value = builder->CreateUDiv(codegen(op->a), codegen(op->b));
     } else {
-#if ! HALIDE_USE_MODULUS_DIVISION
         value = builder->CreateSDiv(codegen(op->a), codegen(op->b));
-#else
+    }
+}
+
+//LH
+// Division operator that is consistent with the Halide mod operator
+void CodeGen::visit(const HDiv *op) {
+    // HDiv differs from Div only for signed integer types.
+    if (! op->type.is_int()) {
+        value = codegen(new Div(op->a, op->b));
+    } else {
+        // Halide compatible division.
+        // Approximation of hdiv using C code without conditionals
+        // Compared to ordinary C division, subtract 1 from negative (true) quotient
+        // if the remainder is non-zero.
+        // So, if the true quotient would be negative:
+        //   Subtract one to a positive dividend or add one to a negative dividend, 
+        //   do the division and subtract one from the result.
+        // The precorrection is:
+        //   0 for positive true quotient.
+        //   1 for negative dividend.
+        //   -1 for positive dividend.
+        //   HOWEVER, this simple definition fails when the dividend is zero.
+        //   With a positive dividend and a negative divisor, the precorrection
+        //   of -1 is used to ensure that the division result is always 1 too small in the absolute sense.
+        //   However, if the dividend is zero, precorrecting to -1 still yields a raw quotient of
+        //   zero and the computation result ends up as -1 after postcorrection
+        //   With a dividend of zero and divisor that is negative, a precorrection of -1
+        //   is determined, but the raw quotient is zero and the postcorrection of -1 yields an error.
+        //   To correct this, we AND the precorrection with a mask that is zero for dividend of 0.
+        // The postcorrection is -1 for negative true quotient.
+        //   This can be computed as 1 (subtracted) in two ops: XOR and SIGNBIT
+        //   It can also be computed as -1 (mask of FFFFFF...) in two ops: XOR and SIGNFILL.
+        //   The mask form is more useful for the precorrection.
+        
+        // Here is a C code representation of the computation involved.
+        //    int postcorrection = SIGNFILL(dividend ^ divisor) & (dividend == 0 ? 0 : -1);
+        //    int precorrection = (dividend < 0 ? 1 : -1) & postcorrection;
+        //    int rawquotient = (dividend + precorrection) / divisor;
+        //    int quotient = rawquotient + postcorrection;
+        
+        // Note that SIGNFILL(x) is (x >> 31) for x a signed 32 bit int (but strictly this is undefined in C)
+        // It is also the same as select(x < 0, -1, 0).  But select implementation is two instructions in LLVM
+        
+        // Build the expression as a Halide tree.
+        // Define three Let variables for pieces of the tree that are reused.
+        Expr dividend_a = new Variable(op->type, "a");
+        Expr divisor_b = new Variable(op->type, "b");
+        Expr postcorrection_c = new Variable(op->type, "c"); // All of op->type, op->a.type() and op->b.type() should be the same.
+        
+        // Build the tree to compute postcorrection which will be Let to "c".
+        Expr dividendmask = new Select(new EQ(dividend_a, make_zero(op->type)), make_zero(op->type), make_const(op->type, -1));
+        Expr postcorrection = new BitAnd(new SignFill(new BitXor(dividend_a, divisor_b)),dividendmask);
+        
+        // Build the tree to compute the final quotient.
+        Expr precorrection = new BitAnd(new Select(new LT(dividend_a, make_zero(op->type)), make_one(op->type), make_const(op->type, -1)), postcorrection_c);
+        Expr rawquotient = new Div(new Add(dividend_a, precorrection), divisor_b);
+        Expr quotient = new Add(rawquotient, postcorrection);
+        
+        // Build the Lets and the final expression
+        Expr result = new Let("a", op->a, new Let("b", op->b, new Let("c", postcorrection, quotient)));
+        
+        // Simplify the expression in case it can be optimised (e.g. if dividend is known)
+        //result = simplify(result);
+        
+        // Generate the code
+        value = codegen(result);
+        
+#if 0
+        // The following code block preserves an implementation of 
+        // floor division - i.e. the remainder is always strictly positive.
+        // This implementation may be incorrect in regards to types, especially vectors.
+        
         // If dividing by a power of two, can use arithmetic shift directly.
         // Detect if it's a small int division
         const Broadcast *broadcast = op->b.as<Broadcast>();

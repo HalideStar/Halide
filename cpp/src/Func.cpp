@@ -14,6 +14,9 @@
 #include <iostream>
 #include <fstream>
 
+//LH
+#include "DomainInference.h"
+
 namespace Halide {
 
 using std::max;
@@ -382,7 +385,61 @@ FuncRefVar::FuncRefVar(Internal::Function f, const vector<Var> &a) : func(f) {
         args[i] = a[i].name();
     }
 }           
-    
+
+//LH
+/** Get a handle to the valid domain for the purpose of modifying it */
+Domain &valid() {
+	return func.valid();
+}
+
+//LH
+/** Get a handle to the valid domain for the purpose of inspecting it */
+const Domain &valid() const {
+	return func.valid();
+}
+
+//LH
+/** Set the valid domain in a schedule format */
+Func &valid(Domain d) {
+	func.valid() = d;
+	return *this;
+}
+
+//LH
+/** Set the valid domain to be the same as an existing Func in a schedule format */
+Func &valid(Func f) {
+	func.valid() = f.valid();
+	return *this;
+}
+
+//LH
+/** Get a handle to the computable domain for the purpose of modifying it */
+Domain &computable() {
+	return func.computable();
+}
+
+//LH
+/** Get a handle to the computable domain for the purpose of inspecting it */
+const Domain &computable() const {
+	return func.computable();
+}
+
+//LH
+/** Set the computable domain in a schedule format */
+Func &computable(Domain d) {
+	func.computable() = d;
+	return *this;
+}
+
+//LH
+/** Set the computable domain to be the same as an existing Func in a schedule format */
+Func &computable(Func f) {
+	func.computable() = f.computable();
+	return *this;
+}
+
+
+
 namespace {
 class CountImplicitVars : public Internal::IRVisitor {
 public:

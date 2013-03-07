@@ -17,6 +17,7 @@
 // LH
 #include "Image.h"
 #include "Util.h"
+#include "DomainInference.h"
 
 namespace Halide {
         
@@ -700,7 +701,7 @@ public:
 
     // LH Extensions 
     // Extension to use Image<T> as a Func object without explicit conversion.
-    // This constructor 
+    // This constructor actually builds a mini function.
     template <typename T>
     Func(Image<T> image) : func(Internal::unique_name("image")), error_handler(NULL), custom_malloc(NULL), custom_free(NULL)
     {
@@ -709,6 +710,39 @@ public:
         operator()(x,y) = image(x,y);
         return;
     }
+	
+	//LH
+	/** Get a handle to the valid domain for the purpose of modifying it */
+	Domain &valid();
+
+	//LH
+	/** Get a handle to the valid domain for the purpose of inspecting it */
+	const Domain &valid() const;
+	
+	//LH
+	/** Set the valid domain in a schedule format */
+	Func &valid(Domain d);
+
+	//LH
+	/** Set the valid domain to be the same as an existing Func in a schedule format */
+	Func &valid(Func f);
+
+	//LH
+	/** Get a handle to the computable domain for the purpose of modifying it */
+	Domain &computable();
+
+	//LH
+	/** Get a handle to the computable domain for the purpose of inspecting it */
+	const Domain &computable() const;
+
+	//LH
+	/** Set the computable domain in a schedule format */
+	Func &computable(Domain d);
+
+	//LH
+	/** Set the computable domain to be the same as an existing Func in a schedule format */
+	Func &computable(Func f);
+
     
 };
 

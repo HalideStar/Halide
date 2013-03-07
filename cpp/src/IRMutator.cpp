@@ -45,10 +45,21 @@ void IRMutator::visit(const Cast *op) {
     else expr = new Cast(op->type, value);
 }
 
+void IRMutator::visit(const BitAnd *op)  {mutate_binary_operator(this, op, &expr, &stmt);} //LH
+void IRMutator::visit(const BitOr *op)   {mutate_binary_operator(this, op, &expr, &stmt);} //LH
+void IRMutator::visit(const BitXor *op)  {mutate_binary_operator(this, op, &expr, &stmt);} //LH
+//LH
+void IRMutator::visit(const SignFill *op) {
+    Expr a = mutate(op->value);
+    if (a.same_as(op->value)) expr = op;
+    else expr = new SignFill(a);
+}
+
 void IRMutator::visit(const Add *op)     {mutate_binary_operator(this, op, &expr, &stmt);}
 void IRMutator::visit(const Sub *op)     {mutate_binary_operator(this, op, &expr, &stmt);}
 void IRMutator::visit(const Mul *op)     {mutate_binary_operator(this, op, &expr, &stmt);}
 void IRMutator::visit(const Div *op)     {mutate_binary_operator(this, op, &expr, &stmt);}
+void IRMutator::visit(const HDiv *op)    {mutate_binary_operator(this, op, &expr, &stmt);} //LH
 void IRMutator::visit(const Mod *op)     {mutate_binary_operator(this, op, &expr, &stmt);}
 void IRMutator::visit(const Min *op)     {mutate_binary_operator(this, op, &expr, &stmt);}
 void IRMutator::visit(const Max *op)     {mutate_binary_operator(this, op, &expr, &stmt);}

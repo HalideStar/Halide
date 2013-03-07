@@ -42,7 +42,34 @@ bool u_method_2(int den, int mul, int sh_post, int bits) {
 }
 
 
-bool s_method_0(int den, int mul, int sh_post, int bits) {
+//LH
+// Make this code able to build tables for division with halide modulus semantics also.
+// However, I have not found a working method.
+# define USE_MODULUS 0
+
+int divide(int num, int den, int modulus)
+{
+    if (modulus) {
+        int hmod = ((num % den) + den) % num; // This is how Halide implements % operator
+        // The following line relies on the fact that int is large compared to the value of num.
+        return (num - hmod) / den; // Calculate division result corresponding to the mod definition.
+    }
+    return num / den;
+}
+
+//LH
+bool s_method_m0(int den, int mul, int sh_post, int bits, int modulus) {
+    int min = -(1 << (bits-1)), max = (1 << (bits-1))-1;
+    for (int num = min; num <= max; num++) {
+	int64_t result = num;
+	result >>= sh_post;
+	if (divide(num,den,modulus) != result) return false;
+    }
+    return true;
+}
+
+//LH: Add parameter modulus
+bool s_method_0(int den, int mul, int sh_post, int bits, int modulus) {
     int min = -(1 << (bits-1)), max = (1 << (bits-1))-1;
     for (int num = min; num <= max; num++) {
 	int64_t result = num;
@@ -50,13 +77,14 @@ bool s_method_0(int den, int mul, int sh_post, int bits) {
 	result >>= bits;
 	if (result > max || result < min) return false;
 	result >>= sh_post;
-	result += (num < 0 ? 1 : 0);
-	if (num / den != result) return false;
+    result += (num < 0 ? 1 : 0);
+	if (divide(num,den,modulus) != result) return false;
     }
     return true;
 }
 
-bool s_method_1(int den, int mul, int sh_post, int bits) {
+//LH: Add parameter modulus
+bool s_method_1(int den, int mul, int sh_post, int bits, int modulus) {
     int min = -(1 << (bits-1)), max = (1 << (bits-1))-1;
     for (int num = min; num <= max; num++) {
 	int64_t result = num;
@@ -66,8 +94,9 @@ bool s_method_1(int den, int mul, int sh_post, int bits) {
 	result += num;
 	if (result > max || result < min) return false;
 	result >>= sh_post;
-	result += (num < 0 ? 1 : 0);
-	if (num / den != result) return false;
+    if (! modulus)
+        result += (num < 0 ? 1 : 0);
+	if (divide(num,den,modulus) != result) return false;
     }
     return true;    
 }
@@ -125,12 +154,22 @@ int main(int argc, char **argv) {
 	  next_unsigned:;
 	}
 	printf("};\n");
-	printf("int table_s%d[][3] = {\n", bits);
+    for (int modulus = 0; modulus < 2; modulus++) { //LH
+	printf("int table_s%s%d[][3] = {\n", modulus ? "m" : "", bits);
 	for (int den = 2; den <= 64; den++) {
 
 	    for (int shift = 0; shift < 8; shift++) {
 		for (int mul = s_min; mul <= s_max; mul++) {
-		    if (s_method_0(den, mul, shift, bits)) {
+		    if (s_method_m0(den, mul, shift, bits, modulus)) {
+			printf("    {-1, %d, %d},\n", mul, shift);
+			goto next_signed;
+		    }
+		}
+	    }
+	    
+	    for (int shift = 0; shift < 8; shift++) {
+		for (int mul = s_min; mul <= s_max; mul++) {
+		    if (s_method_0(den, mul, shift, bits, modulus)) {
 			printf("    {0, %d, %d},\n", mul, shift);
 			goto next_signed;
 		    }
@@ -139,7 +178,7 @@ int main(int argc, char **argv) {
 	    
 	    for (int shift = 0; shift < 8; shift++) {
 		for (int mul = s_min; mul <= s_max; mul++) {
-		    if (s_method_1(den, mul, shift, bits)) {
+		    if (s_method_1(den, mul, shift, bits, modulus)) {
 			printf("    {1, %d, %d},\n", mul, shift);
 			goto next_signed;
 		    }
@@ -148,7 +187,11 @@ int main(int argc, char **argv) {
 	    printf("ERROR! No solution found for signed %d\n", den);
 	  next_signed:;
 	}
-	printf("};\n");        
+	printf("};\n"); 
+#if ! USE_MODULUS
+    break; //LH
+#endif
+    }
     }
 
     printf("}}}\n");
