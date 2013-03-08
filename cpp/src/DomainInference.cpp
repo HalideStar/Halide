@@ -396,7 +396,7 @@ private:
                 size_t index = dom.find(result.varname);
                 assert(index >= 0 && "Could not find free variable in domain variable list");
                 
-                dom.intervals[i].update(result);
+                dom.intervals[index].update(result);
             }
         }
     }
@@ -594,6 +594,9 @@ void domain_expr_test()
                         Domain("x", False, 2, 19, "y", True, 0, 34));
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,max(y,1)) + in(max(x,0),y) + in(min(x,9),y+5), 
                         Domain("x", True, 2, 19, "y", True, 0, 34));
+    // Test interchange of variables (flip the domain of the function)
+    check_domain_expr(Domain::Valid, vecS("x", "y"), in(y,x), 
+                        Domain("x", False, 0, 39, "y", False, 0, 19));
 
     f(x,y) = in(x-1,y) - in(x,y);
     check_domain_expr(Domain::Valid, vecS("x","y"), f(x,y-1), Domain("x", False, 1, 19, "y", False, 1, 40));
