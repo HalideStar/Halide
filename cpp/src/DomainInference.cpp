@@ -600,8 +600,11 @@ void domain_expr_test()
     
     g(x,y) = in(clamp(x,0,in.width()-1), clamp(y,0,in.height()-1)); // Old way to clamp
     g.valid() = in.valid(); // Manuially update the valid region.
+    g.computable() = g.infinite();
     h(x,y) = g(x,y)+g(x,y-1)+g(x,y+1);
+    //h.valid() = g.valid();
     check_domain_expr(Domain::Valid, vecS("x","y"), h(x,y), Domain("x", False, 0, 19, "y", False, 1, 38));
+    check_domain_expr(Domain::Computable, vecS("x","y"), h(x,y), Domain("x", False, Expr(), Expr(), "y", False, Expr(), Expr()));
     return;
 }
 

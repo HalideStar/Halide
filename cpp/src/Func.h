@@ -729,6 +729,12 @@ public:
 	
 	//LH
 	/** Get a handle to the valid domain for the purpose of modifying it */
+    // It is questionable whether the domain information should be blindly copied across
+    // or whether there should be some rearrangement of the index variables according to the
+    // way that the caller uses the callee.  The real problem here is that explicitly setting the 
+    // domain is too low level.  We need higher-level semantic operations for programmers
+    // that are related to what they are actually writing - such as kernel operations, border
+    // handling etc.
 	Domain &valid();
 
 	//LH
@@ -759,6 +765,9 @@ public:
 	/** Set the computable domain to be the same as an existing Func in a schedule format */
 	Func &computable(Func f);
 
+    //LH
+    /** Return an infinite domain for the current function. */
+    Domain infinite();
     
 };
 

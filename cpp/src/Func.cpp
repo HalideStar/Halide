@@ -442,6 +442,29 @@ Func &Func::computable(Func f) {
 	return *this;
 }
 
+//LH
+/** Return an infinite domain for the current function */
+Domain Func::infinite() {
+    if (func.args().size() == 0)
+        return Domain();
+    if (func.args().size() == 1)
+        return Domain(func.args()[0], false, Expr(), Expr());
+    if (func.args().size() == 2)
+        return Domain(func.args()[0], false, Expr(), Expr(),
+                      func.args()[1], false, Expr(), Expr());
+    if (func.args().size() == 3)
+        return Domain(func.args()[0], false, Expr(), Expr(),
+                      func.args()[1], false, Expr(), Expr(),
+                      func.args()[2], false, Expr(), Expr());
+    if (func.args().size() == 4)
+        return Domain(func.args()[0], false, Expr(), Expr(),
+                      func.args()[1], false, Expr(), Expr(),
+                      func.args()[2], false, Expr(), Expr(),
+                      func.args()[3], false, Expr(), Expr());
+    assert(0 && "Cannot construct infinite domain for function");
+    return Domain(); // Unknown situation.
+}
+
 
 
 namespace {
