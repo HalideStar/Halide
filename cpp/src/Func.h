@@ -767,8 +767,17 @@ public:
 
     //LH
     /** Return an infinite domain for the current function. */
+    // Note: Does not return a reference since that would require creating an object
+    // in the Func.  This will be used infrequently, so simply copy the temporary object into
+    // the destination.
     Domain infinite();
     
+    //LH
+    /** Methods to indicate that the current function is a kernel of other functions. */
+    Func &kernel(Func f1);
+    Func &kernel(Func f1, Func f2);
+    Func &kernel(Func f1, Func f2, Func f3);
+    Func &kernel(Func f1, Func f2, Func f3, Func f4);
 };
 
 

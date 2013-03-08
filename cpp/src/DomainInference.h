@@ -59,6 +59,8 @@ struct Domain {
            std::string wv, bool wpoisoned, Expr wmin, Expr wmax);
            
     int find(std::string v);
+
+    Domain intersection(Domain other);
 };
 
 namespace Internal {

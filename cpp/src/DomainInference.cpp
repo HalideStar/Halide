@@ -16,6 +16,7 @@ namespace Internal {
 
 // VarInterval: Represents an interval associated with a variable, including
 // the name of the variable and a poison flag for dead intervals.
+// update computes the intersection of intervals.
 void VarInterval::update(VarInterval result) {
     assert(result.varname == varname && "Trying to update incorrect variable in Domain");
     if (equal(poison, const_true()))
@@ -42,6 +43,8 @@ void VarInterval::update(VarInterval result) {
         imax = simplify(imax);
     }
 }
+
+// End namespace Internal
 }
 
 // Domain: Represents a domain whether valid, defined or some other.
@@ -111,6 +114,20 @@ int Domain::find(std::string v) {
             return i;
     return -1;
 }
+
+/** Compute the intersection of two domains. */
+Domain Domain::intersection(Domain other) {
+    Domain result = *this; // Start with one of the domains as the 'answer'
+    for (size_t i = 0; i < other.intervals.size() && i < intervals.size(); i++) {
+        // Update corresponding dimensions from the other domain.
+        Internal::VarInterval his = other.intervals[i];
+        his.varname = result.intervals[i].varname; // Override variable name match. ***HACK***
+        result.intervals[i].update(his);
+    }
+    return result;
+}
+
+
 
 namespace Internal {
 // BackwardIntervalInference walks an argument expression and
@@ -421,7 +438,6 @@ Domain domain_inference(Domain::DomainType dtype, std::vector<std::string> varia
 
 
 
-
 void check_interval(Expr e, Expr xmin, Expr xmax, 
                     bool correct_poison_bool, Expr correct_min, Expr correct_max, 
                     std::string correct_varname) {
@@ -580,8 +596,9 @@ void check_domain_expr(Domain::DomainType dtype, std::vector<std::string> variab
 void domain_expr_test()
 {
     Image<uint8_t> in(20,40);
-    Func f("f"), g("g"), h("h");
-    Var x("x"), y("y");
+    Image<uint8_t> inb(30,35);
+    Func f("f"), g("g"), h("h"), fa("fa"), fb("fb"), fc("fc");
+    Var x("x"), y("y"), a("a"), b("b");
     Expr False = Internal::make_bool(false);
     Expr True = Internal::make_bool(true);
     
@@ -601,13 +618,31 @@ void domain_expr_test()
     f(x,y) = in(x-1,y) - in(x,y);
     check_domain_expr(Domain::Valid, vecS("x","y"), f(x,y-1), Domain("x", False, 1, 19, "y", False, 1, 40));
     
+    // Function g is in with border replication simulated by clamp with manual setting of computable and valid regions
     g(x,y) = in(clamp(x,0,in.width()-1), clamp(y,0,in.height()-1)); // Old way to clamp
-    g.valid() = in.valid(); // Manuially update the valid region.
-    g.computable() = g.infinite();
-    h(x,y) = g(x,y)+g(x,y-1)+g(x,y+1);
-    //h.valid() = g.valid();
-    check_domain_expr(Domain::Valid, vecS("x","y"), h(x,y), Domain("x", False, 0, 19, "y", False, 1, 38));
+    g.computable() = g.infinite(); // Set the computable region first (in case we intersect valid with it)
+    g.valid() = in.valid(); // Manually update the valid region.
+    
+    // h is a kernel function of g, using the border handling
+    h(a,b) = g(a,b)+g(a,b-1)+g(a,b+1);
+    h.kernel(g); // h is a kernel function of g, so the valid region is copied and intersected with computable region
+    check_domain_expr(Domain::Valid, vecS("x","y"), h(x,y), Domain("x", False, 0, 19, "y", False, 0, 39));
     check_domain_expr(Domain::Computable, vecS("x","y"), h(x,y), Domain("x", False, Expr(), Expr(), "y", False, Expr(), Expr()));
+
+    // fa is a kernel function of both g and inb
+    // Note that the computable domain of inb limits the computable domain of fa
+    fa(x,b) = g(x-1,b+1) + inb(x,b-2);
+    // Before declaring fa to be kernel function, the automatically derived domains should be as follows.
+    // The shifts of the valid domains have impacted the final valid domain, and the computable domain is 
+    // also influenced by shifting of inb.
+    check_domain_expr(Domain::Valid, vecS("x","y"), fa(x,y), Domain("x", False, 1, 20, "y", False, 2, 36));
+    check_domain_expr(Domain::Computable, vecS("x","y"), fa(x,y), Domain("x", False, 0, 29, "y", False, 2, 36));
+    fa.kernel(g,inb);
+    // Declaring fa to be a kernel function overrides the shifts implicit in the definition of fa.
+    // For g, this means that the valid domain is copied but for inb the computable domain is restricting the valid
+    // domain.
+    check_domain_expr(Domain::Valid, vecS("x","y"), fa(x,y), Domain("x", False, 0, 19, "y", False, 2, 34));
+    check_domain_expr(Domain::Computable, vecS("x","y"), fa(x,y), Domain("x", False, 0, 29, "y", False, 2, 36));
     return;
 }
 

@@ -465,7 +465,24 @@ Domain Func::infinite() {
     return Domain(); // Unknown situation.
 }
 
-
+//LH
+/** Methods to indicate that the current function is a kernel of other functions. */
+Func &Func::kernel(Func f1) {
+    valid() = computable().intersection(f1.valid());
+    return *this;
+}
+Func &Func::kernel(Func f1, Func f2) {
+    valid() = computable().intersection(f1.valid()).intersection(f2.valid());
+    return *this;
+}
+Func &Func::kernel(Func f1, Func f2, Func f3) {
+    valid() = computable().intersection(f1.valid()).intersection(f2.valid()).intersection(f3.valid());
+    return *this;
+}
+Func &Func::kernel(Func f1, Func f2, Func f3, Func f4) {
+    valid() = computable().intersection(f1.valid()).intersection(f2.valid()).intersection(f3.valid()).intersection(f4.valid());
+    return *this;
+}
 
 namespace {
 class CountImplicitVars : public Internal::IRVisitor {
