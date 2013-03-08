@@ -393,52 +393,52 @@ FuncRefVar::FuncRefVar(Internal::Function f, const vector<Var> &a) : func(f) {
 //LH
 /** Get a handle to the valid domain for the purpose of modifying it */
 Domain &Func::valid() {
-	return func.valid();
+	return func.domain(Domain::Valid);
 }
 
 //LH
 /** Get a handle to the valid domain for the purpose of inspecting it */
 const Domain &Func::valid() const {
-	return func.valid();
+	return func.domain(Domain::Valid);
 }
 
 //LH
 /** Set the valid domain in a schedule format */
 Func &Func::valid(Domain d) {
-	func.valid() = d;
+	func.domain(Domain::Valid) = d;
 	return *this;
 }
 
 //LH
 /** Set the valid domain to be the same as an existing Func in a schedule format */
 Func &Func::valid(Func f) {
-	func.valid() = f.valid();
+	func.domain(Domain::Valid) = f.valid();
 	return *this;
 }
 
 //LH
 /** Get a handle to the computable domain for the purpose of modifying it */
 Domain &Func::computable() {
-	return func.computable();
+	return func.domain(Domain::Computable);
 }
 
 //LH
 /** Get a handle to the computable domain for the purpose of inspecting it */
 const Domain &Func::computable() const {
-	return func.computable();
+	return func.domain(Domain::Computable);
 }
 
 //LH
 /** Set the computable domain in a schedule format */
 Func &Func::computable(Domain d) {
-	func.computable() = d;
+	func.domain(Domain::Computable) = d;
 	return *this;
 }
 
 //LH
 /** Set the computable domain to be the same as an existing Func in a schedule format */
 Func &Func::computable(Func f) {
-	func.computable() = f.computable();
+	func.domain(Domain::Computable) = f.computable();
 	return *this;
 }
 

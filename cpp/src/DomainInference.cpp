@@ -48,6 +48,7 @@ void VarInterval::update(VarInterval result) {
 Domain::Domain() {
     intervals.clear();
 }
+
 Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax) {
     intervals = vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax));
 }
@@ -64,6 +65,44 @@ Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
     intervals = vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax),
                     Internal::VarInterval(yvarname, ypoisoned, ymin, ymax),
                     Internal::VarInterval(zvarname, zpoisoned, zmin, zmax));
+}
+
+Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
+               std::string yvarname, Expr ypoisoned, Expr ymin, Expr ymax,
+               std::string zvarname, Expr zpoisoned, Expr zmin, Expr zmax,
+               std::string wvarname, Expr wpoisoned, Expr wmin, Expr wmax) {
+    intervals = vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax),
+                    Internal::VarInterval(yvarname, ypoisoned, ymin, ymax),
+                    Internal::VarInterval(zvarname, zpoisoned, zmin, zmax),
+                    Internal::VarInterval(wvarname, wpoisoned, wmin, wmax));
+}
+
+Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax) {
+    intervals = vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax));
+}
+
+Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax,
+               std::string yvarname, bool ypoisoned, Expr ymin, Expr ymax) {
+    intervals = vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax),
+                    Internal::VarInterval(yvarname, Internal::make_bool(ypoisoned), ymin, ymax));
+}
+
+Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax,
+               std::string yvarname, bool ypoisoned, Expr ymin, Expr ymax,
+               std::string zvarname, bool zpoisoned, Expr zmin, Expr zmax) {
+    intervals = vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax),
+                    Internal::VarInterval(yvarname, Internal::make_bool(ypoisoned), ymin, ymax),
+                    Internal::VarInterval(zvarname, Internal::make_bool(zpoisoned), zmin, zmax));
+}
+
+Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax,
+               std::string yvarname, bool ypoisoned, Expr ymin, Expr ymax,
+               std::string zvarname, bool zpoisoned, Expr zmin, Expr zmax,
+               std::string wvarname, bool wpoisoned, Expr wmin, Expr wmax) {
+    intervals = vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax),
+                    Internal::VarInterval(yvarname, Internal::make_bool(ypoisoned), ymin, ymax),
+                    Internal::VarInterval(zvarname, Internal::make_bool(zpoisoned), zmin, zmax),
+                    Internal::VarInterval(wvarname, Internal::make_bool(wpoisoned), wmin, wmax));
 }
 
 int Domain::find(std::string v) {
@@ -87,6 +126,8 @@ public:
     
     BackwardIntervalInference(Expr axmin, Expr axmax) : 
         xmin(axmin), xmax(axmax), varname(""), poison(const_false()) {}
+    BackwardIntervalInference(VarInterval callee) : 
+        xmin(callee.imin), xmax(callee.imax), varname(""), poison(callee.poison) {}
 
 private:
 
@@ -114,8 +155,10 @@ private:
             // Looking at constant on RHS of Add node.
             // e = x + k
             // x = e - k
-            xmin = xmin - op->b;
-            xmax = xmax - op->b;
+            if (xmin.defined())
+                xmin = xmin - op->b;
+            if (xmax.defined())
+                xmax = xmax - op->b;
             // Process the tree recursively
             op->a.accept(this);
         }
@@ -131,9 +174,15 @@ private:
         if (is_const(op->a)) {
             // e = k - x
             // x = k - e
-            Expr new_xmin = op->a - xmax;
-            xmax = op->a - xmin;
-            xmin = new_xmin;
+            bool xmindef = xmin.defined();
+            bool xmaxdef = xmax.defined();
+            Expr new_xmin = xmax;
+            if (xmaxdef)
+                new_xmin = op->a - xmax;
+            if (xmindef)
+                xmax = op->a - xmin;
+            if (xmaxdef)
+                xmin = new_xmin;
             op->b.accept(this);
         }
         else
@@ -149,8 +198,10 @@ private:
             // We assume positive remainder semantics for division,
             // which is a valid assumption if the interval bounds are positive
             // Under these semantics, integer division always yields the floor.
-            xmin = (xmin + op->b - 1) / op->b;
-            xmax = xmax / op->b;
+            if (xmin.defined())
+                xmin = (xmin + op->b - 1) / op->b;
+            if (xmax.defined())
+                xmax = xmax / op->b;
             op->a.accept(this);
         }
         else
@@ -165,8 +216,10 @@ private:
             // This is based on assumption of positive remainder semantics for
             // division and is intended to ensure that dividing by 2 produces a new
             // image that has every pixel repeated; i.e. the dimension is doubled.
-            xmin = xmin * op->b;
-            xmax = (xmax + 1) * op->b - 1;
+            if (xmin.defined())
+                xmin = xmin * op->b;
+            if (xmax.defined())
+                xmax = (xmax + 1) * op->b - 1;
             op->a.accept(this);
         }
         else
@@ -189,6 +242,7 @@ private:
             // the range of x is broken into pieces, of which the
             // canonical piece is the intersection of intervals 0 to k-1 and
             // xmin to xmax.
+            poison = const_true();
         }
         else
             // e = k % x is not handled because it is not linear
@@ -216,11 +270,32 @@ VarInterval backwards_interval(Expr e, Expr xmin, Expr xmax) {
     if (result.imin.defined()) result.imin = simplify(result.imin);
     if (result.imax.defined()) result.imax = simplify(result.imax);
     if (result.poison.defined()) {
-        result.poison = result.poison || make_bool(infers.defaulted);
+        result.poison = result.poison || Internal::make_bool(infers.defaulted);
         result.poison = simplify(result.poison);
     }
     else
-        result.poison = make_bool(infers.defaulted);
+        result.poison = Internal::make_bool(infers.defaulted);
+
+    return result;
+}
+
+
+VarInterval backwards_interval(Expr e, VarInterval callee) {
+    //log(0) << "e: " << e << "    min: " << xmin << "    max: " << xmax << '\n';
+    BackwardIntervalInference infers(callee);
+    Expr e1 = simplify(e);
+    
+    e1.accept(&infers);
+    
+    VarInterval result(infers.varname, infers.poison, infers.xmin, infers.xmax);
+    if (result.imin.defined()) result.imin = simplify(result.imin);
+    if (result.imax.defined()) result.imax = simplify(result.imax);
+    if (result.poison.defined()) {
+        result.poison = result.poison || Internal::make_bool(infers.defaulted);
+        result.poison = simplify(result.poison);
+    }
+    else
+        result.poison = Internal::make_bool(infers.defaulted);
 
     return result;
 }
@@ -238,10 +313,12 @@ VarInterval backwards_interval(Expr e, Expr xmin, Expr xmax) {
 class ForwardDomainInference : public IRVisitor {
 public:
     Domain dom; // The domain that we are building.
+    Domain::DomainType dtype;
     
-    ForwardDomainInference(std::vector<std::string> variables) {
+    ForwardDomainInference(Domain::DomainType dt, std::vector<std::string> variables) {
+        dtype = dt;
         for (size_t i = 0; i < variables.size(); i++)
-            dom.intervals.push_back(VarInterval(variables[i], make_bool(false), Expr(), Expr()));
+            dom.intervals.push_back(VarInterval(variables[i], Internal::make_bool(false), Expr(), Expr()));
     }
 
 private:
@@ -283,12 +360,25 @@ private:
             
             // Perform backward interval analysis on the argument expression.
             // Have to know the valid domain for the actual argument of the function.
-            // For now, just use image dimensions.
+            // For images, just use image dimensions.  All the different types of domain are the same
+            // for images.
+            VarInterval result;
             if (func_call->call_type == Call::Image)
             {
-                VarInterval result = backwards_interval(func_call->args[i],
+                result = backwards_interval(func_call->args[i],
                                         func_call->image.min(i), 
                                         func_call->image.min(i) + func_call->image.extent(i) - 1);
+            }
+            else if (func_call->call_type == Call::Halide)
+            {
+                // For Halide calls, access the domain in the function object.
+                // We need to know the VarInterval of the i'th parameter of the called function.
+                result = backwards_interval(func_call->args[i],
+                                        func_call->func.domain(dtype).intervals[i]);
+            }
+            
+            // For known call types, log results and update the caller's domain.
+            if (func_call->call_type == Call::Image || func_call->call_type == Call::Halide) {
                 log(0) << "arg: " << func_call->args[i] << "    ";
                 if (equal(result.poison, const_true()))
                     log(0,"LH") << "poison\n";
@@ -301,7 +391,7 @@ private:
                     else
                         log(0,"LH") << '\n';
                 }
-                
+                        
                 // Search through the variables in the Domain and update the appropriate one
                 size_t index = dom.find(result.varname);
                 assert(index >= 0 && "Could not find free variable in domain variable list");
@@ -319,10 +409,10 @@ Difference between Var and Variable.  Variable is a parse tree node.
 Var is just a name.
 */
 
-Domain domain_inference(std::vector<std::string> variables, Expr e)
+Domain domain_inference(Domain::DomainType dtype, std::vector<std::string> variables, Expr e)
 {
     // At this level, we use a list of variables passed in.
-    ForwardDomainInference infers(variables);
+    ForwardDomainInference infers(dtype, variables);
     
     e.accept(&infers);
     
@@ -336,7 +426,7 @@ void check_interval(Expr e, Expr xmin, Expr xmax,
                     bool correct_poison_bool, Expr correct_min, Expr correct_max, 
                     std::string correct_varname) {
     Expr correct_poison;
-    correct_poison = make_bool(correct_poison_bool);
+    correct_poison = Internal::make_bool(correct_poison_bool);
     VarInterval result = backwards_interval(e, xmin, xmax);
     
     Expr e1 = simplify(e); // Duplicate simplification for debugging only
@@ -436,9 +526,9 @@ void backward_interval_test() {
 
 
 
-void check_domain_expr(std::vector<std::string> variables, Expr e, Domain d) {
+void check_domain_expr(Domain::DomainType dtype, std::vector<std::string> variables, Expr e, Domain d) {
     // Compute the domain of the expression using forward domain inference.
-    Domain edom = domain_inference(variables, e);
+    Domain edom = domain_inference(dtype, variables, e);
     
     std::cout << "e: " << e << '\n';
     for (size_t i = 0; i < edom.intervals.size(); i++)
@@ -458,24 +548,29 @@ void check_domain_expr(std::vector<std::string> variables, Expr e, Domain d) {
         if (edom.intervals[i].varname != variables[i]) {
             std::cout << "Incorrect variable name: " << edom.intervals[i].varname
                       << "    Should have been: " << variables[i] << '\n';
+            success = false;
         }
         if (edom.intervals[i].varname != d.intervals[i].varname) {
             std::cout << "Incorrect variable name: " << edom.intervals[i].varname
                       << "    Template answer: " << d.intervals[i].varname << '\n';
+            success = false;
         }
         if (! equal(edom.intervals[i].poison, d.intervals[i].poison)) {
             std::cout << "Incorrect poison: " << edom.intervals[i].poison
                       << "    Should have been: " << d.intervals[i].poison << '\n';
+            success = false;
         }
         if (! equal(d.intervals[i].poison, const_true())) {
             // Only check the numeric range if poison is not known to be true
             if (! equal(edom.intervals[i].imin, d.intervals[i].imin)) {
                 std::cout << "Incorrect imin: " << edom.intervals[i].imin
                           << "    Should have been: " << d.intervals[i].imin << '\n';
+                success = false;
             }
             if (! equal(edom.intervals[i].imax, d.intervals[i].imax)) {
                 std::cout << "Incorrect imax: " << edom.intervals[i].imax
                           << "    Should have been: " << d.intervals[i].imax << '\n';
+                success = false;
             }
         }
     }
@@ -485,21 +580,28 @@ void check_domain_expr(std::vector<std::string> variables, Expr e, Domain d) {
 void domain_expr_test()
 {
     Image<uint8_t> in(20,40);
-    Func f("f");
+    Func f("f"), g("g"), h("h");
     Var x("x"), y("y");
-    Expr False = make_bool(false);
-    Expr True = make_bool(true);
+    Expr False = Internal::make_bool(false);
+    Expr True = Internal::make_bool(true);
     
-    check_domain_expr(vecS("iv.0", "iv.1"), in, Domain("iv.0", False, 0, 19, "iv.1", False, 0, 39));
-    check_domain_expr(vecS("x", "y"), in(x-2,y), Domain("x", False, 2, 21, "y", False, 0, 39));
-    check_domain_expr(vecS("x", "y"), in(x-2,y) + in(x,y), Domain("x", False, 2, 19, "y", False, 0, 39));
-    check_domain_expr(vecS("x", "y"), in(x-2,y) + in(x,y) + in(x,y+5), 
+    check_domain_expr(Domain::Valid, vecS("iv.0", "iv.1"), in, Domain("iv.0", False, 0, 19, "iv.1", False, 0, 39));
+    check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y), Domain("x", False, 2, 21, "y", False, 0, 39));
+    check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y) + in(x,y), Domain("x", False, 2, 19, "y", False, 0, 39));
+    check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y) + in(x,y) + in(x,y+5), 
                         Domain("x", False, 2, 19, "y", False, 0, 34));
-    check_domain_expr(vecS("x", "y"), in(x-2,y) + in(x,y) + in(x,min(y+5,15)), 
+    check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y) + in(x,y) + in(x,min(y+5,15)), 
                         Domain("x", False, 2, 19, "y", True, 0, 34));
-    check_domain_expr(vecS("x", "y"), in(x-2,max(y,1)) + in(max(x,0),y) + in(min(x,9),y+5), 
+    check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,max(y,1)) + in(max(x,0),y) + in(min(x,9),y+5), 
                         Domain("x", True, 2, 19, "y", True, 0, 34));
+
+    f(x,y) = in(x-1,y) - in(x,y);
+    check_domain_expr(Domain::Valid, vecS("x","y"), f(x,y-1), Domain("x", False, 1, 19, "y", False, 1, 40));
     
+    g(x,y) = in(clamp(x,0,in.width()-1), clamp(y,0,in.height()-1)); // Old way to clamp
+    g.valid() = in.valid(); // Manuially update the valid region.
+    h(x,y) = g(x,y)+g(x,y-1)+g(x,y+1);
+    check_domain_expr(Domain::Valid, vecS("x","y"), h(x,y), Domain("x", False, 0, 19, "y", False, 0, 39));
     return;
 }
 

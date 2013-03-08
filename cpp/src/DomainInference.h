@@ -21,7 +21,15 @@ struct VarInterval
 };
 }
 
+
+
 struct Domain {
+    // Enumeration of different types of domain used in domain inference.
+    // MaxDomains is always last in the list - it is the dimension required for an array.
+    // Valid must be the first entry and must have value 0 because it is used as a loop initialiser.
+    // None of the others may have defined values because we loop over the enum.
+    typedef enum {Valid = 0, Computable, Efficient, MaxDomains} DomainType;
+
     std::vector<Halide::Internal::VarInterval> intervals;
     
     Domain();
@@ -31,12 +39,30 @@ struct Domain {
     Domain(std::string xv, Expr xpoisoned, Expr xmin, Expr xmax, 
            std::string yv, Expr ypoisoned, Expr ymin, Expr ymax, 
            std::string zv, Expr zpoisoned, Expr zmin, Expr zmax);
+    Domain(std::string xv, Expr xpoisoned, Expr xmin, Expr xmax, 
+           std::string yv, Expr ypoisoned, Expr ymin, Expr ymax, 
+           std::string zv, Expr zpoisoned, Expr zmin, Expr zmax,
+           std::string wv, Expr wpoisoned, Expr wmin, Expr wmax);
+           
+    // Equivalent constructors using C++ bool type for poisoned.
+    // This approach is adopted as a hack because header file loops
+    // make it impossible to include IROperator.h in Image.h
+    Domain(std::string xv, bool xpoisoned, Expr xmin, Expr xmax);
+    Domain(std::string xv, bool xpoisoned, Expr xmin, Expr xmax, 
+           std::string yv, bool ypoisoned, Expr ymin, Expr ymax);
+    Domain(std::string xv, bool xpoisoned, Expr xmin, Expr xmax, 
+           std::string yv, bool ypoisoned, Expr ymin, Expr ymax, 
+           std::string zv, bool zpoisoned, Expr zmin, Expr zmax);
+    Domain(std::string xv, bool xpoisoned, Expr xmin, Expr xmax, 
+           std::string yv, bool ypoisoned, Expr ymin, Expr ymax, 
+           std::string zv, bool zpoisoned, Expr zmin, Expr zmax,
+           std::string wv, bool wpoisoned, Expr wmin, Expr wmax);
            
     int find(std::string v);
 };
 
 namespace Internal {
-Domain domain_inference(std::vector<std::string> variables, Expr e);
+Domain domain_inference(Domain::DomainType dtype, std::vector<std::string> variables, Expr e);
 
 void domain_inference_test();
 }

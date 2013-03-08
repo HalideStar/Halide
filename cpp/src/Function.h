@@ -29,10 +29,9 @@ struct FunctionContents {
 	// The valid domain is the domain over which this function is useful and meaningful.
 	// For example, the valid domain of an edge detector would normally be the same as the input image
 	// with border handling used to provide useful results at the borders of the image.
-	Halide::Domain valid;
 	// The computable domain is the domain over which this function is known to be computable.
 	// For example, the valid domain may be extended indefinitely by replicating the border pixels.
-	Domain computable;
+	Domain domains[Domain::MaxDomains];
 
     Expr reduction_value;
     std::vector<Expr> reduction_args;
@@ -103,27 +102,15 @@ public:
     }   
 	
 	//LH
-	/** Get a handle to the valid domain for the purpose of modifying it */
-	Domain &valid() {
-		return contents.ptr->valid;
+	/** Get a handle to a domain for the purpose of modifying it */
+	Domain &domain(Domain::DomainType dt) {
+		return contents.ptr->domains[dt];
 	}
 
 	//LH
-	/** Get a handle to the valid domain for the purpose of inspecting it */
-	const Domain &valid() const {
-		return contents.ptr->valid;
-	}
-
-	//LH
-	/** Get a handle to the computable domain for the purpose of modifying it */
-	Domain &computable() {
-		return contents.ptr->computable;
-	}
-
-	//LH
-	/** Get a handle to the computable domain for the purpose of inspecting it */
-	const Domain &computable() const {
-		return contents.ptr->computable;
+	/** Get a handle to a domain for the purpose of inspecting it */
+	const Domain &domain(Domain::DomainType dt) const {
+		return contents.ptr->domains[dt];
 	}
 
     /** Get a mutable handle to the schedule for the reduction

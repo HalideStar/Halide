@@ -40,6 +40,7 @@ bool is_two(Expr e);
 /** Construct a const of the given type */
 Expr make_const(Type t, int val);
 
+//LH
 /** Construct a boolean constant from a C++ boolean value.
  * May also be a vector if width is given.
  * It is not possible to coerce a C++ boolean to Expr because

@@ -2,6 +2,9 @@
 #include "Function.h"
 #include "Scope.h"
 
+//LH
+#include "log.h"
+
 namespace Halide {
 namespace Internal {
 
@@ -85,7 +88,14 @@ void Function::define(const vector<string> &args, Expr value) {
     for (size_t i = 0; i < args.size(); i++) {
         Schedule::Dim d = {args[i], For::Serial};
         contents.ptr->schedule.dims.push_back(d);
-    }        
+    }   
+
+    // Compute forward domain inference.  Hack to loop over the enum.
+    for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
+        Domain::DomainType dtype = static_cast<Domain::DomainType>(j);
+        log(0) << "Domain inference for " << name() << "\n";
+        domain(dtype) = domain_inference(dtype, args, value);
+    }
 }
 
 void Function::define_reduction(const vector<Expr> &args, Expr value) {
@@ -140,6 +150,7 @@ void Function::define_reduction(const vector<Expr> &args, Expr value) {
         contents.ptr->reduction_schedule.dims.push_back(d);
     }
 }
+
 
 }
 }

@@ -21,8 +21,8 @@ HEADER_FILES = Util.h Type.h Argument.h Bounds.h BoundsInference.h Buffer.h buff
 LH_SOURCE_FILES = DomainInference.cpp
 LH_HEADER_FILES = DomainInference.h
 
-SOURCES = $(SOURCE_FILES:%.cpp=src/%.cpp) $(LH_SOURCE_FILES:%.cpp=src/%.cpp)
-OBJECTS = $(SOURCE_FILES:%.cpp=build/%.o) $(LH_SOURCE_FILES:%.cpp=build/%.o)
+SOURCES = $(LH_SOURCE_FILES:%.cpp=src/%.cpp) $(SOURCE_FILES:%.cpp=src/%.cpp)
+OBJECTS = $(LH_SOURCE_FILES:%.cpp=build/%.o) $(SOURCE_FILES:%.cpp=build/%.o)
 HEADERS = $(HEADER_FILES:%.h=src/%.h) $(LH_HEADER_FILES:%.h=src/%.h)
 
 STDLIB_ARCHS = x86 x86_avx ptx ptx_dev arm arm_android
