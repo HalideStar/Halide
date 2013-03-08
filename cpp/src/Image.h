@@ -30,6 +30,32 @@ private:
     T *base;
     int stride_1, stride_2, stride_3, dims;
     // @}
+    
+    //LH
+    Domain dom;
+
+    //LH
+    /** Compute the domain of the image for use in domain inference.
+     * The domain is precomputed so that a reference to it can be returned later on.
+     */
+    void compute_domain() {
+        if (dims == 0)
+            dom = Domain(); // An empty domain that has not been initialised.
+        else if (dims == 1)
+            dom = Domain("x", false, buffer.min(0), buffer.min(0) + buffer.extent(0) - 1);
+        else if (dims == 2)
+            dom = Domain("x", false, buffer.min(0), buffer.min(0) + buffer.extent(0) - 1,
+                         "y", false, buffer.min(1), buffer.min(1) + buffer.extent(1) - 1);
+        else if (dims == 3)
+            dom = Domain("x", false, buffer.min(0), buffer.min(0) + buffer.extent(0) - 1,
+                         "y", false, buffer.min(1), buffer.min(1) + buffer.extent(1) - 1,
+                         "z", false, buffer.min(2), buffer.min(2) + buffer.extent(2) - 1);
+        else if (dims == 4)
+            dom = Domain("x", false, buffer.min(0), buffer.min(0) + buffer.extent(0) - 1,
+                         "y", false, buffer.min(1), buffer.min(1) + buffer.extent(1) - 1,
+                         "z", false, buffer.min(2), buffer.min(2) + buffer.extent(2) - 1,
+                         "w", false, buffer.min(3), buffer.min(3) + buffer.extent(3) - 1);
+    }
 
     /** Prepare the buffer to be used as an image. Makes sure that the
      * cached strides are correct, and that the image data is on the
@@ -47,8 +73,9 @@ private:
             stride_1 = stride_2 = stride_3 = 0;
             dims = 0;
         }
+        compute_domain(); //LH
     }
-
+    
 public:
     /** Construct an undefined image handle */
     Image() {}
@@ -253,35 +280,19 @@ public:
      */
     operator Expr() const {return (*this)();}
 
-    
     //LH
-    /** Compute the domain of an image. */
-    Domain &domain(Domain::DomainType dtype) const {
-        if (dims == 0)
-            return Domain(); // An empty domain that has not been initialised.
-        else if (dims == 1)
-            return Domain("x", false, buffer.min(0), buffer.min(0) + buffer.extent(0));
-        else if (dims == 2)
-            return Domain("x", false, buffer.min(0), buffer.min(0) + buffer.extent(0),
-                          "y", false, buffer.min(1), buffer.min(1) + buffer.extent(1));
-        else if (dims == 3)
-            return Domain("x", false, buffer.min(0), buffer.min(0) + buffer.extent(0),
-                          "y", false, buffer.min(1), buffer.min(1) + buffer.extent(1),
-                          "z", false, buffer.min(2), buffer.min(2) + buffer.extent(2));
-        else if (dims == 4)
-            return Domain("x", false, buffer.min(0), buffer.min(0) + buffer.extent(0),
-                          "y", false, buffer.min(1), buffer.min(1) + buffer.extent(1),
-                          "z", false, buffer.min(2), buffer.min(2) + buffer.extent(2),
-                          "w", false, buffer.min(3), buffer.min(3) + buffer.extent(3));
+    /** Return the domain of an image. */
+    const Domain &domain(Domain::DomainType dtype) const {
+        return dom;
     }
 
     // LH
-    inline Domain &valid() const {
+    inline const Domain &valid() const {
         return domain(Domain::Valid); 
     }
     
     // LH
-    inline Domain &computable() const {
+    inline const Domain &computable() const {
         return domain(Domain::Computable);
     }
 };
