@@ -18,9 +18,6 @@ namespace Internal {
 // the name of the variable and a poison flag for dead intervals.
 // update computes the intersection of intervals.
 void VarInterval::update(VarInterval result) {
-    log(0) << "update...\n";
-    log(0) << result.varname << '\n';
-    log(0) << varname << '\n';
     assert(result.varname == varname && "Trying to update incorrect variable in Domain");
 
     // Poison is really "inexact": the result is not assured to be correct because
@@ -147,12 +144,12 @@ public:
     Expr xmax;
     std::string varname;
     Expr poison;
+    std::vector<std::string> varlist;
+    Domain &domain;
     
-    BackwardIntervalInference(Expr axmin, Expr axmax) : 
-        xmin(axmin), xmax(axmax), varname(""), poison(const_false()) {}
-    BackwardIntervalInference(VarInterval callee) : 
-        xmin(callee.imin), xmax(callee.imax), varname(""), poison(callee.poison) {}
-
+    BackwardIntervalInference(std::vector<std::string> v, Domain &dom, Expr axmin, Expr axmax, Expr xpoison) : 
+        xmin(axmin), xmax(axmax), varname(""), poison(xpoison), varlist(v), domain(dom) {}
+        
 private:
 
     using IRVisitor::visit;
@@ -165,11 +162,39 @@ private:
     //     It would be used to mirror the domain.  A better result is to use a border
     //     handling function to reflect the borders.
     
+    // When a node is visited and it turns out to be poison, we still need to visit the children
+    // because we need to find out which variable has been poisoned.  In fact, multiple variables
+    // could be poisoned.
+    
+    int find(std::vector<std::string> varlist, std::string var) {
+        for (size_t i = 0; i < varlist.size(); i++)
+            if (varlist[i] == var)
+                return i;
+        return -1;
+    }
+    
     void visit(const Variable *op) {
         // Variable node defines the varname string - the variable for which we are
         // building the inverse function.
+        int found = find(varlist, op->name);
+        
+        if (found < 0) {
+            // This is not a variable that we are interested in - it is probably a constant expression
+            // arising from, for example, an ImageParam.
+            // In the future, we should at least recognise some expressions and handle them.
+            log(0) << "Warning: Domain inference skipping variable name " << op->name << ".\n";
+            poison = const_true();
+            return;
+        }
         if (varname != "") {
             poison = const_true(); // Have already seen a variable in another branch
+            if (varname != op->name) {
+                // This is a different variable name than the one we are looking at primarily.
+                // Mark that variable also as poison in the domain, although the data is not changed
+                // because we are not touching the data that may already exist.
+                domain.intervals[found].poison = const_true();
+            }
+            return; // Do not override the variable that we are studying.
         }
         varname = op->name;
     }
@@ -189,6 +214,8 @@ private:
         else {
             assert(! is_const(op->a) && "Simplify did not put constant on RHS of Add");
             poison = const_true(); // Expression cannot be solved as it has branches not simplified out.
+            op->a.accept(this);
+            op->b.accept(this);
         }
     }
     
@@ -209,8 +236,11 @@ private:
                 xmin = new_xmin;
             op->b.accept(this);
         }
-        else
+        else {
             poison = const_true();
+            op->a.accept(this);
+            op->b.accept(this);
+        }
     }
     
     void visit(const Mul *op) {
@@ -228,8 +258,11 @@ private:
                 xmax = xmax / op->b;
             op->a.accept(this);
         }
-        else
+        else {
             poison = const_true();
+            op->a.accept(this);
+            op->b.accept(this);
+        }
     }
     
     void visit(const Div *op) {
@@ -246,9 +279,12 @@ private:
                 xmax = (xmax + 1) * op->b - 1;
             op->a.accept(this);
         }
-        else
+        else {
             // e = k / x is not handled because it is not a linear transformation
             poison = const_true();
+            op->a.accept(this);
+            op->b.accept(this);
+        }
     }
 
 #if 0
@@ -283,9 +319,9 @@ private:
 #endif
 };
 
-VarInterval backwards_interval(Expr e, Expr xmin, Expr xmax) {
-    //log(0) << "e: " << e << "    min: " << xmin << "    max: " << xmax << '\n';
-    BackwardIntervalInference infers(xmin, xmax);
+VarInterval backwards_interval(std::vector<std::string> varlist, Domain &dom, Expr e, Expr xmin, Expr xmax, Expr xpoison) {
+    log(0) << "e: " << e << "    min: " << xmin << "    max: " << xmax << '\n';
+    BackwardIntervalInference infers(varlist, dom, xmin, xmax, xpoison);
     Expr e1 = simplify(e);
     
     e1.accept(&infers);
@@ -299,29 +335,38 @@ VarInterval backwards_interval(Expr e, Expr xmin, Expr xmax) {
     }
     else
         result.poison = Internal::make_bool(infers.defaulted);
+    
+    // If it is known that the expression is inexact, then the range is set to infinite.
+    // This is because whatever information was computed is incomplete and could be incorrect
+    // This wont work if poison is an expression that is not constant: it becomes true always
+    // because we have discarded the partial information that would apply when poison was not
+    // true.  We could capture the detail by expressions of the form 
+    // select(poison-expression,infinity,partial-information)
+    // This is different than the case when separate expressions are analysed and one gives
+    // concrete data and the other is inexact; in this case the result is inexact but
+    // is restricted to the concrete data.  Of course, if we wanted to use expressions then
+    // we could represent all the cases.
+    log(0) << "Result: " << result.varname << "  " << result.poison << "  " << result.imin << "  " << result.imax << "\n";
+    if (result.poison.defined() && ! equal(result.poison, const_false())) {
+        result.imin = Expr();
+        result.imax = Expr();
+        if (! equal(result.poison, const_true())) {
+            log(0) << "Warning: Poison was an expression; lost information.\n";
+            result.poison = const_true();
+        }
+    }
 
     return result;
 }
 
 
-VarInterval backwards_interval(Expr e, VarInterval callee) {
-    //log(0) << "e: " << e << "    min: " << xmin << "    max: " << xmax << '\n';
-    BackwardIntervalInference infers(callee);
-    Expr e1 = simplify(e);
-    
-    e1.accept(&infers);
-    
-    VarInterval result(infers.varname, infers.poison, infers.xmin, infers.xmax);
-    if (result.imin.defined()) result.imin = simplify(result.imin);
-    if (result.imax.defined()) result.imax = simplify(result.imax);
-    if (result.poison.defined()) {
-        result.poison = result.poison || Internal::make_bool(infers.defaulted);
-        result.poison = simplify(result.poison);
-    }
-    else
-        result.poison = Internal::make_bool(infers.defaulted);
+VarInterval backwards_interval(std::vector<std::string> varlist, Domain &dom, Expr e, Expr xmin, Expr xmax) {
+    return backwards_interval(varlist, dom, e, xmin, xmax, const_false());
+}
 
-    return result;
+
+VarInterval backwards_interval(std::vector<std::string> varlist, Domain &dom, Expr e, VarInterval callee) {
+    return backwards_interval(varlist, dom, e, callee.imin, callee.imax, callee.poison);
 }
 
 
@@ -338,9 +383,11 @@ class ForwardDomainInference : public IRVisitor {
 public:
     Domain dom; // The domain that we are building.
     Domain::DomainType dtype;
+    std::vector<std::string> varlist;
     
     ForwardDomainInference(Domain::DomainType dt, std::vector<std::string> variables) {
         dtype = dt;
+        varlist = variables;
         for (size_t i = 0; i < variables.size(); i++)
             dom.intervals.push_back(VarInterval(variables[i], Internal::make_bool(false), Expr(), Expr()));
     }
@@ -364,23 +411,23 @@ private:
         // and if it is an image parameter, Parameter func_call->param is that.
         // To check use ->func.value().defined(), ->image.defined() and ->param.defined().
         
-        log(0,"LH") << "Call: " << func_call->name;
+        //log(0,"LH") << "Call: " << func_call->name;
         // Look at the call type 
-        if (func_call->call_type == Call::Image)
-            log(0) << " image";
-        else if (func_call->call_type == Call::Extern)
-            log(0) << " extern";
-        else if (func_call->call_type == Call::Halide)
-            log(0) << " halide";
-        else
-            log(0) << " unknown";
-        log(0) << '\n';
+        //if (func_call->call_type == Call::Image)
+            //log(0) << " image";
+        //else if (func_call->call_type == Call::Extern)
+            //log(0) << " extern";
+        //else if (func_call->call_type == Call::Halide)
+            //log(0) << " halide";
+        //else
+            //log(0) << " unknown";
+        //log(0) << '\n';
         // Each of the argument expressions must be processed in turn.
         for (size_t i = 0; i < func_call->args.size(); i++)
         {
             // func_call->args[i] is the i'th dimension index expression for the call.
             // For now, just print it out.
-            log(0,"LH") << "arg " << i << ": " << func_call->args[i] << '\n';
+            //log(0,"LH") << "arg " << i << ": " << func_call->args[i] << '\n';
             
             // Perform backward interval analysis on the argument expression.
             // Have to know the valid domain for the actual argument of the function.
@@ -390,12 +437,12 @@ private:
             if (func_call->call_type == Call::Image)
             {
                 if (func_call->image.defined()) {
-                    result = backwards_interval(func_call->args[i],
+                    result = backwards_interval(varlist, dom, func_call->args[i],
                                             func_call->image.min(i), 
                                             func_call->image.min(i) + func_call->image.extent(i) - 1);
                 }
                 else if (func_call->param.defined()) {
-                    result = backwards_interval(func_call->args[i],
+                    result = backwards_interval(varlist, dom, func_call->args[i],
                                             0, func_call->param.extent(i) - 1);
                 }
                 else
@@ -405,24 +452,24 @@ private:
             {
                 // For Halide calls, access the domain in the function object.
                 // We need to know the VarInterval of the i'th parameter of the called function.
-                result = backwards_interval(func_call->args[i],
+                result = backwards_interval(varlist, dom, func_call->args[i],
                                         func_call->func.domain(dtype).intervals[i]);
             }
             
             // For known call types, log results and update the caller's domain.
             if (func_call->call_type == Call::Image || func_call->call_type == Call::Halide) {
-                log(0) << "arg: " << func_call->args[i] << "    ";
-                if (equal(result.poison, const_true()))
-                    log(0,"LH") << "poison\n";
-                else {
-                    log(0,"LH") << "imin: " << result.imin << "    ";
-                    log(0,"LH") << "imax: " << result.imax << "    ";
-                    log(0,"LH") << "v: " << result.varname;
-                    if (! equal(result.poison, const_false()))
-                        log(0,"LH") << "    poison: " << result.poison << '\n';
-                    else
-                        log(0,"LH") << '\n';
-                }
+                //log(0) << "arg: " << func_call->args[i] << "    ";
+                //if (equal(result.poison, const_true()))
+                    //log(0,"LH") << "poison\n";
+                //else {
+                    //log(0,"LH") << "imin: " << result.imin << "    ";
+                    //log(0,"LH") << "imax: " << result.imax << "    ";
+                    //log(0,"LH") << "v: " << result.varname;
+                    //if (! equal(result.poison, const_false()))
+                        //log(0,"LH") << "    poison: " << result.poison << '\n';
+                    //else
+                        //log(0,"LH") << '\n';
+                //}
                         
                 // Search through the variables in the Domain and update the appropriate one
                 int index = dom.find(result.varname);
@@ -456,13 +503,13 @@ Domain domain_inference(Domain::DomainType dtype, std::vector<std::string> varia
 }
 
 
-
-void check_interval(Expr e, Expr xmin, Expr xmax, 
+void check_interval(std::vector<std::string> varlist, Expr e, Expr xmin, Expr xmax, 
                     bool correct_poison_bool, Expr correct_min, Expr correct_max, 
                     std::string correct_varname) {
     Expr correct_poison;
+    Domain dom("x", false, Expr(), Expr()); // A working domain for the test variable x
     correct_poison = Internal::make_bool(correct_poison_bool);
-    VarInterval result = backwards_interval(e, xmin, xmax);
+    VarInterval result = backwards_interval(varlist, dom, e, xmin, xmax);
     
     Expr e1 = simplify(e); // Duplicate simplification for debugging only
     log(0,"LH") << "e: " << e << "    ";
@@ -511,52 +558,52 @@ void backward_interval_test() {
     Var x("x"), y("y");
     std::string v = "<dummy>";
     Expr cmin, cmax;
+    std::vector<std::string> varlist = vecS("x","y","z","w");
     
     // Tests of backward interval inference
-    check_interval(x, 0, 100, false, 0, 100, "x");
-    check_interval(x + 1, 0, 100, false, -1, 99, "x");
-    check_interval(1 + x, 0, 100, false, -1, 99, "x");
-    check_interval(1 + x + 1, 0, 100, false, -2, 98, "x");
-    check_interval(x - 1, 0, 100, false, 1, 101, "x");
-    check_interval(1 - x, 0, 100, false, -99, 1, "x");
-    //check_interval(x + x, 0, 100, cmin, cmax, v);
+    check_interval(varlist, x, 0, 100, false, 0, 100, "x");
+    check_interval(varlist, x + 1, 0, 100, false, -1, 99, "x");
+    check_interval(varlist, 1 + x, 0, 100, false, -1, 99, "x");
+    check_interval(varlist, 1 + x + 1, 0, 100, false, -2, 98, "x");
+    check_interval(varlist, x - 1, 0, 100, false, 1, 101, "x");
+    check_interval(varlist, 1 - x, 0, 100, false, -99, 1, "x");
+    //check_interval(varlist, x + x, 0, 100, cmin, cmax, v);
     // Tests that use * and / should ensure that results are positive
     // so that positive remainder semantics hold for division
     // (until these semantics are actually implemented in Halide)
-    check_interval(2 * x, 10, 100, false, 5, 50, "x");
-    check_interval(x * 2, 10, 100, false, 5, 50, "x");
-    check_interval(x / 2, 10, 100, false, 20, 201, "x");
+    check_interval(varlist, 2 * x, 10, 100, false, 5, 50, "x");
+    check_interval(varlist, x * 2, 10, 100, false, 5, 50, "x");
+    check_interval(varlist, x / 2, 10, 100, false, 20, 201, "x");
     // x = 19  e = (19 + 1) / 2 = 10
     // x = 200  e = (201) / 2 = 100
-    check_interval((x + 1) / 2, 10, 100, false, 19, 200, "x");
-    check_interval((x + 2) / 2, 10, 100, false, 18, 199, "x");
+    check_interval(varlist, (x + 1) / 2, 10, 100, false, 19, 200, "x");
+    check_interval(varlist, (x + 2) / 2, 10, 100, false, 18, 199, "x");
     // (2 * x + 4) / 2 is the same as x + 2
-    check_interval((2 * x + 4) / 2, 10, 100, false, 8, 98, "x");
+    check_interval(varlist, (2 * x + 4) / 2, 10, 100, false, 8, 98, "x");
     // x = 8  e = (16 + 5) / 2 = 10
     // x = 98  e = (196 + 5) / 2 = 201 / 2 = 100
     // This expression also simplifies to x + 2
-    check_interval((2 * x + 5) / 2, 10, 100, false, 8, 98, "x");
+    check_interval(varlist, (2 * x + 5) / 2, 10, 100, false, 8, 98, "x");
     // x = 5  e = (15 + 5) / 2 = 10
     // x = 65  e = (195 + 5) / 2 = 100   but x = 66 is too big
-    check_interval((3 * x + 5) / 2, 10, 100, false, 5, 65, "x");
+    check_interval(varlist, (3 * x + 5) / 2, 10, 100, false, 5, 65, "x");
     // x = 7  e = (21 + 5) / 2 - 2 = 11  but x=6 e=(18+5)/2-2 = 9
     // x = 66  e = (198 + 5) / 2 - 2 = 99   but x=67 e=(201+5)/2-2=101
-    check_interval((3 * x + 5) / 2 - 2, 10, 100, false, 7, 66, "x");
+    check_interval(varlist, (3 * x + 5) / 2 - 2, 10, 100, false, 7, 66, "x");
     
     // Constant expressions are poison. They provide no constraint on the caller's
     // variables, although they may result in out-of-bounds errors on the callee.
     // But checking for out-of-bounds errors is a separate task.
-    check_interval(Expr(5) + 7, 0, 100, true, Expr(), Expr(), "");
-    check_interval(105, 0, 100, true, Expr(), Expr(), "");
+    check_interval(varlist, Expr(5) + 7, 0, 100, true, Expr(), Expr(), "");
+    check_interval(varlist, 105, 0, 100, true, Expr(), Expr(), "");
     // Expression is poison because it contains a node type that 
     // is not explicitly handled
-    check_interval(sin(x), 10, 100, true, 0, 0, "");
+    check_interval(varlist, sin(x), 10, 100, true, 0, 0, "");
     // Expression is poison because it contains more than one variable
     // Actually, it is detected as poison by Add node because it is not x + k
-    check_interval(x + y, 0, 100, true, 0, 0, "");
+    check_interval(varlist, x + y, 0, 100, true, 0, 0, "");
     return;
 }
-
 
 
 
@@ -595,18 +642,16 @@ void check_domain_expr(Domain::DomainType dtype, std::vector<std::string> variab
                       << "    Should have been: " << d.intervals[i].poison << '\n';
             success = false;
         }
-        if (! equal(d.intervals[i].poison, const_true())) {
-            // Only check the numeric range if poison is not known to be true
-            if (! equal(edom.intervals[i].imin, d.intervals[i].imin)) {
-                std::cout << "Incorrect imin: " << edom.intervals[i].imin
-                          << "    Should have been: " << d.intervals[i].imin << '\n';
-                success = false;
-            }
-            if (! equal(edom.intervals[i].imax, d.intervals[i].imax)) {
-                std::cout << "Incorrect imax: " << edom.intervals[i].imax
-                          << "    Should have been: " << d.intervals[i].imax << '\n';
-                success = false;
-            }
+        // Check the numeric range even if it is poison
+        if (! equal(edom.intervals[i].imin, d.intervals[i].imin)) {
+            std::cout << "Incorrect imin: " << edom.intervals[i].imin
+                      << "    Should have been: " << d.intervals[i].imin << '\n';
+            success = false;
+        }
+        if (! equal(edom.intervals[i].imax, d.intervals[i].imax)) {
+            std::cout << "Incorrect imax: " << edom.intervals[i].imax
+                      << "    Should have been: " << d.intervals[i].imax << '\n';
+            success = false;
         }
     }
     assert(success && "Domain inference test failed");
@@ -617,7 +662,7 @@ void domain_expr_test()
     Image<uint8_t> in(20,40);
     Image<uint8_t> inb(30,35);
     Func f("f"), g("g"), h("h"), fa("fa"), fb("fb"), fc("fc");
-    Var x("x"), y("y"), a("a"), b("b");
+    Var x("x"), y("y"), a("a"), b("b"), ext("fff.extent.0");
     Expr False = Internal::make_bool(false);
     Expr True = Internal::make_bool(true);
     
@@ -626,13 +671,31 @@ void domain_expr_test()
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y) + in(x,y), Domain("x", False, 2, 19, "y", False, 0, 39));
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y) + in(x,y) + in(x,y+5), 
                         Domain("x", False, 2, 19, "y", False, 0, 34));
+    // Inexact results due to use of min function. The expression y is the only understood expression.
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y) + in(x,y) + in(x,min(y+5,15)), 
-                        Domain("x", False, 2, 19, "y", True, 0, 34));
+                        Domain("x", False, 2, 19, "y", True, 0, 39));
+    // Inexact results due to use of max function.  
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,max(y,1)) + in(max(x,0),y) + in(min(x,9),y+5), 
-                        Domain("x", True, 2, 19, "y", True, 0, 34));
+                        Domain("x", True, 2, 21, "y", True, 0, 34));
     // Test interchange of variables (flip the domain of the function)
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(y,x), 
                         Domain("x", False, 0, 39, "y", False, 0, 19));
+    // Test multiple use of the same variable
+    check_domain_expr(Domain::Valid, vecS("x"), in(x,x), 
+                        Domain("x", False, 0, 19));
+    // Test mixture of variables
+    check_domain_expr(Domain::Valid, vecS("x", "y"), in(x+y,y), 
+                        Domain("x", True, Expr(), Expr(), "y", True, 0, 39));
+    // Test domain of a constant expression
+    check_domain_expr(Domain::Valid, vecS("x", "y"), 3, 
+                        Domain("x", False, Expr(), Expr(), "y", False, Expr(), Expr()));
+    // Test domain with a constant variable - treat it as though it were not a variable
+    check_domain_expr(Domain::Valid, vecS("x", "y"), ext, 
+                        Domain("x", False, Expr(), Expr(), "y", False, Expr(), Expr()));
+    // Test domain with a constant variable - treat it as though it were not a variable
+    // This test should produce a domain expression that involves fff.extent.0 but that is not yet implemented.
+    check_domain_expr(Domain::Valid, vecS("x", "y"), in(x - ext, y), 
+                        Domain("x", True, Expr(), Expr(), "y", False, 0, 39)); // **** TO BE FIXED  "x", False, ext, ext + 39....
 
     f(x,y) = in(x-1,y) - in(x,y);
     check_domain_expr(Domain::Valid, vecS("x","y"), f(x,y-1), Domain("x", False, 1, 19, "y", False, 1, 40));
