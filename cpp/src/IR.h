@@ -12,7 +12,6 @@
 #include "Type.h"
 #include "IntrusivePtr.h"
 #include "Buffer.h"
-#include "Parameter.h"
 #include "Util.h"
 
 //LH
@@ -158,6 +157,13 @@ struct Expr : public Internal::IRHandle {
         return ((Internal::BaseExprNode *)ptr)->type;
     }
 };    
+
+}
+
+//LH Now that Expr is defined, we can define a Parameter
+#include "Parameter.h"
+
+namespace Halide {
 
 namespace Internal {
 
@@ -729,6 +735,9 @@ struct Block : public StmtNode<Block> {
 
 // And the definition of a reduction domain
 #include "Reduction.h"
+
+//LH And a parameter (now dependent on Expr to return extent expression)
+#include "Parameter.h"
 
 namespace Halide {
 namespace Internal {

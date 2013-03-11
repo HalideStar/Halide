@@ -10,7 +10,7 @@ Expr u8(Expr a) {
 /* Do n unrolled iterations of game of life on a torus */
 Func gameOfLife(ImageParam input, int n) {
     Var x, y;
-    Func in;
+    Func in("in");
     if (n == 1) {
         in(x, y) = input(x, y);
     } else {
@@ -25,7 +25,7 @@ Func gameOfLife(ImageParam input, int n) {
                             in(E, y) + in(W, S) +
                             in(x, S) + in(E, S));    
     Expr alive = in(x, y) != 0;
-    Func output;
+    Func output("out");
     output(x, y) = select(livingNeighbors == 3 || (alive && livingNeighbors == 2), u8(1), u8(0));    
 
     return output;
@@ -87,7 +87,7 @@ int main(int argc, char **argv) {
 
     {
         // Outer loop in Halide using a reduction
-        Func life;
+        Func life("life");
 
         // Initialize step
         Var x, y, z;
@@ -106,7 +106,7 @@ int main(int argc, char **argv) {
         life(t.x, t.y, t.z%2) = select(livingNeighbors == 3 || (alive && livingNeighbors == 2), u8(1), u8(0));
         life.compute_root();
 
-        Func output;
+        Func output("output");
         output(x, y) = life(x, y, 1);        
 
         input.set(board3);

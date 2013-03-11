@@ -1,7 +1,7 @@
+#include "IR.h"
 #include "Var.h"
 #include "Func.h"
 #include "Image.h"
-#include "IR.h"
 #include "IREquality.h"
 #include "IROperator.h"
 #include "IRVisitor.h"
@@ -18,16 +18,23 @@ namespace Internal {
 // the name of the variable and a poison flag for dead intervals.
 // update computes the intersection of intervals.
 void VarInterval::update(VarInterval result) {
+    log(0) << "update...\n";
+    log(0) << result.varname << '\n';
+    log(0) << varname << '\n';
     assert(result.varname == varname && "Trying to update incorrect variable in Domain");
-    if (equal(poison, const_true()))
-        return; // Already poisoned. No more information can be collected.
-    if (equal(result.poison, const_true())) {
-        poison = const_true(); // Has become poisoned now.
-    }
-    if (! equal(result.poison, const_false())) { // Poison expression combination
+
+    // Poison is really "inexact": the result is not assured to be correct because
+    // at least one update of relevant information could not be resolved!
+    // Poison set to empty expression is the same as false.  This is a hack for initialisation.
+    if (! poison.defined())
+        poison = result.poison;
+    else if (result.poison.defined()) {
         poison = poison || result.poison;
         poison = simplify(poison);
     }
+
+    // Update the bounds according to information newly derived.  If inexact, the
+    // answers are generous (i.e. the actual domain may be smaller).
     if (! imin.defined()) { // Hack representation of infinity
         imin = result.imin;
     }
@@ -382,9 +389,17 @@ private:
             VarInterval result;
             if (func_call->call_type == Call::Image)
             {
-                result = backwards_interval(func_call->args[i],
-                                        func_call->image.min(i), 
-                                        func_call->image.min(i) + func_call->image.extent(i) - 1);
+                if (func_call->image.defined()) {
+                    result = backwards_interval(func_call->args[i],
+                                            func_call->image.min(i), 
+                                            func_call->image.min(i) + func_call->image.extent(i) - 1);
+                }
+                else if (func_call->param.defined()) {
+                    result = backwards_interval(func_call->args[i],
+                                            0, func_call->param.extent(i) - 1);
+                }
+                else
+                    assert(0 && "Call to Image is neither image nor imageparam\n");
             }
             else if (func_call->call_type == Call::Halide)
             {
@@ -410,10 +425,14 @@ private:
                 }
                         
                 // Search through the variables in the Domain and update the appropriate one
-                size_t index = dom.find(result.varname);
-                assert(index >= 0 && "Could not find free variable in domain variable list");
+                int index = dom.find(result.varname);
+                if (index >= 0) {
+                    dom.intervals[index].update(result);
+                }
+                else if (! result.varname.empty()) { // Empty varname means no interval information.
+                    log(0) << "Warning: The interval variable " << result.varname << " is unknown\n";
+                }
                 
-                dom.intervals[index].update(result);
             }
         }
     }

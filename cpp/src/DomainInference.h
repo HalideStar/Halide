@@ -12,7 +12,7 @@ struct VarInterval
     std::string varname;
     
     VarInterval(std::string v, Expr poisoned, Expr emin, Expr emax) : 
-        imin(emin), imax(emax), poison(poisoned), varname(v) {}
+        imin(emin), imax(emax), poison(poisoned), varname(v) { }
         
     VarInterval() : imin(Expr()), imax(Expr()), poison(Expr()), varname("") {}
 

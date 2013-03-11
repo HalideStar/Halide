@@ -23,6 +23,7 @@ LH_HEADER_FILES = DomainInference.h
 
 SOURCES = $(LH_SOURCE_FILES:%.cpp=src/%.cpp) $(SOURCE_FILES:%.cpp=src/%.cpp)
 OBJECTS = $(LH_SOURCE_FILES:%.cpp=build/%.o) $(SOURCE_FILES:%.cpp=build/%.o)
+GOBJECTS = $(LH_SOURCE_FILES:%.cpp=build_g/%.o) $(SOURCE_FILES:%.cpp=build_g/%.o)
 HEADERS = $(HEADER_FILES:%.h=src/%.h) $(LH_HEADER_FILES:%.h=src/%.h)
 
 STDLIB_ARCHS = x86 x86_avx ptx ptx_dev arm arm_android
@@ -44,6 +45,17 @@ bin/lib$(NAME).a: $(OBJECTS) $(INITIAL_MODULES)
 	rm -f bin/lib$(NAME).a
 	ar q bin/lib$(NAME).a build/Halide.o
 	ranlib bin/lib$(NAME).a
+    
+lib/libg$(NAME).a: $(GOBJECTS) $(INITIAL_MODULES)
+	@-mkdir -p lib
+	ld -r -o build_g/Halide.o $(GOBJECTS) $(INITIAL_MODULES) $(LIBS)
+	rm -f lib/libg$(NAME).a
+	ar q lib/libg$(NAME).a build_g/Halide.o
+	ranlib lib/libg$(NAME).a
+    
+lib/lib$(NAME).a: bin/lib$(NAME).a
+	@-mkdir -p lib
+	cp bin/lib$(NAME).a lib/lib$(NAME).a
 
 bin/lib$(NAME).so: bin/lib$(NAME).a
 	$(CXX) -shared $(OBJECTS) $(INITIAL_MODULES) $(LIBS) -o bin/lib$(NAME).so
@@ -88,6 +100,10 @@ build/%.o: src/%.cpp src/%.h build/llvm_ok
 	@-mkdir -p build
 	$(CXX) $(CXX_FLAGS) -c $< -o $@ -MMD -MP -MF build/$*.d -MT build/$*.o 
 
+build_g/%.o: src/%.cpp src/%.h build/llvm_ok
+	@-mkdir -p build_g
+	$(CXX) $(CXX_FLAGS) -g -c $< -o $@ -MMD -MP -MF build/$*.d -MT build/$*.o 
+
 .PHONY: clean
 clean:
 	rm -rf bin/*
@@ -103,8 +119,8 @@ tests: $(TESTS:test/%.cpp=test_%)
 bin/test_internal: test/internal.cpp bin/lib$(NAME).so
 	$(CXX) $(CXX_FLAGS) -rdynamic $< -Isrc -Lbin -l$(NAME) -lpthread -ldl -o $@	
 
-bin/test_%: test/%.cpp bin/lib$(NAME).so include/Halide.h
-	$(CXX) -g $< -rdynamic -Iinclude -Lbin -l$(NAME) -lpthread -ldl -o $@	
+bin/test_%: test/%.cpp lib/libg$(NAME).a include/Halide.h
+	$(CXX) -g $< -rdynamic -Iinclude -Llib -lg$(NAME) -lpthread -ldl -o $@	
 
 test_%: bin/test_%
 	@-mkdir -p tmp

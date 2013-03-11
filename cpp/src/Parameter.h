@@ -6,6 +6,7 @@
  */
 
 #include <string>
+#include <sstream>
 
 namespace Halide {
 namespace Internal {
@@ -68,6 +69,11 @@ public:
         assert(contents.defined());
         return contents.ptr->is_buffer;
     }
+
+
+    /** Get an expression representing the extent of this image
+     * parameter in the given dimension */
+    Expr extent(int x) const;
 
     /** If the parameter is a scalar parameter, get its currently
      * bound value. Only relevant when jitting */
