@@ -620,6 +620,9 @@ void domain_expr_test()
     
     // Function g is in with border replication simulated by clamp with manual setting of computable and valid regions
     g(x,y) = in(clamp(x,0,in.width()-1), clamp(y,0,in.height()-1)); // Old way to clamp
+	// The notation g.infinite() is untidy - it would seem that we should use Domain::infinite() instead, but
+    // the problem is that the number of dimensions is unknown.  One option is to assume that a complete lack
+    // of information in a dimension means infinite, in which case the empty Domain is also an finite Domain.
     g.computable() = g.infinite(); // Set the computable region first (in case we intersect valid with it)
     g.valid() = in.valid(); // Manually update the valid region.
     
