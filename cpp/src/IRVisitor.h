@@ -20,6 +20,7 @@ struct BitAnd; //LH
 struct BitOr; //LH
 struct BitXor; //LH
 struct SignFill; //LH
+struct Clamp; //LH
 struct Add;
 struct Sub;
 struct Mul;
@@ -78,6 +79,7 @@ public:
     virtual void visit(const BitOr *);
     virtual void visit(const BitXor *);
     virtual void visit(const SignFill *);
+    virtual void visit(const Clamp *);
     virtual void visit(const Add *);
     virtual void visit(const Sub *);
     virtual void visit(const Mul *);

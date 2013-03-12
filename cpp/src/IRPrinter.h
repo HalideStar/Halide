@@ -71,6 +71,7 @@ protected:
     void visit(const BitOr *); //LH
     void visit(const BitXor *); //LH
     void visit(const SignFill *); //LH
+    void visit(const Clamp *); //LH
     void visit(const Add *);
     void visit(const Sub *);
     void visit(const Mul *);

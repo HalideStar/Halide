@@ -25,6 +25,7 @@
  * 5. If code generation is required (usually, it is); add visitor to CodeGen.cpp and CodeGen.h
  *    If code generation is not required because the node should not remain at code generation
  *    time, should add a visitor and assert an error.
+ * 6. If the node appears in code subject to bounds analysis, add to Bounds.h and Bounds.cpp.
  */
 
 namespace Halide {
@@ -247,6 +248,45 @@ struct SignFill : public ExprNode<SignFill> {
         assert(value.defined() && "SignFill of undefined");
         assert((value.type().is_int() || value.type().is_uint()) && "parameter of SignFill is not an integer type");
     }
+};
+
+//LH
+/** Clamp and related functions that restrict the range of an expression */
+struct Clamp : public ExprNode<Clamp> {
+	Expr a, min, max, tile;
+	// Repliocate: If value is out of range, restrict it to the range. Implements Replicate border handling.
+	// Wrap: If value is out of range, wrap it into the range.
+	// Reflect: If value is out of range, reflect about the boundaries until it falls in the range.
+	// Reflect101: Reflect about the boundaries, but the min and max values are not repeated adjacent to themselves.
+	// Tile: Replicate a portion of the range outside the range.
+	typedef enum {Replicate, Wrap, Reflect, Reflect101, Tile} ClampType;
+	ClampType clamptype;
+	
+private:
+	void constructor() {
+        assert(a.defined() && "Clamp of undefined");
+        assert(min.defined() && "Clamp of undefined");
+        assert(max.defined() && "Clamp of undefined");
+        assert(min.type() == type && "Clamp of mismatched types");
+        assert(max.type() == type && "Clamp of mismatched types");
+		// Even if the clamp type is not Tile, we require a defined tile
+		// expression - makes it easier to walk the tree.  The expression is ignored.
+		assert(tile.defined() && "Clamp of undefined");
+		if (clamptype == Tile) {
+			assert(tile.type() == type && "Clamp of mismatched types");
+		}
+	}
+
+public:
+	Clamp(ClampType _t, Expr _a, Expr _min, Expr _max, Expr _tile): 
+		ExprNode<Clamp>(_a.type()), a(_a), min(_min), max(_max), tile(_tile), clamptype(_t) {
+		constructor();
+	}
+	Clamp(ClampType _t, Expr _a, Expr _min, Expr _max): 
+		ExprNode<Clamp>(_a.type()), a(_a), min(_min), max(_max), tile(0), clamptype(_t) {
+		assert(clamptype != Tile && "Tile clamp without tile expression");
+		constructor();
+	}
 };
 
 /** The sum of two expressions */
@@ -735,9 +775,6 @@ struct Block : public StmtNode<Block> {
 
 // And the definition of a reduction domain
 #include "Reduction.h"
-
-//LH And a parameter (now dependent on Expr to return extent expression)
-#include "Parameter.h"
 
 namespace Halide {
 namespace Internal {

@@ -18,6 +18,7 @@ template<> IRNodeType ExprNode<BitAnd>::_type_info = {}; //LH
 template<> IRNodeType ExprNode<BitOr>::_type_info = {}; //LH
 template<> IRNodeType ExprNode<BitXor>::_type_info = {}; //LH
 template<> IRNodeType ExprNode<SignFill>::_type_info = {}; //LH
+template<> IRNodeType ExprNode<Clamp>::_type_info = {}; //LH
 template<> IRNodeType ExprNode<Add>::_type_info = {};
 template<> IRNodeType ExprNode<Sub>::_type_info = {};
 template<> IRNodeType ExprNode<Mul>::_type_info = {};

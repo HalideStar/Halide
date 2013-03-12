@@ -110,6 +110,29 @@ ostream &operator<<(ostream &out, For::ForType type) {
     return out;
 }
 
+ostream &operator<<(ostream &out, Clamp::ClampType type) {
+    switch (type) {
+    case Clamp::Replicate:
+        out << "clamp";
+        break;
+    case Clamp::Wrap:
+        out << "wrap";
+        break;
+    case Clamp::Reflect:
+        out << "reflect";
+        break;
+    case Clamp::Reflect101:
+        out << "reflect101";
+        break;
+    case Clamp::Tile:
+        out << "tile";
+        break;
+    default:
+        assert(false && "Malformed clamp type");
+    }
+    return out;
+}
+
 ostream &operator<<(ostream &stream, Stmt ir) {
     if (!ir.defined()) {
         stream << "(undefined)" << std::endl;
@@ -186,6 +209,21 @@ void IRPrinter::visit(const BitXor *op) {
 void IRPrinter::visit(const SignFill *op) {
     stream << "signfill(";
     print(op->value);
+    stream << ')';
+}
+
+//LH
+void IRPrinter::visit(const Clamp *op) {
+    stream << op->clamptype <<"(";
+    print(op->a);
+    stream << ',';
+    print(op->min);
+    stream << ',';
+    print(op->max);
+	if (op->clamptype == Clamp::Tile) {
+		stream << ',';
+		print(op->tile);
+	}
     stream << ')';
 }
 

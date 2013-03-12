@@ -681,6 +681,10 @@ void CodeGen::visit(const SignFill *op) {
     value = builder->CreateAShr(codegen(op->value), codegen(make_const(op->type, op->type.bits-1)));
 }
 
+void CodeGen::visit(const Clamp *op) {
+    assert(0 && "Code generator found Clamp that should have been replaced with primitives");
+}
+
 void CodeGen::visit(const Add *op) {
     if (op->type.is_float()) {
         value = builder->CreateFAdd(codegen(op->a), codegen(op->b));

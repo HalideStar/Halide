@@ -53,6 +53,7 @@ protected:
     virtual void visit(const BitOr *); //LH
     virtual void visit(const BitXor *); //LH
     virtual void visit(const SignFill *); //LH
+    virtual void visit(const Clamp *); //LH
     virtual void visit(const Add *);
     virtual void visit(const Sub *);
     virtual void visit(const Mul *);

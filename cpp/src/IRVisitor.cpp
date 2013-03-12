@@ -55,6 +55,16 @@ void IRVisitor::visit(const SignFill *op) {
     op->value.accept(this);
 }
 
+//LH
+void IRVisitor::visit(const Clamp *op) {
+    defaulted = true;
+    op->a.accept(this);
+	op->min.accept(this);
+	op->max.accept(this);
+	if (op->clamptype == Internal::Clamp::Tile)
+		op->tile.accept(this);
+}
+
 void IRVisitor::visit(const Add *op) {
     defaulted = true;
     op->a.accept(this);
