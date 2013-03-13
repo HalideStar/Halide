@@ -109,6 +109,8 @@ clean:
 	rm -rf bin/*
 	rm -rf build/*
 	rm -rf include/*
+	rm -rf lib/*
+	rm -rf build_g/*
 
 .SECONDARY:
 
@@ -116,13 +118,26 @@ TESTS = $(shell ls test/*.cpp)
 
 tests: $(TESTS:test/%.cpp=test_%)
 
+gtests: $(TESTS:test/%.cpp=gtest_%)
+
 bin/test_internal: test/internal.cpp bin/lib$(NAME).so
 	$(CXX) $(CXX_FLAGS) -rdynamic $< -Isrc -Lbin -l$(NAME) -lpthread -ldl -o $@	
 
-bin/test_%: test/%.cpp lib/libg$(NAME).a include/Halide.h
+bin/gtest_internal: test/internal.cpp lib/libg$(NAME).a
+	$(CXX) -g -rdynamic $< -Isrc -Llib -lg$(NAME) -lpthread -ldl -o $@	
+
+bin/test_%: test/%.cpp bin/lib$(NAME).so include/Halide.h
+	$(CXX) -g $< -rdynamic -Iinclude -Lbin -l$(NAME) -lpthread -ldl -o $@	
+
+bin/gtest_%: test/%.cpp lib/libg$(NAME).a include/Halide.h
 	$(CXX) -g $< -rdynamic -Iinclude -Llib -lg$(NAME) -lpthread -ldl -o $@	
 
 test_%: bin/test_%
+	@-mkdir -p tmp
+	cd tmp ; DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
+	@-echo
+
+gtest_%: bin/gtest_%
 	@-mkdir -p tmp
 	cd tmp ; DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
 	@-echo

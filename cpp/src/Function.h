@@ -104,12 +104,14 @@ public:
 	//LH
 	/** Get a handle to a domain for the purpose of modifying it */
 	Domain &domain(Domain::DomainType dt) {
+        assert(dt >= 0 && dt < Domain::MaxDomains && "Domain type is not in range");
 		return contents.ptr->domains[dt];
 	}
 
 	//LH
 	/** Get a handle to a domain for the purpose of inspecting it */
 	const Domain &domain(Domain::DomainType dt) const {
+        assert(dt >= 0 && dt < Domain::MaxDomains && "Domain type is not in range");
 		return contents.ptr->domains[dt];
 	}
 

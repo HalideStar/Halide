@@ -264,8 +264,6 @@ void CodeGen_X86::visit(const Div *op) {
             value = call_intrin(Float(32, 8), "avx.rcp.ps.256", vec(op->b));
         }
     } 
-#if ! HALIDE_USE_MODULUS_DIVISION
-    // The following is not consistent with modulus division semantics when the numerator is negative.
     else if (op->type == Int(16, 8) && const_divisor > 1 && const_divisor < 64) {
         int method     = IntegerDivision::table_s16[const_divisor-2][0];
         int multiplier = IntegerDivision::table_s16[const_divisor-2][1];
@@ -299,7 +297,6 @@ void CodeGen_X86::visit(const Div *op) {
         Value *sign_bit = builder->CreateLShr(val, sh);
         value = builder->CreateAdd(mult, sign_bit);
     } 
-#endif
     else if (op->type == UInt(16, 8) && const_divisor > 1 && const_divisor < 64) {
         int method     = IntegerDivision::table_u16[const_divisor-2][0];
         int multiplier = IntegerDivision::table_u16[const_divisor-2][1];
