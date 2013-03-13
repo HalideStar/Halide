@@ -88,7 +88,8 @@ void Function::define(const vector<string> &args, Expr value) {
     for (size_t i = 0; i < args.size(); i++) {
         Schedule::Dim d = {args[i], For::Serial};
         contents.ptr->schedule.dims.push_back(d);
-    }   
+        contents.ptr->schedule.storage_dims.push_back(args[i]);
+    }        
 
     // Compute forward domain inference.  Hack to loop over the enum.
     for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
