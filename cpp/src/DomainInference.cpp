@@ -342,26 +342,41 @@ private:
         }
     }
 
-#if 0
+#if 1
     // Implementation of Mod is difficult: at the time when this
     // pass is run, xmin and/or xmax may be expressions.
     // A conservative result is to always use the intersection of
     // the range of e with the range 0 to k-1, but that gives an
     // interval that is too small in real situations.
     void visit(const Mod *op) {
-        if (is_const(op->b)) {
-            // e = x % k
+        log(0) << "Mod(" << op->a << ",  " << op->b << ") on (" << xmin << ", " << xmax << ")\n";
+        if (is_constant_expr(op->b)) {
+            // e = x % k  (for positive k)
             // If the range of e is 0 to k-1 or bigger then
             // the range of x is unconstrained.
             // If the range of e is smaller than 0 to k-1 then
             // the range of x is broken into pieces, of which the
             // canonical piece is the intersection of intervals 0 to k-1 and
             // xmin to xmax.
-            poison = const_true();
+            if (equal(xmin, 0) && equal(xmax, op->b + -1)) {
+                // This is a special case hack. If the range is 0 to k-1 then
+                // the mod operator makes the range infinite.
+                xmin = Expr();
+                xmax = Expr();
+                op->a.accept(this);
+            }
+            else {
+                poison = const_true();
+                op->a.accept(this);
+                op->b.accept(this);
+            }
         }
-        else
+        else {
             // e = k % x is not handled because it is not linear
             poison = const_true();
+            op->a.accept(this);
+            op->b.accept(this);
+        }
     }
     
     // Max
