@@ -178,7 +178,7 @@ private:
         // building the inverse function.
         int found = find(varlist, op->name);
         
-        if (found < 0) {
+        if (found < 0 || found >= (int) domain.intervals.size()) {
             // This is not a variable that we are interested in - it is probably a constant expression
             // arising from, for example, an ImageParam.
             // In the future, we should at least recognise some expressions and handle them.
