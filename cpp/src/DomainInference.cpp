@@ -136,6 +136,26 @@ int find(const std::vector<std::string> &varlist, std::string var) {
 }
 
 
+// HasVariable walks an argument expression and determines
+// whether the expression contains any of the listed variables.
+
+class HasVariable : public IRVisitor {
+private:
+    const std::vector<std::string> &varlist;
+
+public:
+    bool result;
+    HasVariable(const std::vector<std::string> &variables) : varlist(variables), result(false) {}
+    
+private:
+    using IRVisitor::visit;
+
+    void visit(const Variable *op) {
+        // Check whether variable name is in the list of known names
+        result |= (find(varlist, op->name) >= 0);
+    }
+};
+
 
 // BackwardIntervalInference walks an argument expression and
 // determines the domain interval in the callee based on the
@@ -156,6 +176,13 @@ public:
 private:
 
     using IRVisitor::visit;
+    
+    bool is_constant_expr(Expr e) {
+        // Walk the expression; if no variables in varlist are found then it is a constant expression
+        HasVariable hasvar(varlist);
+        e.accept(&hasvar);
+        return ! hasvar.result;
+    }
     
     // Not visited:
     // constants (IntImm, FloatImm) because they do not provide information about the
@@ -196,7 +223,7 @@ private:
     }
     
     void visit(const Add *op) {
-        if (is_const(op->b)) {
+        if (is_constant_expr(op->b)) {
             // Looking at constant on RHS of Add node.
             // e = x + k
             // x = e - k
@@ -207,10 +234,21 @@ private:
             // Process the tree recursively
             op->a.accept(this);
         }
+        else if (is_constant_expr(op->a)) {
+            // Looking at constant on LHS of Add node.
+            // e = k + x
+            // x = e - k
+            if (xmin.defined())
+                xmin = xmin - op->a;
+            if (xmax.defined())
+                xmax = xmax - op->a;
+            // Process the tree recursively
+            op->b.accept(this);
+        }
         else {
             assert(! is_const(op->a) && "Simplify did not put constant on RHS of Add");
             poison = const_true(); // Expression cannot be solved as it has branches not simplified out.
-            op->a.accept(this);
+            op->a.accept(this); // Process tree recursively to mark all variables as inexact
             op->b.accept(this);
         }
     }
@@ -218,7 +256,7 @@ private:
     void visit(const Sub *op) {
         // Simplify should convert x - 5 to x + -5.
         assert(! is_const(op->b) && "Simplify did not convert Sub of constant into negative Add");
-        if (is_const(op->a)) {
+        if (is_constant_expr(op->a)) {
             // e = k - x
             // x = k - e
             bool xmindef = xmin.defined();
@@ -232,6 +270,15 @@ private:
                 xmin = new_xmin;
             op->b.accept(this);
         }
+        else if (is_constant_expr(op->b)) {
+            // e = x - k
+            // x = e + k
+            if (xmin.defined())
+                xmin = xmin + op->b;
+            if (xmax.defined())
+                xmax = xmax + op->b;
+            op->a.accept(this);
+        }
         else {
             poison = const_true();
             op->a.accept(this);
@@ -241,10 +288,11 @@ private:
     
     void visit(const Mul *op) {
         assert(! is_const(op->a) && "Simplify did not put constant on RHS of Mul");
-        if (is_const(op->b)) {
+        if (is_constant_expr(op->b)) {
             // e = x * k
             // x = e / k
             // As a range, however, it is ceil(min/k) , floor(max/k)
+            // ????????? BUG: WE NEED FLOORDIV AND CEILDIV TO MAKE THIS WORK CORRECTLY
             // We assume positive remainder semantics for division,
             // which is a valid assumption if the interval bounds are positive
             // Under these semantics, integer division always yields the floor.
@@ -254,6 +302,16 @@ private:
                 xmax = xmax / op->b;
             op->a.accept(this);
         }
+        else if (is_constant_expr(op->a)) {
+            // e = k * x
+            // x = e / k
+            // ?????????????? BUG AS ABOVE
+            if (xmin.defined())
+                xmin = (xmin + op->a - 1) / op->a;
+            if (xmax.defined())
+                xmax = xmax / op->a;
+            op->b.accept(this);
+        }
         else {
             poison = const_true();
             op->a.accept(this);
@@ -262,10 +320,11 @@ private:
     }
     
     void visit(const Div *op) {
-        if (is_const(op->b)) {
+        if (is_constant_expr(op->b)) {
             // e = x / k
             // x = e * k
             // As a range, however, it is min * k to (max + 1) * k - 1
+            // ????????? BUGGY ASSUMPTIONS
             // This is based on assumption of positive remainder semantics for
             // division and is intended to ensure that dividing by 2 produces a new
             // image that has every pixel repeated; i.e. the dimension is doubled.
@@ -689,9 +748,9 @@ void domain_expr_test()
     check_domain_expr(Domain::Valid, vecS("x", "y"), ext, 
                         Domain("x", False, Expr(), Expr(), "y", False, Expr(), Expr()));
     // Test domain with a constant variable - treat it as though it were not a variable
-    // This test should produce a domain expression that involves fff.extent.0 but that is not yet implemented.
+    // Expressions will include the constant variable
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x - ext, y), 
-                        Domain("x", True, Expr(), Expr(), "y", False, 0, 39)); // **** TO BE FIXED  "x", False, ext, ext + 39....
+                        Domain("x", False, ext, ext + 19, "y", False, 0, 39));
 
     f(x,y) = in(x-1,y) - in(x,y);
     check_domain_expr(Domain::Valid, vecS("x","y"), f(x,y-1), Domain("x", False, 1, 19, "y", False, 1, 40));
