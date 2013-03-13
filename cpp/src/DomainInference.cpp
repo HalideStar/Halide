@@ -144,10 +144,10 @@ public:
     Expr xmax;
     std::string varname;
     Expr poison;
-    std::vector<std::string> varlist;
+    const std::vector<std::string> &varlist;
     Domain &domain;
     
-    BackwardIntervalInference(std::vector<std::string> v, Domain &dom, Expr axmin, Expr axmax, Expr xpoison) : 
+    BackwardIntervalInference(const std::vector<std::string> &v, Domain &dom, Expr axmin, Expr axmax, Expr xpoison) : 
         xmin(axmin), xmax(axmax), varname(""), poison(xpoison), varlist(v), domain(dom) {}
         
 private:
@@ -166,7 +166,7 @@ private:
     // because we need to find out which variable has been poisoned.  In fact, multiple variables
     // could be poisoned.
     
-    int find(std::vector<std::string> varlist, std::string var) {
+    int find(const std::vector<std::string> &varlist, std::string var) {
         for (size_t i = 0; i < varlist.size(); i++)
             if (varlist[i] == var)
                 return i;
@@ -178,7 +178,7 @@ private:
         // building the inverse function.
         int found = find(varlist, op->name);
         
-        if (found < 0) {
+        if (found < 0 || found >= (int) domain.intervals.size()) {
             // This is not a variable that we are interested in - it is probably a constant expression
             // arising from, for example, an ImageParam.
             // In the future, we should at least recognise some expressions and handle them.
@@ -319,7 +319,7 @@ private:
 #endif
 };
 
-VarInterval backwards_interval(std::vector<std::string> varlist, Domain &dom, Expr e, Expr xmin, Expr xmax, Expr xpoison) {
+VarInterval backwards_interval(const std::vector<std::string> &varlist, Domain &dom, Expr e, Expr xmin, Expr xmax, Expr xpoison) {
     log(0) << "e: " << e << "    min: " << xmin << "    max: " << xmax << '\n';
     BackwardIntervalInference infers(varlist, dom, xmin, xmax, xpoison);
     Expr e1 = simplify(e);
@@ -360,12 +360,12 @@ VarInterval backwards_interval(std::vector<std::string> varlist, Domain &dom, Ex
 }
 
 
-VarInterval backwards_interval(std::vector<std::string> varlist, Domain &dom, Expr e, Expr xmin, Expr xmax) {
+VarInterval backwards_interval(const std::vector<std::string> &varlist, Domain &dom, Expr e, Expr xmin, Expr xmax) {
     return backwards_interval(varlist, dom, e, xmin, xmax, const_false());
 }
 
 
-VarInterval backwards_interval(std::vector<std::string> varlist, Domain &dom, Expr e, VarInterval callee) {
+VarInterval backwards_interval(const std::vector<std::string> &varlist, Domain &dom, Expr e, VarInterval callee) {
     return backwards_interval(varlist, dom, e, callee.imin, callee.imax, callee.poison);
 }
 
@@ -383,11 +383,9 @@ class ForwardDomainInference : public IRVisitor {
 public:
     Domain dom; // The domain that we are building.
     Domain::DomainType dtype;
-    std::vector<std::string> varlist;
+    const std::vector<std::string> &varlist;
     
-    ForwardDomainInference(Domain::DomainType dt, std::vector<std::string> variables) {
-        dtype = dt;
-        varlist = variables;
+    ForwardDomainInference(Domain::DomainType dt, const std::vector<std::string> &variables) : dtype(dt), varlist(variables) {
         for (size_t i = 0; i < variables.size(); i++)
             dom.intervals.push_back(VarInterval(variables[i], Internal::make_bool(false), Expr(), Expr()));
     }
@@ -492,10 +490,12 @@ Difference between Var and Variable.  Variable is a parse tree node.
 Var is just a name.
 */
 
-Domain domain_inference(Domain::DomainType dtype, std::vector<std::string> variables, Expr e)
+Domain domain_inference(Domain::DomainType dtype, const std::vector<std::string> &variables, Expr e)
 {
     // At this level, we use a list of variables passed in.
     ForwardDomainInference infers(dtype, variables);
+    
+    assert(e.defined() && "domain_inference applied to undefined expression");
     
     e.accept(&infers);
     

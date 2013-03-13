@@ -641,20 +641,12 @@ Stmt add_image_checks(Stmt s, Function f) {
                                   << " is unbounded in dimension " << j << std::endl;
                         assert(false);
                     }
-                    
-                    // LH: More informative assertion failures identify whether the
-                    // access out of bounds is below or above.  This can help the user 
-                    // programmer to see whether changes to the code impact the error.
                     ostringstream error_msg;
-                    error_msg << name << " is accessed below bounds in dimension " << j;
-                    Stmt check = new AssertStmt((actual_min <= min_used), 
+                    error_msg << name << " is accessed out of bounds in dimension " << j;
+                    Stmt check = new AssertStmt((actual_min <= min_used) &&
+                                                (actual_min + actual_extent >= min_used + extent_used), 
                                                 error_msg.str());
                     s = new Block(check, s);
-                    ostringstream error_msg2;
-                    error_msg2 << name << " is accessed above bounds in dimension " << j;
-                    Stmt check2 = new AssertStmt((actual_min + actual_extent >= min_used + extent_used), 
-                                                error_msg2.str());
-                    s = new Block(check2, s);
                 }
             }
         } else {

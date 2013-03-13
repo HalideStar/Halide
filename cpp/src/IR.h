@@ -165,7 +165,6 @@ struct Expr : public Internal::IRHandle {
 #include "Parameter.h"
 
 namespace Halide {
-
 namespace Internal {
 
 /** A reference-counted handle to a statement node. */

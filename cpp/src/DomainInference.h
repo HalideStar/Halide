@@ -64,7 +64,7 @@ struct Domain {
 };
 
 namespace Internal {
-Domain domain_inference(Domain::DomainType dtype, std::vector<std::string> variables, Expr e);
+Domain domain_inference(Domain::DomainType dtype, const std::vector<std::string> &variables, Expr e);
 
 void domain_inference_test();
 }

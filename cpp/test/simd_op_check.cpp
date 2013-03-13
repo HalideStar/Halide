@@ -247,10 +247,7 @@ void check_sse_all() {
     check_sse("paddd", 4, i32_1 + i32_2);
     check_sse("psubd", 4, i32_1 - i32_2);
     check_sse("pmulhw", 8, i16((i32(i16_1) * i32(i16_2)) / (256*256)));
-#if ! HALIDE_USE_MODULUS_DIVISION
-    // With modulus division semantics, /15 does not generate multiplication.
     check_sse("pmulhw", 8, i16_1 / 15);
-#endif
     check_sse("pmullw", 8, i16_1 * i16_2);
 
     check_sse("pcmpeqb", 16, select(u8_1 == u8_2, u8(1), u8(2)));
