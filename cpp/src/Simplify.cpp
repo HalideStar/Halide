@@ -473,14 +473,14 @@ class Simplify : public IRMutator {
             // (x * (b*a)) % b -> 0
             expr = make_zero(a.type());
         } else if (add_a && mul_a_a && const_int(mul_a_a->b, &ia) && const_int(b, &ib) && (ia % ib == 0)) {
-            // (x * (b*a) + y) % b -> y
-            expr = add_a->b;
+            // (x * (b*a) + y) % b -> (y % b)
+            expr = mutate(add_a->b % ib);
         } else if (add_a && mul_a_b && const_int(mul_a_b->b, &ia) && const_int(b, &ib) && (ia % ib == 0)) {
-            // (y + x * (b*a)) % b -> y
-            expr = add_a->a;
+            // (y + x * (b*a)) % b -> (y % b)
+            expr = mutate(add_a->a % ib);
         } else if (const_int(b, &ib) && a.type() == Int(32) && mod_rem.modulus % ib == 0) {
-            // ((a*b)*x + c) % a -> c
-            expr = mod_rem.remainder;
+            // ((a*b)*x + c) % a -> c % a
+            expr = mod_rem.remainder % ib;
         } else if (ramp_a && const_int(ramp_a->stride, &ia) && 
                    broadcast_b && const_int(broadcast_b->value, &ib) &&
                    ia % ib == 0) {
@@ -920,9 +920,10 @@ class Simplify : public IRMutator {
             // Substitute the value wherever we see it
             scope.push(op->name, value);
         } else if (ramp && is_simple_const(ramp->stride)) {
-            // Make a new name to refer to the base instead, and push the ramp inside
+            wrapper_name = op->name + ".base" + unique_name('.');
 
-            Expr val = new Variable(ramp->base.type(), op->name + ".base");
+            // Make a new name to refer to the base instead, and push the ramp inside
+            Expr val = new Variable(ramp->base.type(), wrapper_name);
             Expr base = ramp->base;
 
             // If it's a multiply, move the multiply part inwards
@@ -937,13 +938,15 @@ class Simplify : public IRMutator {
 
             scope.push(op->name, val);
 
-            wrapper_name = op->name + ".base";
             wrapper_value = base;
         } else if (broadcast) {
+            wrapper_name = op->name + ".value" + unique_name('.');
+
             // Make a new name refer to the scalar version, and push the broadcast inside            
-            scope.push(op->name, new Broadcast(new Variable(broadcast->value.type(), op->name + ".value"), 
-                                               broadcast->width));
-            wrapper_name = op->name + ".value";
+            scope.push(op->name, 
+                       new Broadcast(new Variable(broadcast->value.type(), 
+                                                  wrapper_name), 
+                                     broadcast->width));
             wrapper_value = broadcast->value;
         } else if (var) {
             // This var is just equal to another var. We should subs
@@ -1144,8 +1147,9 @@ void simplify_test() {
     check(Expr(new Broadcast(x, 4)) % Expr(new Broadcast(y, 4)), 
           Expr(new Broadcast(x % y, 4)));
     check((x*8) % 4, 0);
-    check((x*8 + y) % 4, y);
-    check((y + x*8) % 4, y);
+    check((x*8 + y) % 4, y % 4);
+    check((y + x*8) % 4, y % 4);
+    check((y*16 + 13) % 2, 1);
     check(Expr(new Ramp(x, 2, 4)) % (new Broadcast(2, 4)), 
           new Broadcast(x % 2, 4));
     check(Expr(new Ramp(2*x+1, 4, 4)) % (new Broadcast(2, 4)), 
@@ -1234,15 +1238,15 @@ void simplify_test() {
 
     // Check ramps in lets get pushed inwards
     check(new Let("vec", new Ramp(x*2+7, 3, 4), vec + Expr(new Broadcast(2, 4))), 
-          new Let("vec.base", x*2+7, 
+          new Let("vec.base.0", x*2+7, 
                   new Let("vec", new Ramp(x*2+7, 3, 4), 
-                          new Ramp(Expr(new Variable(Int(32), "vec.base")) + 2, 3, 4))));
+                          new Ramp(Expr(new Variable(Int(32), "vec.base.0")) + 2, 3, 4))));
 
     // Check broadcasts in lets get pushed inwards
     check(new Let("vec", new Broadcast(x, 4), vec + Expr(new Broadcast(2, 4))),
-          new Let("vec.value", x, 
+          new Let("vec.value.1", x, 
                   new Let("vec", new Broadcast(x, 4), 
-                          new Broadcast(Expr(new Variable(Int(32), "vec.value")) + 2, 4))));
+                          new Broadcast(Expr(new Variable(Int(32), "vec.value.1")) + 2, 4))));
     // Check values don't jump inside lets that share the same name
     check(new Let("x", 3, Expr(new Let("x", y, x+4)) + x), 
           new Let("x", 3, Expr(new Let("x", y, y+4)) + 3));
