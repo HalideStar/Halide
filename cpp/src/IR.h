@@ -160,11 +160,10 @@ struct Expr : public Internal::IRHandle {
 
 }
 
-//LH Now that Expr is defined, we can define a Parameter
+// Now that we've defined an Expr, we can include Parameter.h
 #include "Parameter.h"
 
 namespace Halide {
-
 namespace Internal {
 
 /** A reference-counted handle to a statement node. */
