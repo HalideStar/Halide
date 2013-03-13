@@ -95,7 +95,7 @@ void Function::define(const vector<string> &args, Expr value) {
     // Compute forward domain inference.  Hack to loop over the enum.
     for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
         Domain::DomainType dtype = static_cast<Domain::DomainType>(j);
-        log(0) << "Domain inference for " << name() << "\n";
+        log(2,"DI") << "Domain inference for " << name() << "\n";
         domain(dtype) = domain_inference(dtype, args, value);
     }
 }

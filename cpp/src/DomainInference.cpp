@@ -112,13 +112,6 @@ Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax,
                     Internal::VarInterval(wvarname, Internal::make_bool(wpoisoned), wmin, wmax));
 }
 
-int Domain::find(std::string v) {
-    for (size_t i = 0; i < intervals.size(); i++)
-        if (v == intervals[i].varname)
-            return i;
-    return -1;
-}
-
 /** Compute the intersection of two domains. */
 Domain Domain::intersection(Domain other) {
     Domain result = *this; // Start with one of the domains as the 'answer'
@@ -134,6 +127,16 @@ Domain Domain::intersection(Domain other) {
 
 
 namespace Internal {
+
+int find(const std::vector<std::string> &varlist, std::string var) {
+    for (size_t i = 0; i < varlist.size(); i++)
+        if (varlist[i] == var)
+            return i;
+    return -1;
+}
+
+
+
 // BackwardIntervalInference walks an argument expression and
 // determines the domain interval in the callee based on the
 // domain interval in the caller, which is passed to it.
@@ -165,13 +168,6 @@ private:
     // When a node is visited and it turns out to be poison, we still need to visit the children
     // because we need to find out which variable has been poisoned.  In fact, multiple variables
     // could be poisoned.
-    
-    int find(const std::vector<std::string> &varlist, std::string var) {
-        for (size_t i = 0; i < varlist.size(); i++)
-            if (varlist[i] == var)
-                return i;
-        return -1;
-    }
     
     void visit(const Variable *op) {
         // Variable node defines the varname string - the variable for which we are
@@ -320,7 +316,7 @@ private:
 };
 
 VarInterval backwards_interval(const std::vector<std::string> &varlist, Domain &dom, Expr e, Expr xmin, Expr xmax, Expr xpoison) {
-    log(0) << "e: " << e << "    min: " << xmin << "    max: " << xmax << '\n';
+    log(3,"DI") << "e: " << e << "    min: " << xmin << "    max: " << xmax << '\n';
     BackwardIntervalInference infers(varlist, dom, xmin, xmax, xpoison);
     Expr e1 = simplify(e);
     
@@ -346,7 +342,7 @@ VarInterval backwards_interval(const std::vector<std::string> &varlist, Domain &
     // concrete data and the other is inexact; in this case the result is inexact but
     // is restricted to the concrete data.  Of course, if we wanted to use expressions then
     // we could represent all the cases.
-    log(0) << "Result: " << result.varname << "  " << result.poison << "  " << result.imin << "  " << result.imax << "\n";
+    log(2,"DI") << "Result: " << result.varname << "  " << result.poison << "  " << result.imin << "  " << result.imax << "\n";
     if (result.poison.defined() && ! equal(result.poison, const_false())) {
         result.imin = Expr();
         result.imax = Expr();
@@ -470,7 +466,7 @@ private:
                 //}
                         
                 // Search through the variables in the Domain and update the appropriate one
-                int index = dom.find(result.varname);
+                int index = find(varlist, result.varname);
                 if (index >= 0) {
                     dom.intervals[index].update(result);
                 }
@@ -507,24 +503,24 @@ void check_interval(std::vector<std::string> varlist, Expr e, Expr xmin, Expr xm
                     bool correct_poison_bool, Expr correct_min, Expr correct_max, 
                     std::string correct_varname) {
     Expr correct_poison;
-    Domain dom("x", false, Expr(), Expr()); // A working domain for the test variable x
+    Domain dom("x", false, Expr(), Expr(), "y", false, Expr(), Expr()); // A working domain for the test variables x and y
     correct_poison = Internal::make_bool(correct_poison_bool);
     VarInterval result = backwards_interval(varlist, dom, e, xmin, xmax);
     
     Expr e1 = simplify(e); // Duplicate simplification for debugging only
-    log(0,"LH") << "e: " << e << "    ";
-    log(0,"LH") << "e1: " << e1 << "    ";
+    log(1,"DI") << "e: " << e << "    ";
+    log(2,"DI") << "e1: " << e1 << "    ";
     
     if (equal(result.poison, const_true()))
-        log(0,"LH") << "poison\n";
+        log(1,"DI") << "inexact\n";
     else {
-        log(0,"LH") << "imin: " << result.imin << "    ";
-        log(0,"LH") << "imax: " << result.imax << "    ";
-        log(0,"LH") << "v: " << result.varname;
+        log(1,"DI") << "imin: " << result.imin << "    ";
+        log(1,"DI") << "imax: " << result.imax << "    ";
+        log(1,"DI") << "v: " << result.varname;
         if (! equal(result.poison, const_false()))
-            log(0,"LH") << "    poison: " << result.poison << '\n';
+            log(1,"DI") << "    inexact: " << result.poison << '\n';
         else
-            log(0,"LH") << '\n';
+            log(1,"DI") << '\n';
     }
     
     bool success = true;
@@ -612,12 +608,12 @@ void check_domain_expr(Domain::DomainType dtype, std::vector<std::string> variab
     // Compute the domain of the expression using forward domain inference.
     Domain edom = domain_inference(dtype, variables, e);
     
-    std::cout << "e: " << e << '\n';
+    log(1,"DI") << "e: " << e << '\n';
     for (size_t i = 0; i < edom.intervals.size(); i++)
-        std::cout << "    " << edom.intervals[i].varname 
-                  << ": imin: " << edom.intervals[i].imin 
-                  << "  imax: " << edom.intervals[i].imax 
-                  << "  poison: " << edom.intervals[i].poison << '\n';
+        log(1,"DI") << "    " << edom.intervals[i].varname 
+                    << ": imin: " << edom.intervals[i].imin 
+                    << "  imax: " << edom.intervals[i].imax 
+                    << "  poison: " << edom.intervals[i].poison << '\n';
     
     // Compare the computed domain with the expected domain
     bool success = true;
