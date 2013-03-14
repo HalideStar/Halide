@@ -2,7 +2,6 @@
 #include "IRPrinter.h"
 #include "CodeGen.h"
 #include "IROperator.h"
-#include "Util.h"
 #include "Log.h"
 #include "CodeGen_C.h"
 #include "Function.h"
@@ -133,6 +132,8 @@ bool CodeGen::llvm_initialized = false;
 bool CodeGen::llvm_X86_enabled = false;
 bool CodeGen::llvm_ARM_enabled = false;
 bool CodeGen::llvm_NVPTX_enabled = false;
+
+#include "Util.h"
 
 void CodeGen::compile(Stmt stmt, string name, const vector<Argument> &args) {
     assert(module && "The CodeGen subclass should have made an initial module before calling CodeGen::compile");
@@ -682,7 +683,9 @@ void CodeGen::visit(const SignFill *op) {
 }
 
 void CodeGen::visit(const Clamp *op) {
-    assert(0 && "Code generator found Clamp that should have been replaced with primitives");
+    log(0) << "Code generator found Clamp that should have been replaced with primitives\n";
+    assert(false && "Code generator found Clamp that should have been replaced with primitives");
+    value = codegen(op->a);
 }
 
 void CodeGen::visit(const Add *op) {
@@ -1165,7 +1168,7 @@ void CodeGen::visit(const Call *op) {
     // handled in the standard library, but ones with e.g. varying
     // types are handled here.
     if (op->name == "shuffle vector") {
-        assert(op->args.size() == 1 + op->type.width);
+        assert((int) op->args.size() == 1 + op->type.width);
         vector<Constant *> indices(op->type.width);
         for (size_t i = 0; i < indices.size(); i++) {
             const IntImm *idx = op->args[i+1].as<IntImm>();

@@ -145,19 +145,16 @@ std::vector<std::string> vecS(std::string a, std::string b, std::string c, std::
  * process. Not thread-safe. */
 std::string unique_name(char prefix);
 
+/** Generate a unique name starting with the given string.  Not
+ * thread-safe. */
+std::string unique_name(const std::string &name);
+
 /** Test if the first string starts with the second string */
 bool starts_with(const std::string &str, const std::string &prefix);
 
 /** Test if the first string ends with the second string */
 bool ends_with(const std::string &str, const std::string &suffix);
 
-// LH: unique_name for programmer specified names.
-// Programmer specified variable names are joined with function names during
-// code generation so they do not need to be unique, but function names must be
-// unique.  Library modules that create Halide code may be called multiple times,
-// so the library-specified function names need to be unique.  This function
-// accepts a string and makes a unique name out of it.
-std::string unique_name(const std::string &name);
 }
 }
 

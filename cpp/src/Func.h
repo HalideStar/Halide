@@ -14,9 +14,9 @@
 #include "Argument.h"
 #include "RDom.h"
 #include "JITCompiledModule.h"
-// LH
 #include "Image.h"
 #include "Util.h"
+// LH
 #include "DomainInference.h"
 
 namespace Halide {
@@ -280,6 +280,16 @@ public:
      * name, and define it to return the given expression (which may
      * not contain free variables). */
     Func(Expr e);
+
+    /** Generate a new uniquely-named function that returns the given
+     * buffer. Has the same dimensionality as the buffer. Useful for
+     * passing Images to c++ functions that expect Funcs */
+    //@{
+    Func(Buffer image);
+    template<typename T> Func(Image<T> image) {
+        (*this) = Func(Buffer(image));
+    }
+    //@}
 
     /** Evaluate this function over some rectangular domain and return
      * the resulting buffer. The buffer should probably be instantly
@@ -729,18 +739,6 @@ public:
         (*this)() = e;
     }
 
-    // LH Extensions 
-    // Extension to use Image<T> as a Func object without explicit conversion.
-    // This constructor actually builds a mini function.
-    template <typename T>
-    Func(Image<T> image) : func(Internal::unique_name("image")), error_handler(NULL), custom_malloc(NULL), custom_free(NULL)
-    {
-        Var x("x"), y("y");
-
-        operator()(x,y) = image(x,y);
-        return;
-    }
-	
 	//LH
 	/** Get a handle to the valid domain for the purpose of modifying it */
     // It is questionable whether the domain information should be blindly copied across
