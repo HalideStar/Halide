@@ -18,6 +18,13 @@ namespace Internal {
 Stmt simplify(Stmt);
 Expr simplify(Expr);
 // @}     
+
+/** Use the simplifier to test whether an expression can be
+ * evaluated to true.
+ */
+// @{
+bool proved(Expr);
+// @}
    
 void simplify_test();
 

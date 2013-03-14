@@ -1048,6 +1048,12 @@ Stmt simplify(Stmt s) {
     return Simplify().mutate(s);
 }
 
+bool proved(Expr e) {
+    Expr b = Simplify().mutate(e);
+    return equal(b, const_true(e.type().width));
+}
+
+
 void check(Expr a, Expr b) {
     Expr simpler = simplify(a);
     if (!equal(simpler, b)) {

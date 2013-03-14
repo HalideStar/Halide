@@ -236,14 +236,9 @@ private:
         }
         else if (is_constant_expr(op->a)) {
             // Looking at constant on LHS of Add node.
-            // e = k + x
-            // x = e - k
-            if (xmin.defined())
-                xmin = xmin - op->a;
-            if (xmax.defined())
-                xmax = xmax - op->a;
-            // Process the tree recursively
-            op->b.accept(this);
+            // e = k + x ==> e1 = x + k
+            Expr e = op->b + op->a;
+            e.accept(this);
         }
         else {
             assert(! is_const(op->a) && "Simplify did not put constant on RHS of Add");
@@ -303,14 +298,9 @@ private:
             op->a.accept(this);
         }
         else if (is_constant_expr(op->a)) {
-            // e = k * x
-            // x = e / k
-            // ?????????????? BUG AS ABOVE
-            if (xmin.defined())
-                xmin = (xmin + op->a - 1) / op->a;
-            if (xmax.defined())
-                xmax = xmax / op->a;
-            op->b.accept(this);
+            // e = k * x ==>  e1 = x * k
+            Expr e = op->b * op->a;
+            e.accept(this);
         }
         else {
             poison = const_true();
@@ -342,31 +332,29 @@ private:
         }
     }
 
-#if 1
-    // Implementation of Mod is difficult: at the time when this
-    // pass is run, xmin and/or xmax may be expressions.
-    // A conservative result is to always use the intersection of
-    // the range of e with the range 0 to k-1, but that gives an
-    // interval that is too small in real situations.
     void visit(const Mod *op) {
-        log(0) << "Mod(" << op->a << ",  " << op->b << ") on (" << xmin << ", " << xmax << ")\n";
+        log(3,"DOMINF") << "Mod(" << op->a << ",  " << op->b << ") on (" << xmin << ", " << xmax << ")\n";
         if (is_constant_expr(op->b)) {
             // e = x % k  (for positive k)
             // If the range of e is 0 to k-1 or bigger then
             // the range of x is unconstrained.
-            // If the range of e is smaller than 0 to k-1 then
+            // If the range of e does not fully cover 0 to k-1 then
             // the range of x is broken into pieces, of which the
             // canonical piece is the intersection of intervals 0 to k-1 and
             // xmin to xmax.
-            if (equal(xmin, 0) && equal(xmax, op->b + -1)) {
-                // This is a special case hack. If the range is 0 to k-1 then
+            // Given the definition of Mod, it may be possible to determine
+            // a better canonical range for x; however, it would still be an inexact representation.
+            if ((! xmin.defined() || proved(xmin <= 0)) && (! xmax.defined() || proved(xmax >= op->b - 1))) {
+                // This is a special case hack. If the range includes 0 to k-1 then
                 // the mod operator makes the range infinite.
                 xmin = Expr();
                 xmax = Expr();
                 op->a.accept(this);
             }
             else {
-                poison = const_true();
+                poison = const_true(); // This is not an exact representation of the range.
+                xmin = simplify(max(xmin, 0));
+                xmax = simplify(min(xmax, op->b - 1));
                 op->a.accept(this);
                 op->b.accept(this);
             }
@@ -379,18 +367,114 @@ private:
         }
     }
     
+    void visit(const Clamp *op) {
+        log(0,"DOMINF") << "Clamp(" << op->a << ",  " << op->min << ", " << op->max << ", " << op->tile 
+                        << ") on (" << xmin << ", " << xmax << ")\n";
+# if 0
+        if (is_constant_expr(op->b)) {
+            // e = x % k  (for positive k)
+            // If the range of e is 0 to k-1 or bigger then
+            // the range of x is unconstrained.
+            // If the range of e does not fully cover 0 to k-1 then
+            // the range of x is broken into pieces, of which the
+            // canonical piece is the intersection of intervals 0 to k-1 and
+            // xmin to xmax.
+            // Given the definition of Mod, it may be possible to determine
+            // a better canonical range for x; however, it would still be an inexact representation.
+            if ((! xmin.defined() || proved(xmin <= 0)) && (! xmax.defined() || proved(xmax >= op->b - 1))) {
+                // This is a special case hack. If the range includes 0 to k-1 then
+                // the mod operator makes the range infinite.
+                xmin = Expr();
+                xmax = Expr();
+                op->a.accept(this);
+            }
+            else {
+                poison = const_true(); // This is not an exact representation of the range.
+                xmin = simplify(max(xmin, 0));
+                xmax = simplify(min(xmax, op->b - 1));
+                op->a.accept(this);
+                op->b.accept(this);
+            }
+        }
+        else {
+            // e = k % x is not handled because it is not linear
+            poison = const_true();
+            op->a.accept(this);
+            op->b.accept(this);
+        }
+# endif
+    }
+
     // Max
-    // e = max(x,k) to be in range(a,b)
-    // then x to be in range(c,b) where
-    // if a <= k (i.e. max applied to x enforces the limit a effectively) then c = -infinity
-    // else (i.e. max applied to x does not enforce the limit a) then c = a.
+    void visit(const Max *op) {
+        log(3,"DOMINF") << "Max(" << op->a << ",  " << op->b << ") on (" << xmin << ", " << xmax << ")\n";
+        if (is_constant_expr(op->b)) {
+            // e = max(x,k) to be in range(a,b)
+            // then x to be in range(c,b) where
+            // if a <= k (i.e. max applied to x enforces the limit a effectively) then c = -infinity
+            // else (i.e. max applied to x does not enforce the limit a) then c = a.
+            // So, if we can prove that xmin <= op->b then the new xmin is undefined.
+            if ((! xmin.defined() || proved(xmin <= op->b))) {
+                // xmin is negative infinite
+                xmin = Expr();
+                op->a.accept(this);
+            }
+            else {
+                // xmin is unchanged
+                op->a.accept(this);
+            }
+        }
+        else if (is_constant_expr(op->a)) {
+            // Interchange the parameters
+            Expr e = max(op->b, op->a);
+            e.accept(this);
+        }
+        else {
+            // e = k % x is not handled because it is not linear
+            poison = const_true();
+            op->a.accept(this);
+            op->b.accept(this);
+        }
+    }
+    
+    // Min
+    void visit(const Min *op) {
+        log(3,"DOMINF") << "Min(" << op->a << ",  " << op->b << ") on (" << xmin << ", " << xmax << ")\n";
+        if (is_constant_expr(op->b)) {
+            // e = min(x,k) to be in range(a,b)
+            // then x to be in range(a,c) where
+            // if b >= k (i.e. min applied to x enforces the limit b effectively) then c = infinity
+            // else (i.e. min applied to x does not enforce the limit b) then c = b.
+            // So, if we can prove that xmax >= op->b then the new xmax is undefined.
+            if ((! xmax.defined() || proved(xmax >= op->b))) {
+                // xmax is infinite
+                xmax = Expr();
+                op->a.accept(this);
+            }
+            else {
+                // xmax is unchanged
+                op->a.accept(this);
+            }
+        }
+        else if (is_constant_expr(op->a)) {
+            // Interchange the parameters
+            Expr e = min(op->b, op->a);
+            e.accept(this);
+        }
+        else {
+            // e = k % x is not handled because it is not linear
+            poison = const_true();
+            op->a.accept(this);
+            op->b.accept(this);
+        }
+    }
+    
     
     // Min: analogous to Max.
-#endif
 };
 
 VarInterval backwards_interval(const std::vector<std::string> &varlist, Domain &dom, Expr e, Expr xmin, Expr xmax, Expr xpoison) {
-    log(3,"DI") << "e: " << e << "    min: " << xmin << "    max: " << xmax << '\n';
+    log(3,"DOMINF") << "e: " << e << "    min: " << xmin << "    max: " << xmax << '\n';
     BackwardIntervalInference infers(varlist, dom, xmin, xmax, xpoison);
     Expr e1 = simplify(e);
     
@@ -416,7 +500,7 @@ VarInterval backwards_interval(const std::vector<std::string> &varlist, Domain &
     // concrete data and the other is inexact; in this case the result is inexact but
     // is restricted to the concrete data.  Of course, if we wanted to use expressions then
     // we could represent all the cases.
-    log(2,"DI") << "Result: " << result.varname << "  " << result.poison << "  " << result.imin << "  " << result.imax << "\n";
+    log(2,"DOMINF") << "Result: " << result.varname << "  " << result.poison << "  " << result.imin << "  " << result.imax << "\n";
     if (result.poison.defined() && ! equal(result.poison, const_false())) {
         result.imin = Expr();
         result.imax = Expr();
@@ -582,19 +666,19 @@ void check_interval(std::vector<std::string> varlist, Expr e, Expr xmin, Expr xm
     VarInterval result = backwards_interval(varlist, dom, e, xmin, xmax);
     
     Expr e1 = simplify(e); // Duplicate simplification for debugging only
-    log(1,"DI") << "e: " << e << "    ";
-    log(2,"DI") << "e1: " << e1 << "    ";
+    log(1,"DOMINF") << "e: " << e << "    ";
+    log(2,"DOMINF") << "e1: " << e1 << "    ";
     
     if (equal(result.poison, const_true()))
-        log(1,"DI") << "inexact\n";
+        log(1,"DOMINF") << "inexact\n";
     else {
-        log(1,"DI") << "imin: " << result.imin << "    ";
-        log(1,"DI") << "imax: " << result.imax << "    ";
-        log(1,"DI") << "v: " << result.varname;
+        log(1,"DOMINF") << "imin: " << result.imin << "    ";
+        log(1,"DOMINF") << "imax: " << result.imax << "    ";
+        log(1,"DOMINF") << "v: " << result.varname;
         if (! equal(result.poison, const_false()))
-            log(1,"DI") << "    inexact: " << result.poison << '\n';
+            log(1,"DOMINF") << "    inexact: " << result.poison << '\n';
         else
-            log(1,"DI") << '\n';
+            log(1,"DOMINF") << '\n';
     }
     
     bool success = true;
@@ -661,9 +745,8 @@ void backward_interval_test() {
     // x = 66  e = (198 + 5) / 2 - 2 = 99   but x=67 e=(201+5)/2-2=101
     check_interval(varlist, (3 * x + 5) / 2 - 2, 10, 100, false, 7, 66, "x");
     
-    // Constant expressions are poison. They provide no constraint on the caller's
-    // variables, although they may result in out-of-bounds errors on the callee.
-    // But checking for out-of-bounds errors is a separate task.
+    // Constant expressions return an infinite domain because there is no constraint
+    // on the caller's variables.
     check_interval(varlist, Expr(5) + 7, 0, 100, true, Expr(), Expr(), "");
     check_interval(varlist, 105, 0, 100, true, Expr(), Expr(), "");
     // Expression is poison because it contains a node type that 
@@ -682,9 +765,9 @@ void check_domain_expr(Domain::DomainType dtype, std::vector<std::string> variab
     // Compute the domain of the expression using forward domain inference.
     Domain edom = domain_inference(dtype, variables, e);
     
-    log(1,"DI") << "e: " << e << '\n';
+    log(1,"DOMINF") << "e: " << e << '\n';
     for (size_t i = 0; i < edom.intervals.size(); i++)
-        log(1,"DI") << "    " << edom.intervals[i].varname 
+        log(1,"DOMINF") << "    " << edom.intervals[i].varname 
                     << ": imin: " << edom.intervals[i].imin 
                     << "  imax: " << edom.intervals[i].imax 
                     << "  poison: " << edom.intervals[i].poison << '\n';
@@ -724,6 +807,15 @@ void check_domain_expr(Domain::DomainType dtype, std::vector<std::string> variab
             success = false;
         }
     }
+    
+    if (! success) {
+        std::cout << "Expression: " << e << '\n';
+        for (size_t i = 0; i < edom.intervals.size(); i++)
+            std::cout << "    " << edom.intervals[i].varname 
+                      << ": imin: " << edom.intervals[i].imin 
+                      << "  imax: " << edom.intervals[i].imax 
+                      << "  inexact: " << edom.intervals[i].poison << '\n';
+    }
     assert(success && "Domain inference test failed");
 }
 
@@ -741,10 +833,11 @@ void domain_expr_test()
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y) + in(x,y), Domain("x", False, 2, 19, "y", False, 0, 39));
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y) + in(x,y) + in(x,y+5), 
                         Domain("x", False, 2, 19, "y", False, 0, 34));
-    // Inexact results due to use of min function. The expression y is the only understood expression.
+    // Exact result including use of min function.  min(y+5,15) limits the upper range of y+5 to 15 so it
+    // ensures that it remains in bounds at the upper end.
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y) + in(x,y) + in(x,min(y+5,15)), 
-                        Domain("x", False, 2, 19, "y", True, 0, 39));
-    // Inexact results due to use of max function.  
+                        Domain("x", False, 2, 19, "y", False, 0, 39));
+    // Exact results including use of max function.  
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,max(y,1)) + in(max(x,0),y) + in(min(x,9),y+5), 
                         Domain("x", True, 2, 21, "y", True, 0, 34));
     // Test interchange of variables (flip the domain of the function)
