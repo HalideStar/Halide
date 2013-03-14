@@ -324,7 +324,7 @@ inline Expr min(Expr a, Expr b) {
 inline Expr clamp(Expr a, Expr min_val, Expr max_val) {
     assert(a.defined() && min_val.defined() && max_val.defined() &&
            "clamp of undefined");
-#if 1
+#if 0
     min_val = cast(a.type(), min_val);
     max_val = cast(a.type(), max_val);
     return new Internal::Max(new Internal::Min(a, max_val), min_val);

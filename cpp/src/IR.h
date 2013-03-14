@@ -282,7 +282,7 @@ public:
 		constructor();
 	}
 	Clamp(ClampType _t, Expr _a, Expr _min, Expr _max): 
-		ExprNode<Clamp>(_a.type()), a(_a), min(_min), max(_max), tile(0), clamptype(_t) {
+		ExprNode<Clamp>(_a.type()), a(_a), min(_min), max(_max), tile(Expr(0)), clamptype(_t) {
 		assert(clamptype != Tile && "Tile clamp without tile expression");
 		constructor();
 	}
