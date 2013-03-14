@@ -839,7 +839,7 @@ void domain_expr_test()
                         Domain("x", False, 2, 19, "y", False, 0, 39));
     // Exact results including use of max function.  
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,max(y,1)) + in(max(x,0),y) + in(min(x,9),y+5), 
-                        Domain("x", True, 2, 21, "y", True, 0, 34));
+                        Domain("x", False, 2, 19, "y", False, 0, 34));
     // Test interchange of variables (flip the domain of the function)
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(y,x), 
                         Domain("x", False, 0, 39, "y", False, 0, 19));
