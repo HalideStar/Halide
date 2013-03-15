@@ -368,7 +368,7 @@ private:
     }
     
     void visit(const Clamp *op) {
-        log(0,"DOMINF") << "Clamp(" << op->a << ",  " << op->min << ", " << op->max << ", " << op->tile 
+        log(0,"DOMINF") << "Clamp(" << op->a << ",  " << op->min << ", " << op->max << ", " << op->p1 
                         << ") on (" << xmin << ", " << xmax << ")\n";
 # if 0
         if (is_constant_expr(op->b)) {

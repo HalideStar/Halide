@@ -231,6 +231,7 @@ void check_sse_all() {
     const int max_u8 = 255;
     const int max_u16 = 65535;
 
+# if 0
     // MMX (in 128-bits)
     check_sse("paddb", 16, u8_1 + u8_2);
     check_sse("psubb", 16, u8_1 - u8_2);
@@ -323,7 +324,9 @@ void check_sse_all() {
     check_sse("psubq", 4, i64_1 - i64_2);
     check_sse("pmuludq", 4, u64_1 * u64_2);
 
+# endif
     check_sse("packssdw", 8, i16(clamp(i32_1, min_i16, max_i16)));
+# if 0
     check_sse("packsswb", 16, i8(clamp(i16_1, min_i8, max_i8)));
     check_sse("packuswb", 16, u8(clamp(i16_1, 0, max_u8)));
 
@@ -490,6 +493,7 @@ void check_sse_all() {
 	check_sse("vpackusdw", 16, u16(clamp(i32_1, 0, max_u16)));
 	check_sse("vpcmpgtq", 4, select(i64_1 > i64_2, i64(1), i64(2)));
     }
+#endif
 }
 
 void check_neon_all() {

@@ -22,6 +22,8 @@
 #include "Deinterleave.h"
 #include "DebugToFile.h"
 
+#include "LowerBorder.h"
+
 namespace Halide {
 namespace Internal {
 
@@ -721,6 +723,13 @@ Stmt lower(Function f) {
     s = schedule_functions(s, order, env, graph);
     log(2) << "All realizations injected:\n" << s << '\n';
 
+    //LH
+    // Lowering Clamp here does not produce the same results as using the original clamp.
+    log(0) << "Lowering Clamp\n";
+    s = lower_clamp(s);
+    s = simplify(s);
+    log(0) << "Clamp lowered:\n" << s << '\n';
+
     log(1) << "Injecting tracing...\n";
     s = inject_tracing(s);
     log(2) << "Tracing injected:\n" << s << '\n';
@@ -732,7 +741,7 @@ Stmt lower(Function f) {
     log(1) << "Performing bounds inference...\n";
     s = bounds_inference(s, order, env);
     log(2) << "Bounds inference:\n" << s << '\n';
-
+    
     log(1) << "Performing sliding window optimization...\n";
     s = sliding_window(s, env);
     log(2) << "Sliding window:\n" << s << '\n';

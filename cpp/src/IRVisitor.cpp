@@ -62,7 +62,7 @@ void IRVisitor::visit(const Clamp *op) {
 	op->min.accept(this);
 	op->max.accept(this);
 	if (op->clamptype == Internal::Clamp::Tile)
-		op->tile.accept(this);
+		op->p1.accept(this);
 }
 
 void IRVisitor::visit(const Add *op) {

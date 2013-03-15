@@ -59,16 +59,16 @@ void IRMutator::visit(const Clamp *op) {
     Expr a = mutate(op->a);
 	Expr min = mutate(op->min);
 	Expr max = mutate(op->max);
-	Expr tile;
+	Expr p1;
 	if (op->clamptype == Internal::Clamp::Tile)
-	    tile = mutate(op->tile);
+	    p1 = mutate(op->p1);
 	else
-		tile = op->tile;
+		p1 = op->p1;
     if (a.same_as(op->a) &&
 	    min.same_as(op->min) &&
 		max.same_as(op->max) &&
-		tile.same_as(op->tile)) expr = op;
-    else expr = new Clamp(op->clamptype,a,min,max,tile);
+		p1.same_as(op->p1)) expr = op;
+    else expr = new Clamp(op->clamptype,a,min,max,p1);
 }
 
 void IRMutator::visit(const Add *op)     {mutate_binary_operator(this, op, &expr, &stmt);}

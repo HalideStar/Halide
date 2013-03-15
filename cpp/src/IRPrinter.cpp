@@ -222,7 +222,7 @@ void IRPrinter::visit(const Clamp *op) {
     print(op->max);
 	if (op->clamptype == Clamp::Tile) {
 		stream << ',';
-		print(op->tile);
+		print(op->p1);
 	}
     stream << ')';
 }

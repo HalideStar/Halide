@@ -11,6 +11,7 @@
 #include "ModulusRemainder.h"
 
 #include "DomainInference.h"
+#include "LowerBorder.h"
 
 using namespace Halide;
 using namespace Halide::Internal;
@@ -28,5 +29,6 @@ int main(int argc, const char **argv) {
     modulus_remainder_test();
     
     domain_inference_test();
+    lower_clamp_test();
     return 0;
 }

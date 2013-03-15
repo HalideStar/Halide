@@ -118,6 +118,8 @@ CodeGen::CodeGen() :
     }
 }
 
+#include "Util.h"
+
 CodeGen::~CodeGen() {
     if (module && owns_module) {
         delete module;
@@ -132,8 +134,6 @@ bool CodeGen::llvm_initialized = false;
 bool CodeGen::llvm_X86_enabled = false;
 bool CodeGen::llvm_ARM_enabled = false;
 bool CodeGen::llvm_NVPTX_enabled = false;
-
-#include "Util.h"
 
 void CodeGen::compile(Stmt stmt, string name, const vector<Argument> &args) {
     assert(module && "The CodeGen subclass should have made an initial module before calling CodeGen::compile");
@@ -683,7 +683,6 @@ void CodeGen::visit(const SignFill *op) {
 }
 
 void CodeGen::visit(const Clamp *op) {
-    log(0) << "Code generator found Clamp that should have been replaced with primitives\n";
     assert(false && "Code generator found Clamp that should have been replaced with primitives");
     value = codegen(op->a);
 }
