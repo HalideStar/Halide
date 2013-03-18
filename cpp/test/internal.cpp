@@ -11,7 +11,7 @@
 #include "ModulusRemainder.h"
 
 #include "DomainInference.h"
-#include "LowerBorder.h"
+#include "LowerClamp.h"
 #include "Border.h"
 
 using namespace Halide;

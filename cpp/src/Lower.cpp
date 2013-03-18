@@ -22,7 +22,7 @@
 #include "Deinterleave.h"
 #include "DebugToFile.h"
 
-#include "LowerBorder.h"
+#include "LowerClamp.h"
 
 namespace Halide {
 namespace Internal {
