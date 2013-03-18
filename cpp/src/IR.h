@@ -163,8 +163,8 @@ struct Expr : public Internal::IRHandle {
 
 // Now that we've defined an Expr, we can include Parameter.h
 #include "Parameter.h"
-// Include border handling and clamp expression nodes.
-#include "Border.h"
+// Include clamp expression nodes.
+#include "Clamp.h"
 
 namespace Halide {
 namespace Internal {

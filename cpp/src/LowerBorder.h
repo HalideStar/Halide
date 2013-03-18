@@ -1,6 +1,8 @@
 #ifndef HALIDE_LOWERBORDER_H
 #define HALIDE_LOWERBORDER_H
 
+#define LOWER_CLAMP_LATE 0
+
 namespace Halide {
 namespace Internal {
 

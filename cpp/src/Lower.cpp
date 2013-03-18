@@ -723,12 +723,14 @@ Stmt lower(Function f) {
     s = schedule_functions(s, order, env, graph);
     log(2) << "All realizations injected:\n" << s << '\n';
 
+# if ! LOWER_CLAMP_LATE
     //LH
     // Lowering Clamp here does not produce the same results as using the original clamp.
     log(0) << "Lowering Clamp\n";
     s = lower_clamp(s);
     s = simplify(s);
     log(0) << "Clamp lowered:\n" << s << '\n';
+# endif
 
     log(1) << "Injecting tracing...\n";
     s = inject_tracing(s);
@@ -742,6 +744,15 @@ Stmt lower(Function f) {
     s = bounds_inference(s, order, env);
     log(2) << "Bounds inference:\n" << s << '\n';
     
+# if LOWER_CLAMP_LATE
+    //LH
+    // Lowering Clamp here does not produce the same results as using the original clamp.
+    log(0) << "Lowering Clamp\n";
+    s = lower_clamp(s);
+    s = simplify(s);
+    log(0) << "Clamp lowered:\n" << s << '\n';
+# endif
+
     log(1) << "Performing sliding window optimization...\n";
     s = sliding_window(s, env);
     log(2) << "Sliding window:\n" << s << '\n';

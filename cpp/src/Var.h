@@ -110,6 +110,12 @@ public:
         return Var(str.str());
     }
     
+    static Var gen(int n) {
+        std::ostringstream str;
+        str << "gen." << n;
+        return Var(str.str());
+    }
+    
     /** A Var can be treated as an Expr of type Int(32) */
     operator Expr() {
         return new Internal::Variable(Int(32), name());

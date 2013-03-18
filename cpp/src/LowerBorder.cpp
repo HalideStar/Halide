@@ -54,7 +54,16 @@ class LowerClamp : public IRMutator {
                 // Finally, add op_min back on.
                 r = op_max - op_min + adjust;
                 e = (op_a - op_min) % (2 * r);
+# if LOWER_CLAMP_LATE
+                // The following definition causes Halide to think there is an out of bounds access
+                // because the interval analysis does not use the boolean to restrict the range of the 
+                // true and false expressions (which is quite difficult to do).
                 e = select(e < r, e, r * 2 - adjust - e);
+#else
+                // The following alternative implementation has more mod operations, but should pass the
+                // analysis OK.
+                e = select(e < r, (op_a - op_min) % r, r - adjust - (op_a - op_min) % r);
+#endif
                 expr = e + op_min;
                 break;
             case Clamp::Reflect101:
@@ -71,12 +80,28 @@ class LowerClamp : public IRMutator {
                     // Finally, add op_min back on.
                     r = op_max - op_min;
                     e = (op_a - op_min) % (2 * r);
+#if LOWER_CLAMP_LATE
                     e = select(e <= r, e, r * 2 - e);
+#else
+                    // Early lowering. Require both the true and false expressions to
+                    // be on the range (0,r) inclusive.
+                    // If interval inference gets clever, it should see that
+                    // e or (r*2-e) as appropriate is already on the range (0,r) inclusive
+                    // and delete the mod (r+adjust)
+                    e = select(e <= r, e % (r+adjust), (r * 2 - e) % (r+adjust));
+#endif
                     expr = e + op_min;
                 }
                 break;
             case Clamp::Tile:
-                expr = op;
+                // Integers tile by modulus p1.  Floats tile by fmod p1
+#if LOWER_CLAMP_LATE
+                expr = select(op_a < op_min, (op_a - op_min) % op_p1 + op_min, 
+                       select(op_a > op_max, (op_a - op_max - adjust) % op_p1 + op_max + adjust - op_p1, op_a));
+#else
+                expr = select(op_a < op_min, (op_a - op_min) % op_p1 + op_min, 
+                       select(op_a > op_max, (op_a - op_max - adjust) % op_p1 + op_max + adjust - op_p1, (op_a - op_min) % (op_max - op_min + adjust) + op_min));
+#endif
                 break;
             default:
                 assert(0 && "Unknown clamp type in Clamp node");
@@ -111,9 +136,10 @@ static void check(Expr e, Expr result) {
 
 void lower_clamp_test() {
 
-    Func reflect("reflect"), reflect101("reflect101");
+    Func reflect("reflect"), reflect101("reflect101"), tile("tile");
     Var x("x");
     Image<int> out;
+    bool success = true;
     
     check(clamp(x,30,50), max(min(x,50),30));
     check( new Clamp(Clamp::Wrap, x, 30,50), (x - 30) % (21) + 30);
@@ -132,6 +158,7 @@ void lower_clamp_test() {
         if (out(i) != v) {
             std::cout << "Clamp lowering test failed for Reflect\n";
             std::cout << "x: " << i << "  reflect(x): " << out(i) << "  expected: " << v << '\n';
+            success = false;
         }
     }
 
@@ -148,9 +175,29 @@ void lower_clamp_test() {
         }
         if (out(i) != v) {
             std::cout << "Clamp lowering test failed for Reflect101\n";
-            std::cout << "x: " << i << "  reflect(x): " << out(i) << "  expected: " << v << '\n';
+            std::cout << "x: " << i << "  reflect101(x): " << out(i) << "  expected: " << v << '\n';
+            success = false;
         }
     }
+    
+    // Test tile by execution
+    tile(x) = lower_clamp(new Clamp(Clamp::Tile, x, 30,50,3));
+    out = tile.realize(100);
+    for (int i = 0; i < 100; i++) {
+        // Do tiling the slow way.
+        int v;
+        v = i;
+        while (v < 30) v += 3;
+        while (v > 50) v -= 3;
+        if (out(i) != v) {
+            std::cout << "Clamp lowering test failed for Tile\n";
+            std::cout << "x: " << i << "  tile(x): " << out(i) << "  expected: " << v << '\n';
+            success = false;
+        }
+    }
+    
+    if (! success)
+        assert(0 && "Clamp lowering test failed");
 
     std::cout << "Clamp lowering test passed" << std::endl;
 }

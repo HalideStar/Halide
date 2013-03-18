@@ -59,6 +59,11 @@ struct Domain {
            std::string wv, bool wpoisoned, Expr wmin, Expr wmax);
            
     Domain intersection(Domain other);
+    
+    // Accessors to read information out of the domain using index number.
+    const Expr min(int index) const;
+    const Expr max(int index) const;
+    const Expr exact(int index) const;
 };
 
 namespace Internal {

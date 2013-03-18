@@ -124,6 +124,20 @@ Domain Domain::intersection(Domain other) {
     return result;
 }
 
+const Expr Domain::min(int index) const {
+    assert(index >= 0 && index < (int) intervals.size() && "Attempt to access Domain out of range");
+    return intervals[index].imin;
+}
+
+const Expr Domain::max(int index) const {
+    assert(index >= 0 && index < (int) intervals.size() && "Attempt to access Domain out of range");
+    return intervals[index].imax;
+}
+
+const Expr Domain::exact(int index) const {
+    assert(index >= 0 && index < (int) intervals.size() && "Attempt to access Domain out of range");
+    return ! intervals[index].poison;
+}
 
 
 namespace Internal {
