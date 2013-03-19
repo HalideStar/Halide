@@ -98,7 +98,7 @@ build/%.o: src/%.cpp src/%.h build/llvm_ok
 
 build_g/%.o: src/%.cpp src/%.h build/llvm_ok
 	@-mkdir -p build_g
-	$(CXX) $(CXX_FLAGS) -g -c $< -o $@ -MMD -MP -MF build/$*.d -MT build/$*.o 
+	$(CXX) $(CXX_FLAGS) -g -c $< -o $@ -MMD -MP -MF build_g/$*.d -MT build_g/$*.o 
 
 .PHONY: clean
 clean:

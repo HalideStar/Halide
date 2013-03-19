@@ -92,12 +92,9 @@ void Function::define(const vector<string> &args, Expr value) {
     }        
 
     //LH
-    // Compute forward domain inference.  Hack to loop over the enum.
-    for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-        Domain::DomainType dtype = static_cast<Domain::DomainType>(j);
-        log(2,"DI") << "Domain inference for " << name() << "\n";
-        domain(dtype) = domain_inference(dtype, args, value);
-    }
+    // Compute forward domain inference.
+    log(2,"DI") << "Domain inference for " << name() << "\n";
+    contents.ptr->domains = domain_inference(args, value);
 }
 
 void Function::define_reduction(const vector<Expr> &args, Expr value) {
@@ -153,6 +150,16 @@ void Function::define_reduction(const vector<Expr> &args, Expr value) {
     }
 }
 
+//LH
+// Get the corresponding interval of all the domains
+const std::vector<VarInterval> Function::domain_intervals(int index) const {
+    std::vector<VarInterval> intervals;
+    assert(contents.ptr->domains.size() >= Domain::MaxDomains && "Insufficient Domains defined in Function");
+    for (int j = 0; j < Domain::MaxDomains; j++) {
+        intervals.push_back(contents.ptr->domains[j].intervals[index]);
+    }
+    return intervals;
+}
 
 }
 }

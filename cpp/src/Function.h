@@ -31,7 +31,7 @@ struct FunctionContents {
 	// with border handling used to provide useful results at the borders of the image.
 	// The computable domain is the domain over which this function is known to be computable.
 	// For example, the valid domain may be extended indefinitely by replicating the border pixels.
-	Domain domains[Domain::MaxDomains];
+	std::vector<Domain> domains;
 
     Expr reduction_value;
     std::vector<Expr> reduction_args;
@@ -105,6 +105,7 @@ public:
 	/** Get a handle to a domain for the purpose of modifying it */
 	Domain &domain(Domain::DomainType dt) {
         assert(dt >= 0 && dt < Domain::MaxDomains && "Domain type is not in range");
+        assert((size_t) dt < contents.ptr->domains.size() && "Domain of type does not exist");
 		return contents.ptr->domains[dt];
 	}
 
@@ -112,8 +113,13 @@ public:
 	/** Get a handle to a domain for the purpose of inspecting it */
 	const Domain &domain(Domain::DomainType dt) const {
         assert(dt >= 0 && dt < Domain::MaxDomains && "Domain type is not in range");
+        assert((size_t) dt < contents.ptr->domains.size() && "Domain of type does not exist");
 		return contents.ptr->domains[dt];
 	}
+    
+    //LH
+    /** Get the corresponding interval of all the domains, for a particular index */
+    const std::vector<VarInterval> domain_intervals(int index) const;
 
     /** Get a mutable handle to the schedule for the reduction
      * stage */

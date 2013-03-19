@@ -21,7 +21,7 @@ struct VarInterval
 };
 }
 
-
+# define NextDomainType(dt) ((int) dt)++)
 
 struct Domain {
     // Enumeration of different types of domain used in domain inference.
@@ -67,7 +67,7 @@ struct Domain {
 };
 
 namespace Internal {
-Domain domain_inference(Domain::DomainType dtype, const std::vector<std::string> &variables, Expr e);
+std::vector<Domain> domain_inference(const std::vector<std::string> &variables, Expr e);
 
 void domain_inference_test();
 }
