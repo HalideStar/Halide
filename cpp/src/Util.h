@@ -16,11 +16,21 @@
 #include <vector>
 #include <string>
 
+// by default, the symbol EXPORT does nothing. In windows dll builds we can define it to __declspec(dllexport)
+#ifdef _WINDOWS_DLL
+#define EXPORT __declspec(dllexport)
+#else
+#ifdef _WIN32
+#define EXPORT __declspec(dllimport)
+#else
+#define EXPORT
+#endif
 //LH
 // We need cmath for the definition of hmod_imp
 // If this is too untidy, we could make this a separate include file.
 #include <cmath>
 #include <stdio.h>
+#endif
 
 namespace Halide { 
 
@@ -143,17 +153,17 @@ std::vector<std::string> vecS(std::string a, std::string b, std::string c, std::
 /** Generate a unique name starting with the given character. It's
  * unique relative to all other calls to unique_name done by this
  * process. Not thread-safe. */
-std::string unique_name(char prefix);
+EXPORT std::string unique_name(char prefix);
 
 /** Generate a unique name starting with the given string.  Not
  * thread-safe. */
-std::string unique_name(const std::string &name);
+EXPORT std::string unique_name(const std::string &name);
 
 /** Test if the first string starts with the second string */
-bool starts_with(const std::string &str, const std::string &prefix);
+EXPORT bool starts_with(const std::string &str, const std::string &prefix);
 
 /** Test if the first string ends with the second string */
-bool ends_with(const std::string &str, const std::string &suffix);
+EXPORT bool ends_with(const std::string &str, const std::string &suffix);
 
 }
 }

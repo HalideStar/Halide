@@ -4,10 +4,10 @@
 namespace Halide {
 namespace Internal {
 template<>
-RefCount &ref_count<Halide::Internal::ParameterContents>(const ParameterContents *p) {return p->ref_count;}
+EXPORT RefCount &ref_count<Halide::Internal::ParameterContents>(const ParameterContents *p) {return p->ref_count;}
 
 template<>
-void destroy<Halide::Internal::ParameterContents>(const ParameterContents *p) {delete p;}
+EXPORT void destroy<Halide::Internal::ParameterContents>(const ParameterContents *p) {delete p;}
 
 
 /** Get an expression representing the extent of this image

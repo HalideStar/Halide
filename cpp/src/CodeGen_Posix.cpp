@@ -10,6 +10,11 @@
 #include "Param.h"
 #include "integer_division_table.h"
 
+// No msvc warnings from llvm headers please
+#ifdef _WIN32
+#pragma warning(push, 0)
+#endif
+
 #include <llvm/Config/config.h>
 
 // Temporary affordance to compile with both llvm 3.2 and 3.3.
@@ -32,6 +37,11 @@
 
 #include <llvm/Support/MemoryBuffer.h>
 #include <llvm/Support/IRReader.h>
+
+// No msvc warnings from llvm headers please
+#ifdef _WIN32
+#pragma warning(pop)
+#endif
 
 namespace Halide { 
 namespace Internal {
@@ -115,9 +125,10 @@ void CodeGen_Posix::visit(const Allocate *alloc) {
         ptr = builder->CreatePointerCast(ptr, llvm_type->getPointerTo());
     } else {
         // call malloc
-        llvm::Function *malloc_fn = module->getFunction("hl_malloc");
-        assert(malloc_fn && "Could not find hl_malloc in module");
+        llvm::Function *malloc_fn = module->getFunction("halide_malloc");
+        assert(malloc_fn && "Could not find halide_malloc in module");
         Value *sz = builder->CreateIntCast(size, malloc_fn->arg_begin()->getType(), false);
+	log(4) << "Creating call to halide_malloc\n";
         ptr = builder->CreateCall(malloc_fn, sz);
         heap_allocations.push_back(ptr);
     }
@@ -129,16 +140,18 @@ void CodeGen_Posix::visit(const Allocate *alloc) {
     if (!on_stack) {
         heap_allocations.pop_back();
         // call free
-        llvm::Function *free_fn = module->getFunction("hl_free");
-        assert(free_fn && "Could not find hl_free in module");
+        llvm::Function *free_fn = module->getFunction("halide_free");
+        assert(free_fn && "Could not find halide_free in module");
+	log(4) << "Creating call to halide_free\n";
         builder->CreateCall(free_fn, ptr);
     }
 }
 
 void CodeGen_Posix::prepare_for_early_exit() {
-    llvm::Function *free_fn = module->getFunction("hl_free");
-    assert(free_fn && "Could not find hl_free in module");
+    llvm::Function *free_fn = module->getFunction("halide_free");
+    assert(free_fn && "Could not find halide_free in module");
     for (size_t i = 0; i < heap_allocations.size(); i++) {
+        // TODO: What if I'm inside a parallel for loop?
         builder->CreateCall(free_fn, heap_allocations[i]);        
     }
 }

@@ -7,10 +7,14 @@
 #include "Function.h"
 #include "Deinterleave.h"
 
+// No msvc warnings from llvm headers please
+#ifdef _WIN32
+#pragma warning(push, 0)
+#endif
 #include <llvm/Config/config.h>
 
 #include <llvm/Analysis/Verifier.h>
-#include <llvm/ExecutionEngine/JIT.h>
+#include <llvm/ExecutionEngine/MCJIT.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Target/TargetLibraryInfo.h>
 #include <llvm/Support/raw_ostream.h>
@@ -32,6 +36,7 @@
 #include <llvm/TargetTransformInfo.h>
 #include <llvm/DataLayout.h>
 #include <llvm/IRBuilder.h>
+#include <llvm/ExecutionEngine/JITMemoryManager.h>
 #else
 #include <llvm/IR/Value.h>
 #include <llvm/IR/Module.h>
@@ -39,6 +44,12 @@
 #include <llvm/Analysis/TargetTransformInfo.h>
 #include <llvm/IR/DataLayout.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/ExecutionEngine/SectionMemoryManager.h>
+#endif
+
+// No msvc warnings from llvm headers please
+#ifdef _WIN32
+#pragma warning(pop)
 #endif
 
 #include <sstream>
@@ -105,7 +116,9 @@ CodeGen::CodeGen() :
     // Initialize the targets we want to generate code for which are enabled
     // in llvm configuration
     if (!llvm_initialized) {            
-        InitializeNativeTarget();
+	InitializeNativeTarget();
+        InitializeNativeTargetAsmPrinter();
+        InitializeNativeTargetAsmParser();
 
         #define LLVM_TARGET(target)         \
             Initialize##target##Target();   \
@@ -118,6 +131,8 @@ CodeGen::CodeGen() :
     }
 }
 
+// llvm includes above disable assert.  Include Util.h here
+// to reenable assert.
 #include "Util.h"
 
 CodeGen::~CodeGen() {
@@ -212,7 +227,7 @@ void CodeGen::compile(Stmt stmt, string name, const vector<Argument> &args) {
     vector<Value *> wrapper_args(args.size());
     for (size_t i = 0; i < args.size(); i++) {
         // Get the address of the nth argument
-        Value *ptr = builder->CreateConstGEP1_32(arg_array, i);
+        Value *ptr = builder->CreateConstGEP1_32(arg_array, (int)i);
         ptr = builder->CreateLoad(ptr);
         if (args[i].is_buffer) {
             // Cast the argument to a buffer_t * 
@@ -223,6 +238,7 @@ void CodeGen::compile(Stmt stmt, string name, const vector<Argument> &args) {
             wrapper_args[i] = builder->CreateLoad(ptr);
         }
     }
+    log(4) << "Creating call from wrapper to actual function\n";
     builder->CreateCall(function, wrapper_args);
     builder->CreateRetVoid();
     verifyFunction(*wrapper);
@@ -244,17 +260,51 @@ void CodeGen::compile(Stmt stmt, string name, const vector<Argument> &args) {
 class JITModuleHolder {
 public:
 	mutable RefCount ref_count;    
-    JITModuleHolder(Module *module) {
+    JITModuleHolder(Module *module, CodeGen *cg) {
         log(2) << "Creating new execution engine\n";
         string error_string;
+
+	TargetOptions options;
+	options.LessPreciseFPMADOption = true;
+	options.NoFramePointerElim = false;
+	options.NoFramePointerElimNonLeaf = false;
+	options.AllowFPOpFusion = FPOpFusion::Fast;
+	options.UnsafeFPMath = true;
+	options.NoInfsFPMath = true;
+	options.NoNaNsFPMath = true;
+	options.HonorSignDependentRoundingFPMathOption = false;
+	options.UseSoftFloat = false;
+	options.FloatABIType = FloatABI::Hard;
+	options.NoZerosInBSS = false;
+	options.GuaranteedTailCallOpt = false;
+	options.DisableTailCalls = false;
+	options.StackAlignmentOverride = 32;
+	options.RealignStack = true;
+	options.TrapFuncName = "";
+	options.PositionIndependentExecutable = true;
+	options.EnableSegmentedStacks = false;
+	options.UseInitArray = false;
+	options.SSPBufferSize = 0;
+	
         EngineBuilder engine_builder(module);
+	engine_builder.setTargetOptions(options);
         engine_builder.setErrorStr(&error_string);
         engine_builder.setEngineKind(EngineKind::JIT);
         engine_builder.setUseMCJIT(true);
-        //engine_builder.setOptLevel(CodeGenOpt::Aggressive);
+        #if defined(LLVM_VERSION_MINOR) && LLVM_VERSION_MINOR < 3
+        engine_builder.setJITMemoryManager(JITMemoryManager::CreateDefaultMemManager());
+        #else
+        engine_builder.setJITMemoryManager(new SectionMemoryManager());
+        #endif
+        engine_builder.setOptLevel(CodeGenOpt::Aggressive);
+        engine_builder.setMCPU(cg->mcpu());
+        engine_builder.setMAttrs(vec<string>(cg->mattrs()));
         execution_engine = engine_builder.create();
         if (!execution_engine) cout << error_string << endl;
         assert(execution_engine && "Couldn't create execution engine");        
+	execution_engine->finalizeObject();	
+	// TODO: I don't think this is necessary, we shouldn't have any static constructors
+	// execution_engine->runStaticConstructorsDestructors(...);
     }
     ~JITModuleHolder() {
         shutdown_thread_pool();
@@ -265,10 +315,10 @@ public:
 };
 
 template<>
-RefCount &ref_count<JITModuleHolder>(const JITModuleHolder *f) {return f->ref_count;}
+EXPORT RefCount &ref_count<JITModuleHolder>(const JITModuleHolder *f) {return f->ref_count;}
 
 template<>
-void destroy<JITModuleHolder>(const JITModuleHolder *f) {delete f;}
+EXPORT void destroy<JITModuleHolder>(const JITModuleHolder *f) {delete f;}
 
 
 JITCompiledModule CodeGen::compile_to_function_pointers() {
@@ -276,11 +326,13 @@ JITCompiledModule CodeGen::compile_to_function_pointers() {
                
     log(1) << "JIT compiling...\n";
 
-    IntrusivePtr<JITModuleHolder> module_holder(new JITModuleHolder(module));
+    IntrusivePtr<JITModuleHolder> module_holder(new JITModuleHolder(module, this));
     ExecutionEngine *execution_engine = module_holder.ptr->execution_engine;
 
     llvm::Function *fn = module->getFunction(function_name);
     assert(fn && "Could not find function inside llvm module");
+
+    compile_to_bitcode("jit.bc");
 
     JITCompiledModule m;
     void *f = execution_engine->getPointerToFunction(fn);
@@ -293,21 +345,21 @@ JITCompiledModule CodeGen::compile_to_function_pointers() {
     m.wrapped_function = (void (*)(const void **))f;
     assert(f && "Compiling wrapped function returned NULL");
 
-    llvm::Function *set_error_handler = module->getFunction("set_error_handler");
+    llvm::Function *set_error_handler = module->getFunction("halide_set_error_handler");
     assert(set_error_handler && "Could not find set_error_handler function inside llvm module");
     f = execution_engine->getPointerToFunction(set_error_handler);
     m.set_error_handler = (void (*)(JITCompiledModule::ErrorHandler))f;
     assert(f && "Compiling set_error_handler function returned NULL");
 
 
-    llvm::Function *set_custom_allocator = module->getFunction("set_custom_allocator");
+    llvm::Function *set_custom_allocator = module->getFunction("halide_set_custom_allocator");
     assert(set_custom_allocator && "Could not find set_custom_allocator function inside llvm module");
     f = execution_engine->getPointerToFunction(set_custom_allocator);
     m.set_custom_allocator = (void (*)(void *(*)(size_t), void (*)(void *)))f;
     assert(f && "Compiling set_custom_allocator function returned NULL");
 
     m.module = module_holder;
-    llvm::Function *shutdown_thread_pool = module->getFunction("shutdown_thread_pool");
+    llvm::Function *shutdown_thread_pool = module->getFunction("halide_shutdown_thread_pool");
     assert(shutdown_thread_pool && "Could not find shutdown_thread_pool function inside llvm module");    
     f = execution_engine->getPointerToFunction(shutdown_thread_pool);
     m.module.ptr->shutdown_thread_pool = (void (*)())f;
@@ -380,7 +432,7 @@ void CodeGen::compile_to_native(const string &filename, bool assembly) {
     options.NoNaNsFPMath = true;
     options.HonorSignDependentRoundingFPMathOption = false;
     options.UseSoftFloat = false;
-    options.FloatABIType = FloatABI::Default;
+    options.FloatABIType = FloatABI::Hard;
     options.NoZerosInBSS = false;
     options.GuaranteedTailCallOpt = false;
     options.DisableTailCalls = false;
@@ -1201,8 +1253,8 @@ void CodeGen::visit(const Call *op) {
         const Call *filename = op->args[1].as<Call>();
         assert(func && filename && "Malformed debug_to_file node");
         // Grab the function from the initial module
-        llvm::Function *debug_to_file = module->getFunction("debug_to_file");
-        assert(debug_to_file && "Could not find debug_to_file function in initial module");
+        llvm::Function *debug_to_file = module->getFunction("halide_debug_to_file");
+        assert(debug_to_file && "Could not find halide_debug_to_file function in initial module");
 
         // Make the filename a global string constant
         llvm::Type *filename_type = ArrayType::get(i8, filename->name.size()+1);
@@ -1217,6 +1269,7 @@ void CodeGen::visit(const Call *op) {
             args.push_back(codegen(op->args[i]));
         }
 
+	log(4) << "Creating call to debug_to_file\n";
         value = builder->CreateCall(debug_to_file, args);
         return;
     }
@@ -1245,6 +1298,7 @@ void CodeGen::visit(const Call *op) {
     }
 
     if (op->type.is_scalar()) {
+        log(4) << "Creating call to " << op->name << "\n";
         value = builder->CreateCall(fn, args);
     } else {
         // Check if a vector version of the function already
@@ -1254,6 +1308,7 @@ void CodeGen::visit(const Call *op) {
         ss << op->name << 'x' << op->type.width;
         llvm::Function *vec_fn = module->getFunction(ss.str());
         if (vec_fn) {
+            log(4) << "Creating call to " << ss.str() << "\n";
             value = builder->CreateCall(vec_fn, args);
             fn = vec_fn;
         } else {
@@ -1266,6 +1321,7 @@ void CodeGen::visit(const Call *op) {
                 for (size_t j = 0; j < args.size(); j++) {
                     arg_lane[j] = builder->CreateExtractElement(args[j], idx);
                 }
+                log(4) << "Creating call to " << op->name << "\n";
                 Value *result_lane = builder->CreateCall(fn, arg_lane);
                 value = builder->CreateInsertElement(value, result_lane, idx);
             }
@@ -1356,11 +1412,12 @@ void CodeGen::visit(const PrintStmt *op) {
     args.insert(args.begin(), char_ptr);
 
     // Grab the print function from the initial module
-    llvm::Function *hlprintf = module->getFunction("hlprintf");
-    assert(hlprintf && "Could not find hlprintf in initial module");
+    llvm::Function *halide_printf = module->getFunction("halide_printf");
+    assert(halide_printf && "Could not find halide_printf in initial module");
 
     // Call it
-    builder->CreateCall(hlprintf, args);
+    log(4) << "Creating call to halide_printf\n";
+    builder->CreateCall(halide_printf, args);
 }
 
 void CodeGen::visit(const AssertStmt *op) {
@@ -1389,9 +1446,11 @@ void CodeGen::create_assertion(Value *cond, const string &message) {
     // Call the error handler
     llvm::Function *error_handler = module->getFunction("halide_error");
     assert(error_handler && "Could not find halide_error in initial module");
+    log(4) << "Creating call to error handlers\n";
     builder->CreateCall(error_handler, vec(char_ptr));
 
     // Do any architecture-specific cleanup necessary
+    log(4) << "Creating cleanup code\n";
     prepare_for_early_exit();
 
     // Bail out
@@ -1615,10 +1674,11 @@ void CodeGen::visit(const For *op) {
 
         // Move the builder back to the main function and call do_par_for
         builder->SetInsertPoint(call_site);
-        llvm::Function *do_par_for = module->getFunction("do_par_for");
-        assert(do_par_for && "Could not find do_par_for in initial module");
+        llvm::Function *do_par_for = module->getFunction("halide_do_par_for");
+        assert(do_par_for && "Could not find halide_do_par_for in initial module");
         ptr = builder->CreatePointerCast(ptr, i8->getPointerTo());
         vector<Value *> args = vec((Value *)function, min, extent, ptr);
+	log(4) << "Creating call to do_par_for\n";
         builder->CreateCall(do_par_for, args);
 
         log(3) << "Leaving parallel for loop over " << op->name << "\n";
@@ -1699,9 +1759,9 @@ void CodeGen::visit(const Provide *op) {
 }
 
 template<>
-RefCount &ref_count<CodeGen>(const CodeGen *p) {return p->ref_count;}
+EXPORT RefCount &ref_count<CodeGen>(const CodeGen *p) {return p->ref_count;}
 
 template<>
-void destroy<CodeGen>(const CodeGen *p) {delete p;}
+EXPORT void destroy<CodeGen>(const CodeGen *p) {delete p;}
 
 }}

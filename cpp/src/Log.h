@@ -55,11 +55,19 @@ struct log {
     log(int verbosity, std::string section) {
         if (!initialized) {
             // Read the debug level from the environment
+            #ifdef _WIN32
+            char lvl[32];
+            size_t read = 0;
+            getenv_s(&read, lvl, "HL_DEBUG_CODEGEN");
+            if (read) {
+            #else   
             if (char *lvl = getenv("HL_DEBUG_CODEGEN")) {
+            #endif
                 debug_level = atoi(lvl);
             } else {
                 debug_level = 0;
             }
+
             initialized = true;
         }
         // A single cache of the section, since we assume that we are operating in stages
