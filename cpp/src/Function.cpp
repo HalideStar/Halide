@@ -161,5 +161,23 @@ const std::vector<VarInterval> Function::domain_intervals(int index) const {
     return intervals;
 }
 
+//LH
+/** Get a handle to a domain for the purpose of modifying it */
+Domain &Function::domain(Domain::DomainType dt) {
+    assert(dt >= 0 && dt < Domain::MaxDomains && "Domain type is not in range");
+    assert((size_t) dt < contents.ptr->domains.size() && "Domain of type does not exist");
+    log(0) << "Writing domain " << (int) dt << "\n";
+    return contents.ptr->domains[dt];
+}
+
+//LH
+/** Get a handle to a domain for the purpose of inspecting it */
+const Domain &Function::domain(Domain::DomainType dt) const {
+    assert(dt >= 0 && dt < Domain::MaxDomains && "Domain type is not in range");
+    assert((size_t) dt < contents.ptr->domains.size() && "Domain of type does not exist");
+    return contents.ptr->domains[dt];
+}
+
+
 }
 }

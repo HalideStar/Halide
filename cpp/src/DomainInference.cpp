@@ -19,6 +19,8 @@ namespace Internal {
 // update computes the intersection of intervals.
 void VarInterval::update(VarInterval result) {
     assert(result.varname == varname && "Trying to update incorrect variable in Domain");
+    
+    log(4,"DOMINF") << "Update " << poison << " (" << imin << ", " << imax << ") with " << result.poison << " (" << result.imin << ", " << result.imax << ")\n";
 
     // Poison is really "inexact": the result is not assured to be correct because
     // at least one update of relevant information could not be resolved!
@@ -46,6 +48,7 @@ void VarInterval::update(VarInterval result) {
         imax = min(imax, result.imax);
         imax = simplify(imax);
     }
+    log(4,"DOMINF") << "Result " << poison << " (" << imin << ", " << imax << ")\n";
 }
 
 // End namespace Internal
@@ -244,6 +247,7 @@ private:
             return; // Do not override the variable that we are studying.
         }
         varname = op->name;
+        log(4,"DOMINF") << "Observe variable " << op->name << "\n";
     }
     
     void visit(const Add *op) {
@@ -409,42 +413,67 @@ private:
     
     void visit(const Clamp *op) {
         for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-            log(0,"DOMINF") << "Clamp(" << op->a << ",  " << op->min << ", " << op->max << ", " << op->p1 
-                            << ") on (" << callee[j].imin << ", " << callee[j].imax << ")\n";
+            log(0,"DOMINF") << Expr(op) << " on (" << callee[j].imin << ", " << callee[j].imax << ")\n";
         }
-# if 0
-        if (is_constant_expr(op->b)) {
-            // e = x % k  (for positive k)
-            // If the range of e is 0 to k-1 or bigger then
-            // the range of x is unconstrained.
-            // If the range of e does not fully cover 0 to k-1 then
-            // the range of x is broken into pieces, of which the
-            // canonical piece is the intersection of intervals 0 to k-1 and
-            // xmin to xmax.
-            // Given the definition of Mod, it may be possible to determine
-            // a better canonical range for x; however, it would still be an inexact representation.
-            if ((! callee[j].imin.defined() || proved(callee[j].imin <= 0)) && (! callee[j].imax.defined() || proved(callee[j].imax >= op->b - 1))) {
-                // This is a special case hack. If the range includes 0 to k-1 then
-                // the mod operator makes the range infinite.
-                callee[j].imin = Expr();
-                callee[j].imax = Expr();
+        // Clamp operators are particularly significant for forward domain inference.
+        if (op->clamptype == Clamp::None) {
+            // None is simply an indicator that the computable domain is to be the same
+            // as the valid domain.
+            callee[Domain::Computable] = callee[Domain::Valid];
+        }
+        else {
+            // All other clamps have the effect of expanding the computable domain but keeping
+            // the valid domain essentially untouched, unless of course, the limits of the clamp
+            // do not correspond to the limits of the valid domain.
+            if (is_constant_expr(op->min) && is_constant_expr(op->max)) {
+                // op->a is clamped to the range op->min to op->max inclusive.
+                // If it can be proved that the valid domain is at least this large,
+                // then we can act on the information
+                log(0,"DOMINF") << "Min and max are constant expressions\n";
+                if ((! callee[Domain::Valid].imin.defined() || proved(callee[Domain::Valid].imin <= op->min)) &&
+                    (! callee[Domain::Valid].imax.defined() || proved(callee[Domain::Valid].imax >= op->max))) {
+                    // Special case.  The clamp range is within the Valid domain of the callee (as adjusted).
+                    // This means that the result of clamping is:
+                    // The Computable domain becomes infinite. (Could have special code for partial border handlers)
+                    // The Valid domain becomes the clamp range, because outside that range is border handled.
+                    // The Efficient domain is restricted to the clamp range, because outside that range is border handled.
+                    log(0,"DOMINF") << "Computable to infinite\n";
+                    callee[Domain::Computable].imin = Expr();
+                    callee[Domain::Computable].imax = Expr();
+                    // The computable domain is now inexact if the valid domain was inexact, because then
+                    // we could not be certain that the limits really are valid.
+                    // A less conservative answer would be that the inexact limits should be generous so
+                    // then we can be exact.
+                    callee[Domain::Computable].poison = callee[Domain::Valid].poison;
+                    //
+                    callee[Domain::Valid].imin = op->min;
+                    callee[Domain::Valid].imax = op->max;
+                    log(0,"DOMINF") << "Valid to (" << op->min << ", " << op->max << ")\n";
+                    //
+                    // callee[Domain::Efficient].imin = max(op->min,callee[Domain::Efficient].imin);
+                    // callee[DOmain::Efficient].imax = min(op->max,callee[Domain::Efficient].imax);
+                }
+                else {
+                    // Apparently, not effective border handling.
+                    // Restrict the valid domain
+                    // Leave the computable domain as it was
+                    set_callee_exact_false();
+                    if (op->min.defined())
+                        callee[Domain::Valid].imin = max(callee[Domain::Valid].imin, op->min);
+                    if (op->max.defined())
+                        callee[Domain::Valid].imax = min(callee[Domain::Valid].imax, op->max);
+                }
                 op->a.accept(this);
             }
             else {
-                set_callee_exact_false(); // This is not an exact representation of the range.
-                callee[j].imin = simplify(max(callee[j].imin, 0));
-                callee[j].imax = simplify(min(callee[j].imax, op->b - 1));
+                // e = clamp(a,min,max) not handled because it is not analysable
+                // For example, index variable appears in min or max expressions.
+                set_callee_exact_false();
                 op->a.accept(this);
-                op->b.accept(this);
+                op->min.accept(this);
+                op->max.accept(this);
             }
         }
-        else {
-            // e = k % x is not handled because it is not linear
-            set_callee_exact_false();
-            op->a.accept(this);
-            op->b.accept(this);
-        }
-# endif
     }
 
     // Max
@@ -550,7 +579,7 @@ std::vector<VarInterval> backwards_interval(const std::vector<std::string> &varl
         // concrete data and the other is inexact; in this case the result is inexact but
         // is restricted to the concrete data.  Of course, if we wanted to use expressions then
         // we could represent all the cases.
-        log(2,"DOMINF") << "Result[" << j << "]: " << result[j].varname << "  " << result[j].poison << "  " << result[j].imin << "  " << result[j].imax << "\n";
+        log(0,"DOMINF") << "Result[" << j << "]: " << result[j].varname << "  " << result[j].poison << "  " << result[j].imin << "  " << result[j].imax << "\n";
         if (result[j].poison.defined() && ! equal(result[j].poison, const_false())) {
             result[j].imin = Expr();
             result[j].imax = Expr();
@@ -648,11 +677,13 @@ private:
             {
                 if (func_call->image.defined()) {
                     // All domains are the same for an image.
+                    log(2,"DOMINF") << "Domain Inference on Image buffer " << func_call->image.name() << "\n";
                     result = backwards_interval(varlist, domains, func_call->args[i],
                                             func_call->image.min(i), 
                                             func_call->image.min(i) + func_call->image.extent(i) - 1);
                 }
                 else if (func_call->param.defined()) {
+                    log(2,"DOMINF") << "Domain Inference on Image parameter " << func_call->param.name() << "\n";
                     result = backwards_interval(varlist, domains, func_call->args[i],
                                             0, func_call->param.extent(i) - 1);
                 }
@@ -663,6 +694,10 @@ private:
             {
                 // For Halide calls, access the domain in the function object.
                 // We need to know the VarInterval of the i'th parameter of the called function.
+                log(2,"DOMINF") << "Domain Inference on Halide call to " << func_call->func.name() << "\n";
+                log(4,"DOMINF") << "Variables: ";
+                for (size_t ii = 0; ii < varlist.size(); ii++) { log(4,"DOMINF") << varlist[ii] << " "; }
+                log(4,"DOMINF") << "\n";
                 result = backwards_interval(varlist, domains, func_call->args[i],
                                         func_call->func.domain_intervals(i));
             }
@@ -707,12 +742,21 @@ Var is just a name.
 
 std::vector<Domain> domain_inference(const std::vector<std::string> &variables, Expr e)
 {
+    log(1,"DOMINF") << "domain_inference: Expression: " << e << "\n";
     // At this level, we use a list of variables passed in.
     ForwardDomainInference infers(variables);
     
     assert(e.defined() && "domain_inference applied to undefined expression");
     
     e.accept(&infers);
+    
+    log(1,"DOMINF") << "Domain returned: \n";
+    for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
+        for (size_t i = 0; i < infers.domains[j].intervals.size(); i++) {
+            log(1,"DOMINF") << "[" << j << "," << i << "]: " << infers.domains[j].intervals[i].poison << "  (" 
+                << infers.domains[j].intervals[i].imin << ", " << infers.domains[j].intervals[i].imax << ")\n";
+        }
+    }
     
     return infers.domains;
 }

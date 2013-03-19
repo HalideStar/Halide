@@ -4,6 +4,7 @@
 #include "Border.h"
 
 #include "IR.h"
+#include "IREquality.h"
 #include "IRPrinter.h"
 #include "Func.h"
 #include "Log.h"
@@ -143,8 +144,32 @@ int do_tile(int x, int lox, int hix, int tile) {
 }
 int expect_tile23(int x, int y) { return do_tile(x,LOX,HIX,2) + do_tile(y,LOY,HIY,3)*MUL; }
 
-void check(std::string name, Expr expr, int (*expected)(int, int)) {
+static bool check_domain (std::string name, std::string dname, Domain d, Domain expect) {
+    bool success = true;
+    if (d.intervals.size() != expect.intervals.size()) {
+        success = false;
+        std::cout << name <<": " << dname << ": Domain sizes differ\n";
+    }
+    for (size_t i = 0; i < d.intervals.size() && i < expect.intervals.size(); i++) {
+        if (! equal(d.intervals[i].imin, expect.intervals[i].imin)) {
+            std::cout << name << ": " << dname << "[" << i << "]: Expected imin: " << expect.intervals[i].imin << "  Got: " << d.intervals[i].imin << "\n";
+            success = false;
+        }
+        if (! equal(d.intervals[i].imax, expect.intervals[i].imax)) {
+            std::cout << name << ": " << dname << "[" << i << "]: Expected imax: " << expect.intervals[i].imax << "  Got: " << d.intervals[i].imax << "\n";
+            success = false;
+        }
+        if (! equal(d.intervals[i].poison, expect.intervals[i].poison)) {
+            std::cout << name << ": " << dname << "[" << i << "]: Expected poison: " << expect.intervals[i].poison << "  Got: " << d.intervals[i].poison << "\n";
+            success = false;
+        }
+    }
+    return success;
+}
+
+static void check(std::string name, Expr expr, int (*expected)(int, int), Domain *valid = 0, Domain *computable = 0) {
     log(1) << "Checking " << name << "\n";
+    bool success = true;
     Func c("check");
     c = expr;
     Image<int> out = c.realize(MAXX, MAXY);
@@ -157,6 +182,19 @@ void check(std::string name, Expr expr, int (*expected)(int, int)) {
             }
         }
     }
+    
+    if (valid != 0) {
+        success &= check_domain (name, "Valid", c.valid(), *valid);
+    }
+    if (computable != 0) {
+        success &= check_domain (name, "Computable", c.computable(), *computable);
+    }
+    
+    assert(success && "Border handling test failed");
+}
+
+static void check(std::string name, Expr expr, int (*expected)(int, int), Domain valid, Domain computable) {
+    check (name, expr, expected, &valid, &computable);
 }
 
 void border_test() {
@@ -194,13 +232,23 @@ void border_test() {
     
     // Now, build a function that accesses out of the bounds of in.
     Func g("g");
-    g(x,y) = in(x-LOX,y-LOY);
+    g(x,y) = in(x-LOX,y-LOY); // in is valid on 0,5 0,6  g is valid on 4,9  4,10
     check("Border::replicate()", Border::replicate(g), expect_replicate);
-    check("Border::wrap()", Border::wrap(g), expect_wrap);
-    check("Border::reflect()", Border::reflect(g), expect_reflect);
-    check("Border::reflect101()", Border::reflect101(g), expect_reflect101);
-    check("Border::constant(0)()", Border::constant(0)(g), expect_constant0);
-    check("Border::tile(2,3)()", Border::tile(2,3)(g), expect_tile23); 
+    check("Border::wrap()", Border::wrap(g), expect_wrap, 
+        Domain("x", false, LOX, HIX, "y", false, LOY, HIY), 
+        Domain("x", false, Expr(), Expr(), "y", false, Expr(), Expr()));
+    check("Border::reflect()", Border::reflect(g), expect_reflect, 
+        Domain("x", false, LOX, HIX, "y", false, LOY, HIY), 
+        Domain("x", false, Expr(), Expr(), "y", false, Expr(), Expr()));
+    check("Border::reflect101()", Border::reflect101(g), expect_reflect101, 
+        Domain("x", false, LOX, HIX, "y", false, LOY, HIY), 
+        Domain("x", false, Expr(), Expr(), "y", false, Expr(), Expr()));
+    check("Border::constant(0)()", Border::constant(0)(g), expect_constant0, 
+        Domain("x", false, LOX, HIX, "y", false, LOY, HIY), 
+        Domain("x", false, Expr(), Expr(), "y", false, Expr(), Expr()));
+    check("Border::tile(2,3)()", Border::tile(2,3)(g), expect_tile23, 
+        Domain("x", false, LOX, HIX, "y", false, LOY, HIY), 
+        Domain("x", false, Expr(), Expr(), "y", false, Expr(), Expr())); 
 
     std::cout << "Border handling tests passed\n";
 }
