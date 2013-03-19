@@ -49,6 +49,23 @@ Func border(vector<BorderHandler> handlers, Func f) {
     return g;
 }
 
+Func border(BorderHandler h1, Func f) {
+    return border(Internal::vec(h1), f);
+}
+
+Func border(BorderHandler h1, BorderHandler h2, Func f) {
+    return border(Internal::vec(h1, h2), f);
+}
+
+Func border(BorderHandler h1, BorderHandler h2, BorderHandler h3, Func f) {
+    return border(Internal::vec(h1, h2, h3), f);
+}
+
+Func border(BorderHandler h1, BorderHandler h2, BorderHandler h3, BorderHandler h4, Func f) {
+    return border(Internal::vec(h1, h2, h3, h4), f);
+}
+
+
 BorderBase *BorderBase::dim(int d) { 
     if (d > 0) {
         return new BorderIndex(this, d); 

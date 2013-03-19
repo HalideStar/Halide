@@ -15,6 +15,9 @@ struct Clamp : public ExprNode<Clamp> {
     // p1 is an extra parameter that may be used for some clamp-like operations.
     // Tile: p1 is the tile width.
     Expr p1;
+    // None: No clamping is applied at all.  This no-op is used for domain inference because
+    //   it represents Border::none which has the semantics that the computable domain becomes a copy
+    //   of the valid domain.
 	// Replicate: If value is out of range, restrict it to the range. Implements clamp() function and
     //   when applied to image indices implements border pixel replication.
     //   On image indices: |abcd| becomes ...aaaa|abcd|dddd...
@@ -26,7 +29,7 @@ struct Clamp : public ExprNode<Clamp> {
     //   On image indices: |abcd| becomes ...abcdcb|abcd|cbabcd...
 	// Tile: Replicate a portion of the range outside the range.
     //   On image indices with tile width of 2: |abcdef| becomes ...ababab|abcdef|efefef...
-	typedef enum {Replicate, Wrap, Reflect, Reflect101, Tile} ClampType;
+	typedef enum {None, Replicate, Wrap, Reflect, Reflect101, Tile} ClampType;
 	ClampType clamptype;
     
     // Retain the bounds of the expression a as determined by bounds inference.
@@ -44,6 +47,11 @@ public:
 	Clamp(ClampType _t, Expr _a, Expr _min, Expr _max): 
 		ExprNode<Clamp>(_a.type()), a(_a), min(_min), max(_max), p1(Expr(0)), clamptype(_t) {
 		assert(clamptype != Tile && "Tile clamp without tile expression");
+		constructor();
+	}
+	Clamp(ClampType _t, Expr _a): 
+		ExprNode<Clamp>(_a.type()), a(_a), min(Expr(0)), max(Expr(0)), p1(Expr(0)), clamptype(_t) {
+		assert(clamptype == None && "Clamp (other than None) without limits");
 		constructor();
 	}
 };

@@ -487,9 +487,9 @@ private:
     // Min: analogous to Max.
 };
 
-VarInterval backwards_interval(const std::vector<std::string> &varlist, Domain &dom, Expr e, Expr xmin, Expr xmax, Expr xpoison) {
-    log(3,"DOMINF") << "e: " << e << "    min: " << xmin << "    max: " << xmax << '\n';
-    BackwardIntervalInference infers(varlist, dom, xmin, xmax, xpoison);
+VarInterval backwards_interval(const std::vector<std::string> &varlist, Domain &dom, Expr e, VarInterval callee) {
+    log(3,"DOMINF") << "e: " << e << "    min: " << callee.imin << "    max: " << callee.imax << '\n';
+    BackwardIntervalInference infers(varlist, dom, callee.imin, callee.imax, callee.poison);
     Expr e1 = simplify(e);
     
     e1.accept(&infers);
@@ -529,12 +529,14 @@ VarInterval backwards_interval(const std::vector<std::string> &varlist, Domain &
 
 
 VarInterval backwards_interval(const std::vector<std::string> &varlist, Domain &dom, Expr e, Expr xmin, Expr xmax) {
-    return backwards_interval(varlist, dom, e, xmin, xmax, const_false());
+    VarInterval callee("", const_false(), xmin, xmax);
+    return backwards_interval(varlist, dom, e, callee);
 }
 
 
-VarInterval backwards_interval(const std::vector<std::string> &varlist, Domain &dom, Expr e, VarInterval callee) {
-    return backwards_interval(varlist, dom, e, callee.imin, callee.imax, callee.poison);
+VarInterval backwards_interval(const std::vector<std::string> &varlist, Domain &dom, Expr e, Expr xmin, Expr xmax, Expr xpoison) {
+    VarInterval callee("", xpoison, xmin, xmax);
+    return backwards_interval(varlist, dom, e, callee);
 }
 
 

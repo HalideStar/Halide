@@ -32,6 +32,9 @@ class LowerClamp : public IRMutator {
         Expr r, e;
         Expr adjust = op->type.is_float() ? Expr(0) : Expr(1);
         switch (op->clamptype) {
+            case Clamp::None:
+                expr = op_a;
+                break;
             case Clamp::Replicate:
                 expr = new Max(new Min(op_a, op_max), op_min);
                 break;

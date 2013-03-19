@@ -79,21 +79,13 @@ public:
 /** Border handling expressions. */
 Func border(std::vector<BorderHandler> handlers, Func f);
 
-Func border(BorderHandler h1, Func f) {
-    return border(Internal::vec(h1), f);
-}
+Func border(BorderHandler h1, Func f);
 
-Func border(BorderHandler h1, BorderHandler h2, Func f) {
-    return border(Internal::vec(h1, h2), f);
-}
+Func border(BorderHandler h1, BorderHandler h2, Func f);
 
-Func border(BorderHandler h1, BorderHandler h2, BorderHandler h3, Func f) {
-    return border(Internal::vec(h1, h2, h3), f);
-}
+Func border(BorderHandler h1, BorderHandler h2, BorderHandler h3, Func f);
 
-Func border(BorderHandler h1, BorderHandler h2, BorderHandler h3, BorderHandler h4, Func f) {
-    return border(Internal::vec(h1, h2, h3, h4), f);
-}
+Func border(BorderHandler h1, BorderHandler h2, BorderHandler h3, BorderHandler h4, Func f);
 
 /** A border handler that provides no border. */
 class BorderNone : public BorderBase {
