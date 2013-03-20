@@ -143,7 +143,9 @@ ostream &operator<<(ostream &stream, Stmt ir) {
     return stream;
 }
 
-IRPrinter::IRPrinter(ostream &s) : stream(s), indent(0) {}
+IRPrinter::IRPrinter(ostream &s) : stream(s), indent(0) {
+    s.setf(std::ios::fixed, std::ios::floatfield);    
+}
 
 void IRPrinter::print(Expr ir) {
     ir.accept(this);
@@ -163,7 +165,7 @@ void IRPrinter::visit(const IntImm *op) {
 }
     
 void IRPrinter::visit(const FloatImm *op) {
-    stream << op->value;
+    stream << op->value << 'f';
 }
     
 void IRPrinter::visit(const Cast *op) { 
