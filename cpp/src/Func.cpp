@@ -441,6 +441,32 @@ FuncRefVar::FuncRefVar(Internal::Function f, const vector<Var> &a) : func(f) {
 
 //LH
 /** Get a handle to the valid domain for the purpose of modifying it */
+Domain &Func::domain(Domain::DomainType dt) {
+	return func.domain(dt);
+}
+
+//LH
+/** Get a handle to the valid domain for the purpose of inspecting it */
+const Domain &Func::domain(Domain::DomainType dt) const {
+	return func.domain(dt);
+}
+
+//LH
+/** Set the valid domain in a schedule format */
+Func &Func::domain(Domain::DomainType dt, Domain d) {
+	func.domain(dt) = d;
+	return *this;
+}
+
+//LH
+/** Set the valid domain to be the same as an existing Func in a schedule format */
+Func &Func::domain(Domain::DomainType dt, Func f) {
+	func.domain(dt) = f.domain(dt);
+	return *this;
+}
+
+//LH
+/** Get a handle to the valid domain for the purpose of modifying it */
 Domain &Func::valid() {
 	return func.domain(Domain::Valid);
 }

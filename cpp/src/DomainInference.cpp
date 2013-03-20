@@ -9,7 +9,10 @@
 #include "log.h"
 #include "Simplify.h"
 
+#include <iostream>
+
 using std::string;
+using std::ostream;
 
 namespace Halide { 
 namespace Internal {
@@ -50,6 +53,17 @@ void VarInterval::update(VarInterval result) {
     }
     log(4,"DOMINF") << "Result " << poison << " (" << imin << ", " << imax << ")\n";
 }
+
+ostream &operator<<(ostream &stream, VarInterval interval) {
+    if (equal(interval.poison, const_true())) {
+        stream << "~"; // ~ denotes approximate interval
+    } else if (! equal(interval.poison, const_false())) {
+        stream << "~[" << interval.poison << "]"; // [] denotes expression for approximate interval
+    }
+    stream << "(" << interval.imin << ", " << interval.imax << ")";
+    return stream;
+}
+
 
 // End namespace Internal
 }
@@ -411,6 +425,52 @@ private:
         }
     }
     
+    // Method to handle clamp-like operations, which are treated as border handlers.
+    void clamp_limits(Expr op_a, Expr op_min, Expr op_max) {
+        if (op_min.defined()) {
+            // If it can be proved that the valid domain is at least as extensive as the callee domain
+            // then we have an effective border handler.
+            if (is_constant_expr(op_min) && 
+                (! callee[Domain::Valid].imin.defined() || proved(callee[Domain::Valid].imin <= op_min))) {
+                // The result of clamping is:
+                // The Computable domain limit becomes infinite. (Could have special code for partial border handlers)
+                // The Valid domain limit becomes the clamp limit, because outside that range is border handled.
+                // The Efficient domain is restricted to the clamp limit, because outside that range is border handled.
+                callee[Domain::Computable].imin = Expr();
+                // The computable domain is now inexact if the valid domain was inexact, because then
+                // we could not be certain that the limits really are valid.  (The inexact limits can be
+                // more generous than the actual limits, so the actual limits may mean that border handling
+                // is not effective.)
+                callee[Domain::Computable].poison = callee[Domain::Valid].poison;
+                // The limit of the valid domain is now restricted to the clamp limit
+                callee[Domain::Valid].imin = op_min;
+                // The limit of the efficient domain is now restricted to the clamp limit
+                callee[Domain::Efficient].imin = max(op_min,callee[Domain::Efficient].imin);
+            }
+            else {
+                // Not an effective border handler.
+                set_callee_exact_false();
+                op_min.accept(this);
+            }
+        }
+        if (op_max.defined()) {
+            if (is_constant_expr(op_max) && 
+                (! callee[Domain::Valid].imax.defined() || proved(callee[Domain::Valid].imax >= op_max))) {
+                //
+                callee[Domain::Computable].imax = Expr();
+                callee[Domain::Computable].poison = callee[Domain::Valid].poison;
+                callee[Domain::Valid].imax = op_max;
+                callee[Domain::Efficient].imax = min(op_max,callee[Domain::Efficient].imax);
+            }
+            else {
+                // Not an effective border handler.
+                set_callee_exact_false();
+                op_max.accept(this);
+            }
+        }
+        op_a.accept(this);
+    }
+    
     void visit(const Clamp *op) {
         for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
             log(0,"DOMINF") << Expr(op) << " on (" << callee[j].imin << ", " << callee[j].imax << ")\n";
@@ -422,57 +482,7 @@ private:
             callee[Domain::Computable] = callee[Domain::Valid];
         }
         else {
-            // All other clamps have the effect of expanding the computable domain but keeping
-            // the valid domain essentially untouched, unless of course, the limits of the clamp
-            // do not correspond to the limits of the valid domain.
-            if (is_constant_expr(op->min) && is_constant_expr(op->max)) {
-                // op->a is clamped to the range op->min to op->max inclusive.
-                // If it can be proved that the valid domain is at least this large,
-                // then we can act on the information
-                log(0,"DOMINF") << "Min and max are constant expressions\n";
-                if ((! callee[Domain::Valid].imin.defined() || proved(callee[Domain::Valid].imin <= op->min)) &&
-                    (! callee[Domain::Valid].imax.defined() || proved(callee[Domain::Valid].imax >= op->max))) {
-                    // Special case.  The clamp range is within the Valid domain of the callee (as adjusted).
-                    // This means that the result of clamping is:
-                    // The Computable domain becomes infinite. (Could have special code for partial border handlers)
-                    // The Valid domain becomes the clamp range, because outside that range is border handled.
-                    // The Efficient domain is restricted to the clamp range, because outside that range is border handled.
-                    log(0,"DOMINF") << "Computable to infinite\n";
-                    callee[Domain::Computable].imin = Expr();
-                    callee[Domain::Computable].imax = Expr();
-                    // The computable domain is now inexact if the valid domain was inexact, because then
-                    // we could not be certain that the limits really are valid.
-                    // A less conservative answer would be that the inexact limits should be generous so
-                    // then we can be exact.
-                    callee[Domain::Computable].poison = callee[Domain::Valid].poison;
-                    //
-                    callee[Domain::Valid].imin = op->min;
-                    callee[Domain::Valid].imax = op->max;
-                    log(0,"DOMINF") << "Valid to (" << op->min << ", " << op->max << ")\n";
-                    //
-                    // callee[Domain::Efficient].imin = max(op->min,callee[Domain::Efficient].imin);
-                    // callee[DOmain::Efficient].imax = min(op->max,callee[Domain::Efficient].imax);
-                }
-                else {
-                    // Apparently, not effective border handling.
-                    // Restrict the valid domain
-                    // Leave the computable domain as it was
-                    set_callee_exact_false();
-                    if (op->min.defined())
-                        callee[Domain::Valid].imin = max(callee[Domain::Valid].imin, op->min);
-                    if (op->max.defined())
-                        callee[Domain::Valid].imax = min(callee[Domain::Valid].imax, op->max);
-                }
-                op->a.accept(this);
-            }
-            else {
-                // e = clamp(a,min,max) not handled because it is not analysable
-                // For example, index variable appears in min or max expressions.
-                set_callee_exact_false();
-                op->a.accept(this);
-                op->min.accept(this);
-                op->max.accept(this);
-            }
+            clamp_limits(op->a, op->min, op->max);
         }
     }
 
@@ -482,26 +492,18 @@ private:
             log(3,"DOMINF") << "Max(" << op->a << ",  " << op->b << ") on (" << callee[j].imin << ", " << callee[j].imax << ")\n";
         }
         if (is_constant_expr(op->b)) {
-            // e = max(x,k) to be in range(a,b)
-            // then x to be in range(c,b) where
-            // if a <= k (i.e. max applied to x enforces the limit a effectively) then c = -infinity
-            // else (i.e. max applied to x does not enforce the limit a) then c = a.
-            // So, if we can prove that xmin <= op->b then the new xmin is undefined.
-            for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-                if ((! callee[j].imin.defined() || proved(callee[j].imin <= op->b))) {
-                    // xmin is negative infinite
-                    callee[j].imin = Expr();
-                }
-            }
-            op->a.accept(this);
+            // max(a,b) is equivalent to clamping on the range (b,infinity)
+            clamp_limits(op->a, op->b, Expr());
         }
         else if (is_constant_expr(op->a)) {
             // Interchange the parameters
-            Expr e = max(op->b, op->a);
-            e.accept(this);
+            clamp_limits(op->b, op->a, Expr());
         }
         else {
-            // e = k % x is not handled because it is not linear
+            // max of two non-constant expressions will lead to inexact results
+            // because it is not linear
+            // Note: if the expressions were max(x+k1, x+k2) or similar then
+            // simplification would reduce the expression if it could prove one of them bigger.
             set_callee_exact_false();
             op->a.accept(this);
             op->b.accept(this);
@@ -514,26 +516,15 @@ private:
             log(3,"DOMINF") << "Min(" << op->a << ",  " << op->b << ") on (" << callee[j].imin << ", " << callee[j].imax << ")\n";
         }
         if (is_constant_expr(op->b)) {
-            // e = min(x,k) to be in range(a,b)
-            // then x to be in range(a,c) where
-            // if b >= k (i.e. min applied to x enforces the limit b effectively) then c = infinity
-            // else (i.e. min applied to x does not enforce the limit b) then c = b.
-            // So, if we can prove that xmax >= op->b then the new xmax is undefined.
-            for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-                if ((! callee[j].imax.defined() || proved(callee[j].imax >= op->b))) {
-                    // xmax is infinite
-                    callee[j].imax = Expr();
-                }
-            }
-            op->a.accept(this);
+            clamp_limits(op->a, Expr(), op->b);
         }
         else if (is_constant_expr(op->a)) {
             // Interchange the parameters
-            Expr e = min(op->b, op->a);
-            e.accept(this);
+            clamp_limits(op->b, Expr(), op->a);
         }
         else {
-            // e = k % x is not handled because it is not linear
+            // min of two non-constant expressions will lead to inexact results
+            // because it is not linear
             set_callee_exact_false();
             op->a.accept(this);
             op->b.accept(this);
@@ -545,7 +536,7 @@ private:
 std::vector<VarInterval> backwards_interval(const std::vector<std::string> &varlist, std::vector<Domain> &domains, Expr e, std::vector<VarInterval> callee) {
     assert(callee.size() == Domain::MaxDomains && "Incorrect number of callee intervals");
     for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-        log(3,"DOMINF") << "e: " << e << "    min: " << callee[j].imin << "    max: " << callee[j].imax << '\n';
+        log(3,"DOMINF") << "e: " << e << "  [" << j << "]: " << callee[j] << '\n';
     }
     BackwardIntervalInference infers(varlist, domains, callee);
     Expr e1 = simplify(e);
@@ -600,8 +591,10 @@ std::vector<VarInterval> backwards_interval(const std::vector<std::string> &varl
     std::vector<VarInterval> intervals;
     // Expand a single interval to represent all the different domain types.
     // This applies to images and to testing.
-    for (int j = Domain::Valid; j < Domain::MaxDomains; j++)
+    for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
         intervals.push_back(callee);
+        log(0) << "backward interval initialisation [" << j << "]: " << intervals[j] << '\n';
+    }
     return backwards_interval(varlist, domains, e, intervals);
 }
 
@@ -941,12 +934,14 @@ void domain_expr_test()
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y) + in(x,y) + in(x,y+5), 
                         Domain("x", False, 2, 19, "y", False, 0, 34));
     // Exact result including use of min function.  min(y+5,15) limits the upper range of y+5 to 15 so it
-    // ensures that it remains in bounds at the upper end.
+    // ensures that it remains in bounds at the upper end.  However, as a border handler, it means that
+    // the valid domain of y is limited to 10.
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y) + in(x,y) + in(x,min(y+5,15)), 
-                        Domain("x", False, 2, 19, "y", False, 0, 39));
-    // Exact results including use of max function.  
+                        Domain("x", False, 2, 19, "y", False, 0, 10));
+    // Exact results including use of max and min functions.  min(x,9) limits x <= 9 for valid domain.
+    // max(x,0) limits x >= 0 for valid domain.  max(y,1) limits y >= 1 for valid domain.
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,max(y,1)) + in(max(x,0),y) + in(min(x,9),y+5), 
-                        Domain("x", False, 2, 19, "y", False, 0, 34));
+                        Domain("x", False, 2, 9, "y", False, 1, 34));
     // Test interchange of variables (flip the domain of the function)
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(y,x), 
                         Domain("x", False, 0, 39, "y", False, 0, 19));

@@ -740,6 +740,21 @@ public:
     }
 
 	//LH
+	/** Get a handle to a specified domain for the purpose of modifying it */
+	Domain &domain(Domain::DomainType dt);
+
+	//LH
+	/** Get a handle to the valid domain for the purpose of inspecting it */
+	const Domain &domain(Domain::DomainType dt) const;
+	
+	//LH
+	/** Set the valid domain in a schedule format */
+	Func &domain(Domain::DomainType dt, Domain d);
+
+	//LH
+	/** Set the valid domain to be the same as an existing Func in a schedule format */
+	Func &domain(Domain::DomainType, Func f);
+
 	/** Get a handle to the valid domain for the purpose of modifying it */
     // It is questionable whether the domain information should be blindly copied across
     // or whether there should be some rearrangement of the index variables according to the

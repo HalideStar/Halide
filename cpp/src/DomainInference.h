@@ -19,6 +19,11 @@ struct VarInterval
     
     void update(VarInterval result);
 };
+
+/** Emit a VarInterval on an output stream (such as std::cout) in a
+ * human-readable form */
+std::ostream &operator<<(std::ostream &stream, VarInterval);
+
 }
 
 # define NextDomainType(dt) ((int) dt)++)

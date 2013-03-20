@@ -206,6 +206,7 @@ void border_test() {
     Domain initd("x", false, LOX, HIX, "y", false, LOY, HIY);
     init.valid() = initd;
     init.computable() = initd;
+    init.domain(Domain::Efficient) = initd;
     
     check("raw", init, expect_raw);
     check("Border::replicate", border(Border::replicate, Border::replicate, init), expect_replicate);
