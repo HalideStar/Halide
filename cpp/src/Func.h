@@ -131,6 +131,24 @@ public:
     EXPORT operator Expr() const;
 };
 
+class FuncRefKernel {
+    Internal::Function func;
+    std::vector<Expr> args;
+    void add_implicit_vars(std::vector<Expr> &args, Expr e);
+public:
+    FuncRefKernel(Internal::Function, const std::vector<Expr> &);
+    FuncRefKernel(Internal::Function, const std::vector<std::string> &);
+    
+    /** Accumulate the kernel indices using [1][2][3] notation as allowed in C */
+    FuncRefKernel operator[](Expr e);
+        
+    /** Use this as a call to the function with kernel access. */
+    EXPORT operator FuncRefExpr() const;
+    
+    /** Use this as a call to the function in an Expr. */
+    operator Expr() const { return Expr(FuncRefExpr(*this)); }
+};
+
 /** A wrapper around a schedule used for common schedule manipulations */
 class ScheduleHandle {
     Internal::Schedule &schedule;
@@ -430,6 +448,15 @@ public:
     EXPORT FuncRefExpr operator()(Expr x, Expr y, Expr z, Expr w);
     EXPORT FuncRefExpr operator()(std::vector<Expr>);
     // @}
+    
+    /** Construct a RHS call to a function as a kernel.
+     * The subscript expressions do not include free variables.
+     * Implicit free variables are added to each subscript expression
+     * in turn and used to bulk out the call as necessary. */
+    // @(
+    EXPORT FuncRefKernel operator[](Expr x);
+    EXPORT FuncRefKernel operator[](std::vector<Expr>);
+    // @)
 
     /** Scheduling calls that control how the domain of this function
      * is traversed. See the documentation for ScheduleHandle for the meanings */
@@ -741,19 +768,19 @@ public:
 
 	//LH
 	/** Get a handle to a specified domain for the purpose of modifying it */
-	Domain &domain(Domain::DomainType dt);
+	EXPORT Domain &domain(Domain::DomainType dt);
 
 	//LH
 	/** Get a handle to the valid domain for the purpose of inspecting it */
-	const Domain &domain(Domain::DomainType dt) const;
+	EXPORT const Domain &domain(Domain::DomainType dt) const;
 	
 	//LH
 	/** Set the valid domain in a schedule format */
-	Func &domain(Domain::DomainType dt, Domain d);
+	EXPORT Func &domain(Domain::DomainType dt, Domain d);
 
 	//LH
 	/** Set the valid domain to be the same as an existing Func in a schedule format */
-	Func &domain(Domain::DomainType, Func f);
+	EXPORT Func &domain(Domain::DomainType, Func f);
 
 	/** Get a handle to the valid domain for the purpose of modifying it */
     // It is questionable whether the domain information should be blindly copied across
@@ -766,7 +793,7 @@ public:
 
 	//LH
 	/** Get a handle to the valid domain for the purpose of inspecting it */
-	const Domain &valid() const;
+	EXPORT const Domain &valid() const;
 	
 	//LH
 	/** Set the valid domain in a schedule format */
@@ -801,10 +828,10 @@ public:
     
     //LH
     /** Methods to indicate that the current function is a kernel of other functions. */
-    Func &kernel(Func f1);
-    Func &kernel(Func f1, Func f2);
-    Func &kernel(Func f1, Func f2, Func f3);
-    Func &kernel(Func f1, Func f2, Func f3, Func f4);
+    EXPORT Func &kernel(Func f1);
+    EXPORT Func &kernel(Func f1, Func f2);
+    EXPORT Func &kernel(Func f1, Func f2, Func f3);
+    EXPORT Func &kernel(Func f1, Func f2, Func f3, Func f4);
 };
 
 

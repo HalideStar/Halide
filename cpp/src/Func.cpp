@@ -126,6 +126,32 @@ FuncRefExpr Func::operator()(vector<Expr> args) {
     return FuncRefExpr(func, args);
 }
 
+FuncRefKernel Func::operator[](Expr x) {
+    return FuncRefKernel(func, vec(x));
+}
+
+FuncRefKernel Func::operator[](std::vector<Expr> v) {
+    return FuncRefKernel(func, v);
+}
+
+FuncRefKernel FuncRefKernel::operator[](Expr x) {
+    // Accumulate indices in C style [1][2][3]...
+    args.push_back(x);
+    return (*this);
+}
+
+FuncRefKernel::operator FuncRefExpr() const {
+    vector<Expr> imp_args;
+    for (int i = 0; i < (int) func.args().size(); i++) {
+        if (i < (int) args.size()) {
+            imp_args.push_back(Var::implicit(i) + args[i]);
+        } else {
+            imp_args.push_back(Var::implicit(i));
+        }
+    }
+    return FuncRefExpr(func, imp_args);
+}
+
 void Func::add_implicit_vars(vector<Var> &args) {
     int i = 0;    
     while ((int)args.size() < dimensions()) {        
@@ -641,6 +667,12 @@ FuncRefExpr::FuncRefExpr(Internal::Function f, const vector<string> &a) : func(f
     }
 }
     
+FuncRefKernel::FuncRefKernel(Internal::Function f, const vector<Expr> &a) : func(f), args(a) {
+    for (size_t i = 0; i < args.size(); i++) {
+        args[i] = cast<int>(args[i]);
+    }
+}
+
 void FuncRefExpr::add_implicit_vars(vector<Expr> &a, Expr e) {
     CountImplicitVars f(e);
     // Implicit vars are also allowed in the lhs of a reduction. E.g.:

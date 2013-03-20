@@ -102,6 +102,9 @@ int expect_raw(int x, int y) { return x + y * MUL; }
 
 int do_replicate(int x, int lox, int hix) { return (x < lox ? lox : (x > hix ? hix: x)); }
 int expect_replicate(int x, int y) { return do_replicate(x,LOX,HIX) + do_replicate(y,LOY,HIY)*MUL; }
+int expect_kernel_replicate(int x, int y) { 
+    return (do_replicate(x-1,LOX,HIX) + do_replicate(y,LOY,HIY)*MUL +
+            do_replicate(x+1,LOX,HIX) + do_replicate(y,LOY,HIY)*MUL) / 2; }
 
 int do_wrap(int x, int lox, int hix) { 
     // Reference implementation by repeated wrap
@@ -250,6 +253,16 @@ void border_test() {
     check("Border::tile(2,3)()", Border::tile(2,3)(g), expect_tile23, 
         Domain("x", false, LOX, HIX, "y", false, LOY, HIY), 
         Domain("x", false, Expr(), Expr(), "y", false, Expr(), Expr())); 
+        
+    // Build a kernel function using kernel notation
+    Func border("border"), kernel("kernel");
+    border = Border::replicate(g);
+    kernel = (border[-1][0] + border[1][0]) / 2;
+    kernel.kernel(border);
+    
+    check("kernel", kernel, expect_kernel_replicate,
+        Domain("x", false, LOX, HIX, "y", false, LOY, HIY),
+        Domain("x", false, Expr(), Expr(), "y", false, Expr(), Expr()));
 
     std::cout << "Border handling tests passed\n";
 }
