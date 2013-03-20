@@ -828,10 +828,10 @@ public:
     
     //LH
     /** Methods to indicate that the current function is a kernel of other functions. */
-    EXPORT Func &kernel(Func f1);
-    EXPORT Func &kernel(Func f1, Func f2);
-    EXPORT Func &kernel(Func f1, Func f2, Func f3);
-    EXPORT Func &kernel(Func f1, Func f2, Func f3, Func f4);
+    EXPORT Func &kernel_of(Func f1);
+    EXPORT Func &kernel_of(Func f1, Func f2);
+    EXPORT Func &kernel_of(Func f1, Func f2, Func f3);
+    EXPORT Func &kernel_of(Func f1, Func f2, Func f3, Func f4);
 };
 
 

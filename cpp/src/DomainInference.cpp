@@ -975,7 +975,7 @@ void domain_expr_test()
     
     // h is a kernel function of g, using the border handling
     h(a,b) = g(a,b)+g(a,b-1)+g(a,b+1);
-    h.kernel(g); // h is a kernel function of g, so the valid region is copied and intersected with computable region
+    h.kernel_of(g); // h is a kernel function of g, so the valid region is copied and intersected with computable region
     check_domain_expr(Domain::Valid, vecS("x","y"), h(x,y), Domain("x", False, 0, 19, "y", False, 0, 39));
     //check_domain_expr(Domain::Computable, vecS("x","y"), h(x,y), Domain("x", False, Expr(), Expr(), "y", False, Expr(), Expr()));
 
@@ -987,7 +987,7 @@ void domain_expr_test()
     // also influenced by shifting of inb.
     check_domain_expr(Domain::Valid, vecS("x","y"), fa(x,y), Domain("x", False, 1, 20, "y", False, 2, 36));
     //check_domain_expr(Domain::Computable, vecS("x","y"), fa(x,y), Domain("x", False, 0, 29, "y", False, 2, 36));
-    fa.kernel(g,inb);
+    fa.kernel_of(g,inb);
     // Declaring fa to be a kernel function overrides the shifts implicit in the definition of fa.
     // For g, this means that the valid domain is copied but for inb the computable domain is restricting the valid
     // domain.

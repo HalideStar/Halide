@@ -258,7 +258,7 @@ void border_test() {
     Func border("border"), kernel("kernel");
     border = Border::replicate(g);
     kernel = (border[-1][0] + border[1][0]) / 2;
-    kernel.kernel(border);
+    kernel.kernel_of(border);
     
     check("kernel", kernel, expect_kernel_replicate,
         Domain("x", false, LOX, HIX, "y", false, LOY, HIY),
