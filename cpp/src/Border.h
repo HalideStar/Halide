@@ -11,6 +11,7 @@
 #ifndef BORDER_EXTERN
 #define BORDER_EXTERN extern
 #define BORDER_EXTERN_INIT(decl,init) extern decl
+#define BORDER_EXTERN_CONSTRUCTOR(decl,args) extern decl
 #endif
 
 // An ugly part of this code is that it creates some dynamically allocated
@@ -168,11 +169,11 @@ public:
 };
 
 /** The actual instances of border borderfuncs, for use in expressions */
-BORDER_EXTERN BorderNone none;
-BORDER_EXTERN BorderReplicate replicate;
-BORDER_EXTERN BorderWrap wrap;
-BORDER_EXTERN BorderReflect reflect;
-BORDER_EXTERN BorderReflect101 reflect101;
+BORDER_EXTERN_CONSTRUCTOR(BorderFunc none,(new BorderNone));
+BORDER_EXTERN_CONSTRUCTOR(BorderFunc replicate,(new BorderReplicate));
+BORDER_EXTERN_CONSTRUCTOR(BorderFunc wrap,(new BorderWrap));
+BORDER_EXTERN_CONSTRUCTOR(BorderFunc reflect,(new BorderReflect));
+BORDER_EXTERN_CONSTRUCTOR(BorderFunc reflect101,(new BorderReflect101));
 
 /** Where the class object requires parameters, provide C++ functions to instantiate. */
 /** Write Border::constant(k) to create a border function with k as the constant expression */

@@ -1,6 +1,7 @@
 // Globals defined for border handling are defined within this module
 #define BORDER_EXTERN 
 #define BORDER_EXTERN_INIT(decl,init) decl = init
+#define BORDER_EXTERN_CONSTRUCTOR(decl,args) decl args
 #include "Border.h"
 
 #include "IR.h"
