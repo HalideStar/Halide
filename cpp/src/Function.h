@@ -100,10 +100,10 @@ public:
     const Schedule &schedule() const {
         return contents.ptr->schedule;
     }   
-	
+    
 	//LH
 	/** Get a handle to a domain for the purpose of modifying it */
-	Domain &domain(Domain::DomainType dt);
+	Domain &set_domain(Domain::DomainType dt);
 
 	//LH
 	/** Get a handle to a domain for the purpose of inspecting it */

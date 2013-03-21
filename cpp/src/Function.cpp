@@ -157,25 +157,30 @@ const std::vector<VarInterval> Function::domain_intervals(int index) const {
     assert(contents.ptr->domains.size() >= Domain::MaxDomains && "Insufficient Domains defined in Function");
     for (int j = 0; j < Domain::MaxDomains; j++) {
         intervals.push_back(contents.ptr->domains[j].intervals[index]);
+        contents.ptr->domains[j].lock(); // Lock the domain because it has been read for further inference
     }
+    log(0) << "Read all intervals from " << contents.ptr->name << "\n";
     return intervals;
 }
 
 //LH
 /** Get a handle to a domain for the purpose of modifying it */
-Domain &Function::domain(Domain::DomainType dt) {
+Domain &Function::set_domain(Domain::DomainType dt) {
+    log(0) << "Writing domain " << (int) dt << " in " << contents.ptr->name << "\n";
     assert(dt >= 0 && dt < Domain::MaxDomains && "Domain type is not in range");
     assert((size_t) dt < contents.ptr->domains.size() && "Domain of type does not exist");
-    log(0) << "Writing domain " << (int) dt << "\n";
+    assert(! contents.ptr->domains[dt].is_locked() && "Domain of function has already been used for further inference - cannot modify it");
     return contents.ptr->domains[dt];
 }
 
 //LH
 /** Get a handle to a domain for the purpose of inspecting it */
 const Domain &Function::domain(Domain::DomainType dt) const {
+    contents.ptr->domains[dt].lock();
+    log(0) << "Reading domain " << (int) dt << " of " << contents.ptr->name << "\n";
     assert(dt >= 0 && dt < Domain::MaxDomains && "Domain type is not in range");
     assert((size_t) dt < contents.ptr->domains.size() && "Domain of type does not exist");
-    return contents.ptr->domains[dt];
+    return contents.ptr->domains[dt]; // Lock the domain that is being read.
 }
 
 

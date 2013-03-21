@@ -214,7 +214,7 @@ static bool check_domain (std::string name, std::string dname, Domain d, Domain 
 }
 
 static void check(std::string name, Expr expr, int (*expected)(int, int), Domain *valid = 0, Domain *computable = 0) {
-    log(1) << "Checking " << name << "\n";
+    log(1,"DOMINF") << "\nChecking " << name << "\n";
     bool success = true;
     Func c("check");
     c = expr;
@@ -252,9 +252,9 @@ void border_test() {
     init(x,y) = x + y * MUL;
     // Manually set the valid and computable domains of init.
     Domain initd("x", false, LOX, HIX, "y", false, LOY, HIY);
-    init.valid() = initd;
-    init.computable() = initd;
-    init.domain(Domain::Efficient) = initd;
+    init.set_valid() = initd;
+    init.set_computable() = initd;
+    init.set_domain(Domain::Efficient) = initd;
     
     check("raw", init, expect_raw);
     check("Border::replicate", border(Border::replicate, Border::replicate)(init), expect_replicate);
@@ -312,8 +312,16 @@ void border_test() {
     check("kernel2", (g[-1][0] + g[1][0]) / 2, 0,
         Domain("x", false, LOX+1, HIX-1, "y", false, LOY, HIY),
         Domain("x", false, LOX+1, HIX-1, "y", false, LOY, HIY));
-        
-
+    
+    // An example using kernel mode computation with border handling then border none on top of
+    // that.
+    Func kernel("kernel"), none("none");
+    kernel = (border[-1][-1] + border[1][1]) / 2;
+    none = Border::none(kernel);
+    check("kernel+none", (none[-2][-1] + none[1][1]) / 2, 0,
+        Domain("x", false, LOX+2, HIX-1, "y", false, LOY+1, HIY-1),
+        Domain("x", false, LOX+2, HIX-1, "y", false, LOY+1, HIY-1));
+    
     std::cout << "Border handling tests passed\n";
 }
 

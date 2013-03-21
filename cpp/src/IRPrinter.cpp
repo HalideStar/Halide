@@ -112,6 +112,9 @@ ostream &operator<<(ostream &out, For::ForType type) {
 
 ostream &operator<<(ostream &out, Clamp::ClampType type) {
     switch (type) {
+    case Clamp::None:
+        out << "clamp_none";
+        break;
     case Clamp::Replicate:
         out << "clamp";
         break;

@@ -19,6 +19,8 @@
 // LH
 #include "DomainInference.h"
 
+#include <iostream>
+
 namespace Halide {
         
 /** A fragment of front-end syntax of the form f(x, y, z), where x,
@@ -299,13 +301,16 @@ public:
      * not contain free variables). */
     EXPORT Func(Expr e);
 
+private:
+    void constructor(Buffer b);
+public:
     /** Generate a new uniquely-named function that returns the given
      * buffer. Has the same dimensionality as the buffer. Useful for
      * passing Images to c++ functions that expect Funcs */
     //@{
     EXPORT Func(Buffer image);
     template<typename T> Func(Image<T> image) {
-        (*this) = Func(Buffer(image));
+        constructor(Buffer(image));
     }
     //@}
 
@@ -770,21 +775,24 @@ public:
     void operator=(Expr e) {
         (*this)() = e;
     }
+    
+    //LH
+    void operator=(Func f);
 
 	//LH
 	/** Get a handle to a specified domain for the purpose of modifying it */
-	EXPORT Domain &domain(Domain::DomainType dt);
+	EXPORT Domain &set_domain(Domain::DomainType dt);
 
 	//LH
-	/** Get a handle to the valid domain for the purpose of inspecting it */
+	/** Get a handle to the domain for the purpose of inspecting it */
 	EXPORT const Domain &domain(Domain::DomainType dt) const;
 	
 	//LH
-	/** Set the valid domain in a schedule format */
+	/** Set the domain in a schedule format */
 	EXPORT Func &domain(Domain::DomainType dt, Domain d);
 
 	//LH
-	/** Set the valid domain to be the same as an existing Func in a schedule format */
+	/** Set the domain to be the same as an existing Func in a schedule format */
 	EXPORT Func &domain(Domain::DomainType, Func f);
 
 	/** Get a handle to the valid domain for the purpose of modifying it */
@@ -794,35 +802,35 @@ public:
     // domain is too low level.  We need higher-level semantic operations for programmers
     // that are related to what they are actually writing - such as kernel operations, border
     // handling etc.
-	Domain &valid();
+	Domain &set_valid() { return set_domain(Domain::Valid); }
 
 	//LH
 	/** Get a handle to the valid domain for the purpose of inspecting it */
-	EXPORT const Domain &valid() const;
+	EXPORT const Domain &valid() const { return domain(Domain::Valid); }
 	
 	//LH
 	/** Set the valid domain in a schedule format */
-	Func &valid(Domain d);
+	Func &valid(Domain d) { return domain(Domain::Valid, d); }
 
 	//LH
 	/** Set the valid domain to be the same as an existing Func in a schedule format */
-	Func &valid(Func f);
+	Func &valid(Func f) { return domain(Domain::Valid, f); }
 
 	//LH
 	/** Get a handle to the computable domain for the purpose of modifying it */
-	Domain &computable();
+	Domain &set_computable() { return set_domain(Domain::Computable); }
 
 	//LH
 	/** Get a handle to the computable domain for the purpose of inspecting it */
-	const Domain &computable() const;
+	const Domain &computable() const { return domain(Domain::Computable); }
 
 	//LH
 	/** Set the computable domain in a schedule format */
-	Func &computable(Domain d);
+	Func &computable(Domain d) { return domain(Domain::Computable, d); }
 
 	//LH
 	/** Set the computable domain to be the same as an existing Func in a schedule format */
-	Func &computable(Func f);
+	Func &computable(Func f) { return domain(Domain::Computable, f); }
 
     //LH
     /** Return an infinite domain for the current function. */

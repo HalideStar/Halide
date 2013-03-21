@@ -73,16 +73,19 @@ void VarInterval::update(VarInterval result) {
 // Domain: Represents a domain whether valid, defined or some other.
 Domain::Domain() {
     intervals.clear();
+    domain_locked = false;
 }
 
 Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax) {
     intervals = vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax));
+    domain_locked = false;
 }
 
 Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
                std::string yvarname, Expr ypoisoned, Expr ymin, Expr ymax) {
     intervals = vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax),
                     Internal::VarInterval(yvarname, ypoisoned, ymin, ymax));
+    domain_locked = false;
 }
 
 Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
@@ -91,6 +94,7 @@ Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
     intervals = vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax),
                     Internal::VarInterval(yvarname, ypoisoned, ymin, ymax),
                     Internal::VarInterval(zvarname, zpoisoned, zmin, zmax));
+    domain_locked = false;
 }
 
 Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
@@ -105,12 +109,14 @@ Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
 
 Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax) {
     intervals = vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax));
+    domain_locked = false;
 }
 
 Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax,
                std::string yvarname, bool ypoisoned, Expr ymin, Expr ymax) {
     intervals = vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax),
                     Internal::VarInterval(yvarname, Internal::make_bool(ypoisoned), ymin, ymax));
+    domain_locked = false;
 }
 
 Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax,
@@ -119,6 +125,7 @@ Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax,
     intervals = vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax),
                     Internal::VarInterval(yvarname, Internal::make_bool(ypoisoned), ymin, ymax),
                     Internal::VarInterval(zvarname, Internal::make_bool(zpoisoned), zmin, zmax));
+    domain_locked = false;
 }
 
 Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax,
@@ -129,10 +136,11 @@ Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax,
                     Internal::VarInterval(yvarname, Internal::make_bool(ypoisoned), ymin, ymax),
                     Internal::VarInterval(zvarname, Internal::make_bool(zpoisoned), zmin, zmax),
                     Internal::VarInterval(wvarname, Internal::make_bool(wpoisoned), wmin, wmax));
+    domain_locked = false;
 }
 
 /** Compute the intersection of two domains. */
-Domain Domain::intersection(Domain other) {
+Domain Domain::intersection(const Domain other) const {
     Domain result = *this; // Start with one of the domains as the 'answer'
     for (size_t i = 0; i < other.intervals.size() && i < intervals.size(); i++) {
         // Update corresponding dimensions from the other domain.
@@ -511,7 +519,8 @@ private:
         // Clamp operators are particularly significant for forward domain inference.
         if (op->clamptype == Clamp::None) {
             // None is simply an indicator that the computable domain is to be the same
-            // as the valid domain.
+            // as the valid domain.  First determine the domains on the expression.
+            op->a.accept(this);
             callee[Domain::Computable] = callee[Domain::Valid];
         }
         else {
@@ -981,7 +990,7 @@ void domain_expr_test()
 {
     Image<uint8_t> in(20,40);
     Image<uint8_t> inb(30,35);
-    Func f("f"), g("g"), h("h"), fa("fa"), fb("fb"), fc("fc");
+    Func f("fred"), g("gold"), h("hamey"), fa("fa"), fb("fb"), fc("fc");
     Var x("x"), y("y"), a("a"), b("b"), ext("fff.extent.0");
     Expr False = Internal::make_bool(false);
     Expr True = Internal::make_bool(true);
@@ -1028,10 +1037,11 @@ void domain_expr_test()
 	// The notation g.infinite() is untidy - it would seem that we should use Domain::infinite() instead, but
     // the problem is that the number of dimensions is unknown.  One option is to assume that a complete lack
     // of information in a dimension means infinite, in which case the empty Domain is also an finite Domain.
-    g.computable() = g.infinite(); // Set the computable region first (in case we intersect valid with it)
-    g.valid() = in.valid(); // Manually update the valid region.
+    g.set_computable() = g.infinite(); // Set the computable region first (in case we intersect valid with it)
+    g.set_valid() = in.valid(); // Manually update the valid region.
     
     // h is a kernel function of g, using the border handling
+    log(0) << "Defining hamey\n";
     h(a,b) = g(a,b)+g(a,b-1)+g(a,b+1);
     h.kernel_of(g); // h is a kernel function of g, so the valid region is copied and intersected with computable region
     check_domain_expr(Domain::Valid, vecS("x","y"), h(x,y), Domain("x", False, 0, 19, "y", False, 0, 39));
@@ -1045,11 +1055,20 @@ void domain_expr_test()
     // also influenced by shifting of inb.
     check_domain_expr(Domain::Valid, vecS("x","y"), fa(x,y), Domain("x", False, 1, 20, "y", False, 2, 36));
     //check_domain_expr(Domain::Computable, vecS("x","y"), fa(x,y), Domain("x", False, 0, 29, "y", False, 2, 36));
-    fa.kernel_of(g,inb);
+    
+    // The following is not valid because fa() has been used already for domain inference.
+    //fa.kernel_of(g,inb);
+    Func ffa("ffa");
+    //ffa(x) = fa(x);
+    std::cout << "Hello 0\n";
+    ffa = fa;
+    std::cout << "Hello 1\n";
+    ffa.kernel_of(g,inb);
+    std::cout << "Helo 2\n";
     // Declaring fa to be a kernel function overrides the shifts implicit in the definition of fa.
     // For g, this means that the valid domain is copied but for inb the computable domain is restricting the valid
     // domain.
-    check_domain_expr(Domain::Valid, vecS("x","y"), fa(x,y), Domain("x", False, 0, 19, "y", False, 2, 34));
+    check_domain_expr(Domain::Valid, vecS("x","y"), ffa(x,y), Domain("x", False, 0, 19, "y", False, 2, 34));
     //check_domain_expr(Domain::Computable, vecS("x","y"), fa(x,y), Domain("x", False, 0, 29, "y", False, 2, 36));
     return;
 }

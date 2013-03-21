@@ -36,6 +36,13 @@ struct Domain {
     typedef enum {Valid = 0, Computable, Efficient, MaxDomains} DomainType;
 
     std::vector<Halide::Internal::VarInterval> intervals;
+
+private:
+    bool domain_locked;
+public:
+
+    bool is_locked() { return domain_locked; }
+    void lock() { domain_locked = true; }
     
     Domain();
     Domain(std::string xv, Expr xpoisoned, Expr xmin, Expr xmax);
@@ -63,7 +70,7 @@ struct Domain {
            std::string zv, bool zpoisoned, Expr zmin, Expr zmax,
            std::string wv, bool wpoisoned, Expr wmin, Expr wmax);
            
-    Domain intersection(Domain other);
+    Domain intersection(const Domain other) const;
     
     // Accessors to read information out of the domain using index number.
     const Expr min(int index) const;

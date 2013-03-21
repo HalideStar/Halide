@@ -39,12 +39,20 @@ Func::Func(Expr e) : func(unique_name('f')), error_handler(NULL), custom_malloc(
     (*this)() = e;
 }
 
-Func::Func(Buffer b) : func(unique_name('f')), error_handler(NULL), custom_malloc(NULL), custom_free(NULL) {    
+void Func::constructor(Buffer b) {
+    func = Function(unique_name('f'));
+    error_handler = NULL;
+    custom_malloc = NULL;
+    custom_free = NULL;
     vector<Expr> args;
     for (int i = 0; i < b.dimensions(); i++) {
         args.push_back(Var::implicit(i));
     }
     (*this)() = new Internal::Call(b, args);
+}
+
+Func::Func(Buffer b) {    
+    constructor(b);
 }
         
 const string &Func::name() const {
@@ -467,8 +475,8 @@ FuncRefVar::FuncRefVar(Internal::Function f, const vector<Var> &a) : func(f) {
 
 //LH
 /** Get a handle to the valid domain for the purpose of modifying it */
-Domain &Func::domain(Domain::DomainType dt) {
-	return func.domain(dt);
+Domain &Func::set_domain(Domain::DomainType dt) {
+	return func.set_domain(dt);
 }
 
 //LH
@@ -480,66 +488,14 @@ const Domain &Func::domain(Domain::DomainType dt) const {
 //LH
 /** Set the valid domain in a schedule format */
 Func &Func::domain(Domain::DomainType dt, Domain d) {
-	func.domain(dt) = d;
+	func.set_domain(dt) = d;
 	return *this;
 }
 
 //LH
 /** Set the valid domain to be the same as an existing Func in a schedule format */
 Func &Func::domain(Domain::DomainType dt, Func f) {
-	func.domain(dt) = f.domain(dt);
-	return *this;
-}
-
-//LH
-/** Get a handle to the valid domain for the purpose of modifying it */
-Domain &Func::valid() {
-	return func.domain(Domain::Valid);
-}
-
-//LH
-/** Get a handle to the valid domain for the purpose of inspecting it */
-const Domain &Func::valid() const {
-	return func.domain(Domain::Valid);
-}
-
-//LH
-/** Set the valid domain in a schedule format */
-Func &Func::valid(Domain d) {
-	func.domain(Domain::Valid) = d;
-	return *this;
-}
-
-//LH
-/** Set the valid domain to be the same as an existing Func in a schedule format */
-Func &Func::valid(Func f) {
-	func.domain(Domain::Valid) = f.valid();
-	return *this;
-}
-
-//LH
-/** Get a handle to the computable domain for the purpose of modifying it */
-Domain &Func::computable() {
-	return func.domain(Domain::Computable);
-}
-
-//LH
-/** Get a handle to the computable domain for the purpose of inspecting it */
-const Domain &Func::computable() const {
-	return func.domain(Domain::Computable);
-}
-
-//LH
-/** Set the computable domain in a schedule format */
-Func &Func::computable(Domain d) {
-	func.domain(Domain::Computable) = d;
-	return *this;
-}
-
-//LH
-/** Set the computable domain to be the same as an existing Func in a schedule format */
-Func &Func::computable(Func f) {
-	func.domain(Domain::Computable) = f.computable();
+	func.set_domain(dt) = f.domain(dt);
 	return *this;
 }
 
@@ -566,22 +522,30 @@ Domain Func::infinite() {
     return Domain(); // Unknown situation.
 }
 
+void Func::operator=(Func f) {
+    std::cout << "Simple defining " << name() << "\n";
+    //assert(0);
+    (*this)() = Expr(f);
+}
+
 //LH
 /** Methods to indicate that the current function is a kernel of other functions. */
 Func &Func::kernel_of(Func f1) {
-    valid() = computable().intersection(f1.valid());
+    Internal::log(0) << name() << ".kernel_of(" << f1.name() << ")\n";
+    set_valid() = computable().intersection(f1.valid());
     return *this;
 }
 Func &Func::kernel_of(Func f1, Func f2) {
-    valid() = computable().intersection(f1.valid()).intersection(f2.valid());
+    Internal::log(0) << name() << ".kernel_of(" << f1.name() << ", " << f2.name() << ")\n";
+    set_valid() = computable().intersection(f1.valid()).intersection(f2.valid());
     return *this;
 }
 Func &Func::kernel_of(Func f1, Func f2, Func f3) {
-    valid() = computable().intersection(f1.valid()).intersection(f2.valid()).intersection(f3.valid());
+    set_valid() = computable().intersection(f1.valid()).intersection(f2.valid()).intersection(f3.valid());
     return *this;
 }
 Func &Func::kernel_of(Func f1, Func f2, Func f3, Func f4) {
-    valid() = computable().intersection(f1.valid()).intersection(f2.valid()).intersection(f3.valid()).intersection(f4.valid());
+    set_valid() = computable().intersection(f1.valid()).intersection(f2.valid()).intersection(f3.valid()).intersection(f4.valid());
     return *this;
 }
 
