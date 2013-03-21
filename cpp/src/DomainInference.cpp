@@ -20,16 +20,28 @@ namespace Internal {
 // VarInterval: Represents an interval associated with a variable, including
 // the name of the variable and a poison flag for dead intervals.
 // update computes the intersection of intervals.
+ostream &operator<<(ostream &stream, VarInterval interval) {
+    stream << "\"" << interval.varname << "\"";
+    if (equal(interval.poison, const_true())) {
+        stream << "~"; // ~ denotes approximate interval
+    } else if (! equal(interval.poison, const_false())) {
+        stream << "~[" << interval.poison << "]"; // [] denotes expression for approximate interval
+    }
+    stream << "(" << interval.imin << ", " << interval.imax << ")";
+    return stream;
+}
+
 void VarInterval::update(VarInterval result) {
     assert(result.varname == varname && "Trying to update incorrect variable in Domain");
     
-    log(4,"DOMINF") << "Update " << poison << " (" << imin << ", " << imax << ") with " << result.poison << " (" << result.imin << ", " << result.imax << ")\n";
+    log(4,"DOMINF") << "Update " << *this << " with " << result;
 
     // Poison is really "inexact": the result is not assured to be correct because
     // at least one update of relevant information could not be resolved!
     // Poison set to empty expression is the same as false.  This is a hack for initialisation.
-    if (! poison.defined())
+    if (! poison.defined()) {
         poison = result.poison;
+    }
     else if (result.poison.defined()) {
         poison = poison || result.poison;
         poison = simplify(poison);
@@ -51,17 +63,7 @@ void VarInterval::update(VarInterval result) {
         imax = min(imax, result.imax);
         imax = simplify(imax);
     }
-    log(4,"DOMINF") << "Result " << poison << " (" << imin << ", " << imax << ")\n";
-}
-
-ostream &operator<<(ostream &stream, VarInterval interval) {
-    if (equal(interval.poison, const_true())) {
-        stream << "~"; // ~ denotes approximate interval
-    } else if (! equal(interval.poison, const_false())) {
-        stream << "~[" << interval.poison << "]"; // [] denotes expression for approximate interval
-    }
-    stream << "(" << interval.imin << ", " << interval.imax << ")";
-    return stream;
+    log(4,"DOMINF") << " ==> " << *this << "\n";
 }
 
 
@@ -187,10 +189,44 @@ private:
     }
 };
 
+// is_constant_expr: Determine whether an expression is constant relative to a list of free variables
+// that may not occur in the expression.
+static bool is_constant_expr(std::vector<std::string> varlist, Expr e) {
+    // Walk the expression; if no variables in varlist are found then it is a constant expression
+    HasVariable hasvar(varlist);
+    e.accept(&hasvar);
+    return ! hasvar.result;
+}
+
+
+// ListVariables walks an argument expression and returns a list of
+// all the variables found in it.  The list may contain repeat elements.
+
+class ListRepeatVariables : public IRVisitor {
+public:
+    std::vector<std::string> varlist;
+    ListRepeatVariables() {}
+    
+private:
+    using IRVisitor::visit;
+
+    void visit(const Variable *op) {
+        varlist.push_back(op->name);
+    }
+};
+
+// list_repeat_variables returns a list of the variables found in an expression.
+// Variables that are referenced more than once will be listed more than once.
+
+std::vector<std::string> list_repeat_variables(Expr e) {
+    ListRepeatVariables lister;
+    e.accept(&lister);
+    return lister.varlist;
+}
 
 // BackwardIntervalInference walks an argument expression and
-// determines the domain interval in the callee based on the
-// domain interval in the caller, which is passed to it.
+// determines the domain interval of a variable in the caller based on the
+// domain interval of the expression in the callee, which is passed to it.
 
 class BackwardIntervalInference : public IRVisitor {
 public:
@@ -209,12 +245,9 @@ private:
     using IRVisitor::visit;
     
     bool is_constant_expr(Expr e) {
-        // Walk the expression; if no variables in varlist are found then it is a constant expression
-        HasVariable hasvar(varlist);
-        e.accept(&hasvar);
-        return ! hasvar.result;
+        return Internal::is_constant_expr(varlist, e);
     }
-    
+
     void set_callee_exact_false() {
         for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
             callee[j].poison = const_true();
@@ -272,12 +305,12 @@ private:
             // x = e - k
             log(4,"DOMINF") << "Add constant\n";
             for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-                log(4,"DOMINF") << "Before j: " << j << " (" << callee[j].imin << ", " << callee[j].imax << ")\n";
+                log(4,"DOMINF") << "Before [" << j << "]: " << callee[j] << "\n";
                 if (callee[j].imin.defined())
                     callee[j].imin = callee[j].imin - op->b;
                 if (callee[j].imax.defined())
                     callee[j].imax = callee[j].imax - op->b;
-                log(4,"DOMINF") << "After  j: " << j << " (" << callee[j].imin << ", " << callee[j].imax << ")\n";
+                log(4,"DOMINF") << "After  [" << j << "]: " << callee[j] << "\n";
             }
             // Process the tree recursively
             op->a.accept(this);
@@ -390,7 +423,7 @@ private:
 
     void visit(const Mod *op) {
         for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-            log(3,"DOMINF") << "Mod(" << op->a << ",  " << op->b << ") on (" << callee[j].imin << ", " << callee[j].imax << ")\n";
+            log(3,"DOMINF") << "Mod(" << op->a << ",  " << op->b << ") on " << callee[j] << "\n";
         }
         if (is_constant_expr(op->b)) {
             // e = x % k  (for positive k)
@@ -473,7 +506,7 @@ private:
     
     void visit(const Clamp *op) {
         for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-            log(0,"DOMINF") << Expr(op) << " on (" << callee[j].imin << ", " << callee[j].imax << ")\n";
+            log(0,"DOMINF") << Expr(op) << " on " << callee[j] << "\n";
         }
         // Clamp operators are particularly significant for forward domain inference.
         if (op->clamptype == Clamp::None) {
@@ -489,7 +522,7 @@ private:
     // Max
     void visit(const Max *op) {
         for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-            log(3,"DOMINF") << "Max(" << op->a << ",  " << op->b << ") on (" << callee[j].imin << ", " << callee[j].imax << ")\n";
+            log(3,"DOMINF") << "Max(" << op->a << ",  " << op->b << ") on " << callee[j] << "\n";
         }
         if (is_constant_expr(op->b)) {
             // max(a,b) is equivalent to clamping on the range (b,infinity)
@@ -513,7 +546,7 @@ private:
     // Min
     void visit(const Min *op) {
         for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-            log(3,"DOMINF") << "Min(" << op->a << ",  " << op->b << ") on (" << callee[j].imin << ", " << callee[j].imax << ")\n";
+            log(3,"DOMINF") << "Min(" << op->a << ",  " << op->b << ") on " << callee[j] << "\n";
         }
         if (is_constant_expr(op->b)) {
             clamp_limits(op->a, Expr(), op->b);
@@ -533,17 +566,25 @@ private:
     
 };
 
+
+
+
 std::vector<VarInterval> backwards_interval(const std::vector<std::string> &varlist, std::vector<Domain> &domains, Expr e, std::vector<VarInterval> callee) {
     assert(callee.size() == Domain::MaxDomains && "Incorrect number of callee intervals");
     for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
         log(3,"DOMINF") << "e: " << e << "  [" << j << "]: " << callee[j] << '\n';
     }
+    
     BackwardIntervalInference infers(varlist, domains, callee);
     Expr e1 = simplify(e);
-    
     e1.accept(&infers);
     
     std::vector<VarInterval> &result = infers.callee;
+    
+    // Store the target function variable name in the result
+    for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
+        result[j].varname = infers.varname;
+    }
     
     // Simplify and update inexact flag
     for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
@@ -558,8 +599,6 @@ std::vector<VarInterval> backwards_interval(const std::vector<std::string> &varl
             result[j].poison = Internal::make_bool(infers.defaulted);
         }
         
-        result[j].varname = infers.varname;
-    
         // If it is known that the expression is inexact, then the range is set to infinite.
         // This is because whatever information was computed is incomplete and could be incorrect
         // This wont work if poison is an expression that is not constant: it becomes true always
@@ -570,7 +609,7 @@ std::vector<VarInterval> backwards_interval(const std::vector<std::string> &varl
         // concrete data and the other is inexact; in this case the result is inexact but
         // is restricted to the concrete data.  Of course, if we wanted to use expressions then
         // we could represent all the cases.
-        log(0,"DOMINF") << "Result[" << j << "]: " << result[j].varname << "  " << result[j].poison << "  " << result[j].imin << "  " << result[j].imax << "\n";
+        log(0,"DOMINF") << "Result[" << j << "]: " << result[j] << "\n";
         if (result[j].poison.defined() && ! equal(result[j].poison, const_false())) {
             result[j].imin = Expr();
             result[j].imax = Expr();
@@ -580,6 +619,26 @@ std::vector<VarInterval> backwards_interval(const std::vector<std::string> &varl
             }
         }
     }
+    
+    // Special case.  If the expression contains only one implicit variable occurring once then the semantics is
+    // kernel semantics.  This is a bit of a hack: it is possible for a Halide program to mimic this behaviour, but
+    // Halide program writers should never use implicit variables explicitly.
+    std::vector<std::string> vlist = list_repeat_variables(e);
+    bool kernel_semantics = (int) vlist.size() == 1 && starts_with(vlist[0], "iv.");
+    
+    // Implementation of kernel semantics
+    if (kernel_semantics) {
+        log(0) << "Kernel semantics apply\n";
+        log(0) << "result[0]: " << result[0] << "  callee[0]: " << callee[0] <<"\n";
+        // If kernel semantics apply, then the computable domain is whatever was computed by
+        // backwards interval analysis, but the valid domain is copied from the callee and then is intersected
+        // with the computable domain.  The efficient domain is as computed above.
+        result[Domain::Valid] = callee[Domain::Valid];
+        result[Domain::Valid].varname = infers.varname; // Update the variable name
+        result[Domain::Valid].update(result[Domain::Computable]); // Intersect with the computable domain
+    }
+    else
+        log(0) << "Kernel semantics do not apply\n";
     
     return result;
 }
@@ -746,8 +805,7 @@ std::vector<Domain> domain_inference(const std::vector<std::string> &variables, 
     log(1,"DOMINF") << "Domain returned: \n";
     for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
         for (size_t i = 0; i < infers.domains[j].intervals.size(); i++) {
-            log(1,"DOMINF") << "[" << j << "," << i << "]: " << infers.domains[j].intervals[i].poison << "  (" 
-                << infers.domains[j].intervals[i].imin << ", " << infers.domains[j].intervals[i].imax << ")\n";
+            log(1,"DOMINF") << "[" << j << "]: " << variables[i] << ": " << infers.domains[j].intervals[i] << "\n";
         }
     }
     

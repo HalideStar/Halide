@@ -175,13 +175,15 @@ static void check(std::string name, Expr expr, int (*expected)(int, int), Domain
     bool success = true;
     Func c("check");
     c = expr;
-    Image<int> out = c.realize(MAXX, MAXY);
-    for (int i = 0; i < MAXX; i++) {
-        for (int j = 0; j < MAXY; j++) {
-            int expect = (*expected)(i,j);
-            if (out(i,j) != expect) {
-                std::cout << "Incorrect " << name << " (" << i << "," << j <<")  Expected: " << expect << "   Got: " << out(i,j) << "\n";
-                assert(0 && "Border handling test failed");
+    if (expected != 0) {
+        Image<int> out = c.realize(MAXX, MAXY);
+        for (int i = 0; i < MAXX; i++) {
+            for (int j = 0; j < MAXY; j++) {
+                int expect = (*expected)(i,j);
+                if (out(i,j) != expect) {
+                    std::cout << "Incorrect " << name << " (" << i << "," << j <<")  Expected: " << expect << "   Got: " << out(i,j) << "\n";
+                    assert(0 && "Border handling test failed");
+                }
             }
         }
     }
@@ -255,14 +257,19 @@ void border_test() {
         Domain("x", false, Expr(), Expr(), "y", false, Expr(), Expr())); 
         
     // Build a kernel function using kernel notation
-    Func border("border"), kernel("kernel");
+    Func border("border");
     border = Border::replicate(g);
-    kernel = (border[-1][0] + border[1][0]) / 2;
-    kernel.kernel_of(border);
     
-    check("kernel", kernel, expect_kernel_replicate,
+    check("kernel", (border[-1][0] + border[1][0]) / 2, expect_kernel_replicate,
         Domain("x", false, LOX, HIX, "y", false, LOY, HIY),
         Domain("x", false, Expr(), Expr(), "y", false, Expr(), Expr()));
+        
+    // Build a kernel function where there is no border handling, so valid domain is restricted by
+    // the computable domain.
+    check("kernel2", (g[-1][0] + g[1][0]) / 2, 0,
+        Domain("x", false, LOX+1, HIX-1, "y", false, LOY, HIY),
+        Domain("x", false, LOX+1, HIX-1, "y", false, LOY, HIY));
+        
 
     std::cout << "Border handling tests passed\n";
 }
