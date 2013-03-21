@@ -31,8 +31,10 @@ int main(int argc, char **argv) {
     count = 0;
     RDom r(0, 100);
     Var y;
-    g = Func();
-    f = Func();
+    //g = Func();
+    //f = Func();
+    g.clear();
+    f.clear();
 
     f(x, y) = 0;
     f(r, y) = call_counter(r);
@@ -51,8 +53,10 @@ int main(int argc, char **argv) {
     }
 
     // Now try sliding over multiple dimensions at once
-    f = Func();
-    g = Func();
+    //f = Func();
+    //g = Func();
+    f.clear();
+    g.clear();
     
     count = 0;
     f(x, y) = call_counter(x);
@@ -66,8 +70,10 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    f = Func();
-    g = Func();
+    //f = Func();
+    //g = Func();
+    f.clear();
+    g.clear();
 
     // Now a trickier example. In order for this to work, Halide would have to slide diagonally. We don't handle this.
     count = 0;

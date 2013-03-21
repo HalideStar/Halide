@@ -313,6 +313,12 @@ public:
         constructor(Buffer(image));
     }
     //@}
+    
+    /** Reinitialise the current Func object */
+    EXPORT void clear();
+    
+    /** Copy a Func into the current Func object */
+    EXPORT void copy(Func f);
 
     /** Evaluate this function over some rectangular domain and return
      * the resulting buffer. The buffer should probably be instantly

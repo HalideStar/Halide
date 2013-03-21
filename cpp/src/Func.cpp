@@ -54,6 +54,28 @@ void Func::constructor(Buffer b) {
 Func::Func(Buffer b) {    
     constructor(b);
 }
+
+void Func::clear() {
+    // Retain the name that the programmer assigned to this Func object.
+    std::string thename = name();
+    // If the name has a period in it, drop the end.  There will then be a unique renaming.
+    size_t pos = thename.find('.');
+    if (pos != std::string::npos) {
+        thename = thename.substr(0, pos);
+    }
+    copy(Func(thename));
+}
+
+void Func::copy(Func f) {
+    func = f.func;
+    lowered = f.lowered;
+    compiled_module = f.compiled_module;
+    error_handler = f.error_handler;
+    custom_malloc = f.custom_malloc;
+    custom_free = f.custom_free;
+    arg_values = f.arg_values;
+    image_param_args = f.image_param_args;
+}
         
 const string &Func::name() const {
     return func.name();
