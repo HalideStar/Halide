@@ -163,7 +163,7 @@ const Expr Domain::max(int index) const {
 
 const Expr Domain::exact(int index) const {
     assert(index >= 0 && index < (int) intervals.size() && "Attempt to access Domain out of range");
-    return ! intervals[index].poison;
+    return Internal::simplify(! intervals[index].poison);
 }
 
 
@@ -486,7 +486,11 @@ private:
                 // The limit of the valid domain is now restricted to the clamp limit
                 callee[Domain::Valid].imin = op_min;
                 // The limit of the efficient domain is now restricted to the clamp limit
-                callee[Domain::Efficient].imin = max(op_min,callee[Domain::Efficient].imin);
+                if (callee[Domain::Efficient].imin.defined()) {
+                    callee[Domain::Efficient].imin = max(op_min,callee[Domain::Efficient].imin);
+                } else {
+                    callee[Domain::Efficient].imin = op_min;
+                }
             }
             else {
                 // Not an effective border handler.
@@ -501,7 +505,11 @@ private:
                 callee[Domain::Computable].imax = Expr();
                 callee[Domain::Computable].poison = callee[Domain::Valid].poison;
                 callee[Domain::Valid].imax = op_max;
-                callee[Domain::Efficient].imax = min(op_max,callee[Domain::Efficient].imax);
+                if (callee[Domain::Efficient].imax.defined()) {
+                    callee[Domain::Efficient].imax = min(op_max,callee[Domain::Efficient].imax);
+                } else {
+                    callee[Domain::Efficient].imax = op_max;
+                }
             }
             else {
                 // Not an effective border handler.
