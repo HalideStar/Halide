@@ -83,10 +83,11 @@ Func BorderGeneral::operator()(Func f) {
     return border_builder(borderfuncs, f);
 }
 
-
-BorderBase *BorderBase::dim(int d) { 
+// In the current BorderBase-derived class, build a BorderFunc that references
+// a particular dimension.
+BorderFunc BorderBase::dim(int d) { 
     if (d > 0) {
-        return new BorderIndex(this, d); 
+        return BorderFunc(new BorderIndex(BorderFunc(this), d)); 
     }
     else {
         return this; 
@@ -121,6 +122,10 @@ BorderFunc tile(Expr t1, Expr t2, Expr t3) {
 
 BorderFunc tile(Expr t1, Expr t2, Expr t3, Expr t4) { 
     return BorderFunc(new BorderTile(vec(t1, t2, t3, t4))); 
+}
+
+BorderFunc BorderFunc::dim(int d) {
+    return BorderFunc(new BorderIndex(*this, d)); 
 }
 
 // End namespace Border
