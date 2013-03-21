@@ -18,18 +18,19 @@ using std::string;
 
 namespace Halide {
 namespace Border {
-// Core border handler implementation.
-// Given a vector of border handlers, apply then to the corresponding dimensions of f.
+// Core border function builder.
+// Given a vector of border functions, apply then to the corresponding dimensions of f.
 // Any missing dimensions are assumed to be Border::none as the handler.
-Func border(vector<BorderFunc> handlers, Func f) {
+static Func border_builder(vector<BorderFunc> borderfuncs, Func f) {
     Func g("border_" + f.name());
     Expr expr;
     
-    assert((int) handlers.size() <= f.dimensions() && "More border handlers specified than dimensions of the function");
-    while ((int) handlers.size() < f.dimensions())
-        handlers.push_back(Border::none); // Pad missing border handlers with Border::none
+    assert((int) borderfuncs.size() <= f.dimensions() && "More border functions specified than dimensions of the function");
+    while ((int) borderfuncs.size() < f.dimensions()) {
+        borderfuncs.push_back(Border::none); // Pad missing border functions with Border::none
+    }
     
-    // Apply each border handler to the corresponding dimension.
+    // Apply each border function to the corresponding dimension.
     // Build expression f(vector<Expr>) and build args list for g.
     vector<Var> g_args;
     vector<Expr> f_args;
@@ -37,33 +38,40 @@ Func border(vector<BorderFunc> handlers, Func f) {
         // Build the list of arguments for g.
         g_args.push_back(Var::gen(i));
         // Build the expression (..., BorderFunc.indexExpr(x, min, max), ...)
-        f_args.push_back(handlers[i].indexExpr(Var::gen(i), f.valid().min(i), f.valid().max(i)));
+        f_args.push_back(borderfuncs[i].indexExpr(Var::gen(i), f.valid().min(i), f.valid().max(i)));
     }
     // Apply the subscripts to the function f.
     expr = f(f_args);
-    // Insert value expressions for each of the border handlers.
+    // Insert value expressions for each of the border functions.
     for (int i = 0; i < f.dimensions(); i++) {
-        expr = handlers[i].valueExpr(expr, Var::gen(i), f.valid().min(i), f.valid().max(i));
+        expr = borderfuncs[i].valueExpr(expr, Var::gen(i), f.valid().min(i), f.valid().max(i));
     }
     Internal::log(4) << "Border handled expression: " << expr << "\n";
     g(g_args) = expr;
     return g;
 }
 
-Func border(BorderFunc h1, Func f) {
-    return border(Internal::vec(h1), f);
+// Build general border function from individual border functions.
+BorderFunc border(BorderFunc h1) {
+    return BorderFunc(new BorderGeneral(Internal::vec(h1)));
 }
 
-Func border(BorderFunc h1, BorderFunc h2, Func f) {
-    return border(Internal::vec(h1, h2), f);
+BorderFunc border(BorderFunc h1, BorderFunc h2) {
+    return BorderFunc(new BorderGeneral(Internal::vec(h1, h2)));
 }
 
-Func border(BorderFunc h1, BorderFunc h2, BorderFunc h3, Func f) {
-    return border(Internal::vec(h1, h2, h3), f);
+BorderFunc border(BorderFunc h1, BorderFunc h2, BorderFunc h3) {
+    return BorderFunc(new BorderGeneral(Internal::vec(h1, h2, h3)));
 }
 
-Func border(BorderFunc h1, BorderFunc h2, BorderFunc h3, BorderFunc h4, Func f) {
-    return border(Internal::vec(h1, h2, h3, h4), f);
+BorderFunc border(BorderFunc h1, BorderFunc h2, BorderFunc h3, BorderFunc h4) {
+    return BorderFunc(new BorderGeneral(Internal::vec(h1, h2, h3, h4)));
+}
+
+// Apply border handler functions to corresponding dimensions.
+Func BorderGeneral::operator()(Func f) {
+    // Use the generic border function builder.
+    return border_builder(borderfuncs, f);
 }
 
 
@@ -79,13 +87,34 @@ BorderBase *BorderBase::dim(int d) {
 Func BorderBase::operator()(Func in) {
     std::vector<BorderFunc> args;
     for (int i = 0; i < in.dimensions(); i++) {
-        // Get the border handler for the particular dimension.
+        // Get the border function for the particular dimension.
         args.push_back(this->dim(i));
     }
-    // Use the generic border handler function.
-    return border(args, in);
+    // Use the generic border function builder.
+    return border_builder(args, in);
 }
 
+BorderFunc constant(Expr k) { 
+    return BorderFunc(new BorderConstant(k)); 
+}
+
+BorderFunc tile(Expr t1) { 
+    return BorderFunc(new BorderTile(vec(t1))); 
+}
+
+BorderFunc tile(Expr t1, Expr t2) { 
+    return BorderFunc(new BorderTile(vec(t1, t2))); 
+}
+
+BorderFunc tile(Expr t1, Expr t2, Expr t3) { 
+    return BorderFunc(new BorderTile(vec(t1, t2, t3))); 
+}
+
+BorderFunc tile(Expr t1, Expr t2, Expr t3, Expr t4) { 
+    return BorderFunc(new BorderTile(vec(t1, t2, t3, t4))); 
+}
+
+// End namespace Border
 }
 
 namespace Internal {
@@ -214,15 +243,15 @@ void border_test() {
     init.domain(Domain::Efficient) = initd;
     
     check("raw", init, expect_raw);
-    check("Border::replicate", border(Border::replicate, Border::replicate, init), expect_replicate);
-    check("Border::wrap", border(Border::wrap, Border::wrap, init), expect_wrap);
-    check("Border::reflect", border(Border::reflect, Border::reflect, init), expect_reflect);
-    check("Border::reflect101", border(Border::reflect101, Border::reflect101, init), expect_reflect101);
-    check("Border::constant(0)", border(Border::constant(0), Border::constant(0), init), expect_constant0);
-    check("Border::tile(2),Border::tile(3)", border(Border::tile(2), Border::tile(3), init), expect_tile23); 
-    check("Border::tile(2,3)", border(Border::tile(2,3).dim(0), Border::tile(2,3).dim(1), init), expect_tile23); 
+    check("Border::replicate", border(Border::replicate, Border::replicate)(init), expect_replicate);
+    check("Border::wrap", border(Border::wrap, Border::wrap)(init), expect_wrap);
+    check("Border::reflect", border(Border::reflect, Border::reflect)(init), expect_reflect);
+    check("Border::reflect101", border(Border::reflect101, Border::reflect101)(init), expect_reflect101);
+    check("Border::constant(0)", border(Border::constant(0), Border::constant(0))(init), expect_constant0);
+    check("Border::tile(2),Border::tile(3)", border(Border::tile(2), Border::tile(3))(init), expect_tile23); 
+    check("Border::tile(2,3)", border(Border::tile(2,3).dim(0), Border::tile(2,3).dim(1))(init), expect_tile23); 
     
-    check("Border::wrap,Border::reflect", border(Border::wrap, Border::reflect, init), expect_wrap_reflect);
+    check("Border::wrap,Border::reflect", border(Border::wrap, Border::reflect)(init), expect_wrap_reflect);
     
     check("Border::replicate()", Border::replicate(init), expect_replicate);
     check("Border::wrap()", Border::wrap(init), expect_wrap);
