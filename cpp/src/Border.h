@@ -1,6 +1,7 @@
 #ifndef HALIDE_BORDER_H
 #define HALIDE_BORDER_H
 
+#include "IntrusivePtr.h"
 #include "IR.h"
 #include "IROperator.h"
 #include "Func.h"
@@ -26,6 +27,7 @@ class BorderIndex;
 /** Base class for border functions, especially index manipulating border functions. */
 class BorderBase {
 public:    
+    mutable Internal::RefCount ref_count;
     // expr: The index expression.
     // min, max: The limits for the border handling of that dimension.
     virtual Expr indexExpr(int dim, Expr expr, Expr min, Expr max) { assert(0 && "Called BorderBase"); return expr; }
@@ -57,22 +59,23 @@ public:
 
 /** Border function class is a simple wrapper for pointers to border base class objects. */
 class BorderFunc {
-    BorderBase *ptr;
+private:
+    Internal::IntrusivePtr<BorderBase> contents;
 public:
-    BorderFunc() : ptr(0) {}
-    BorderFunc(BorderBase *p) : ptr(p) {}
-    BorderFunc(BorderBase &b) : ptr(&b) {}
+    BorderFunc() : contents(NULL) {}
+    BorderFunc(BorderBase *p) : contents(p) {}
+    //BorderFunc(BorderBase &b) : contents(&b) {}
     
     // When invoking BorderBase, set initial dim to zero and work from there.
-    Expr indexExpr(Expr expr, Expr min, Expr max) { assert(ptr && "Undefined border function"); return ptr->indexExpr(0, expr, min, max); }
-    Expr valueExpr(Expr value, Expr expr, Expr min, Expr max) { assert(ptr && "Undefined border function"); return ptr->valueExpr(0, value, expr, min, max); }
+    Expr indexExpr(Expr expr, Expr min, Expr max) { assert(contents.ptr && "Undefined border function"); return contents.ptr->indexExpr(0, expr, min, max); }
+    Expr valueExpr(Expr value, Expr expr, Expr min, Expr max) { assert(contents.ptr && "Undefined border function"); return contents.ptr->valueExpr(0, value, expr, min, max); }
     // BorderFunc.dim(d) returns a border function with the dimension index set to d.
     // Example is Border::tile(2,3).dim(0)
-    BorderFunc dim(int d) { return BorderFunc(new BorderIndex(ptr, d)); }
+    BorderFunc dim(int d) { return BorderFunc(new BorderIndex(contents.ptr, d)); }
     
     // Border::replicate(in) means apply replication to all dimensions of in.
     // It only works on Func objects, because we have to get the dimension count.
-    Func operator()(Func in) { return ptr->operator()(in); }
+    Func operator()(Func in) { return contents.ptr->operator()(in); }
 };
 
 /** Base class for borderfuncs that manipulate only the value, not the index. */

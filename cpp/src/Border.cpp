@@ -18,6 +18,14 @@ using std::vector;
 using std::string;
 
 namespace Halide {
+namespace Internal {
+template<>
+EXPORT Internal::RefCount &ref_count<Border::BorderBase>(const Border::BorderBase *f) {return f->ref_count;}
+
+template<>
+EXPORT void destroy<Border::BorderBase>(const Border::BorderBase *f) {delete f;}
+}
+
 namespace Border {
 // Core border function builder.
 // Given a vector of border functions, apply then to the corresponding dimensions of f.
