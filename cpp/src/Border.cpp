@@ -21,7 +21,7 @@ namespace Border {
 // Core border handler implementation.
 // Given a vector of border handlers, apply then to the corresponding dimensions of f.
 // Any missing dimensions are assumed to be Border::none as the handler.
-Func border(vector<BorderHandler> handlers, Func f) {
+Func border(vector<BorderFunc> handlers, Func f) {
     Func g("border_" + f.name());
     Expr expr;
     
@@ -36,7 +36,7 @@ Func border(vector<BorderHandler> handlers, Func f) {
     for (int i = 0; i < f.dimensions(); i++) {
         // Build the list of arguments for g.
         g_args.push_back(Var::gen(i));
-        // Build the expression (..., BorderHandler.indexExpr(x, min, max), ...)
+        // Build the expression (..., BorderFunc.indexExpr(x, min, max), ...)
         f_args.push_back(handlers[i].indexExpr(Var::gen(i), f.valid().min(i), f.valid().max(i)));
     }
     // Apply the subscripts to the function f.
@@ -50,19 +50,19 @@ Func border(vector<BorderHandler> handlers, Func f) {
     return g;
 }
 
-Func border(BorderHandler h1, Func f) {
+Func border(BorderFunc h1, Func f) {
     return border(Internal::vec(h1), f);
 }
 
-Func border(BorderHandler h1, BorderHandler h2, Func f) {
+Func border(BorderFunc h1, BorderFunc h2, Func f) {
     return border(Internal::vec(h1, h2), f);
 }
 
-Func border(BorderHandler h1, BorderHandler h2, BorderHandler h3, Func f) {
+Func border(BorderFunc h1, BorderFunc h2, BorderFunc h3, Func f) {
     return border(Internal::vec(h1, h2, h3), f);
 }
 
-Func border(BorderHandler h1, BorderHandler h2, BorderHandler h3, BorderHandler h4, Func f) {
+Func border(BorderFunc h1, BorderFunc h2, BorderFunc h3, BorderFunc h4, Func f) {
     return border(Internal::vec(h1, h2, h3, h4), f);
 }
 
@@ -77,7 +77,7 @@ BorderBase *BorderBase::dim(int d) {
 }
 
 Func BorderBase::operator()(Func in) {
-    std::vector<BorderHandler> args;
+    std::vector<BorderFunc> args;
     for (int i = 0; i < in.dimensions(); i++) {
         // Get the border handler for the particular dimension.
         args.push_back(this->dim(i));

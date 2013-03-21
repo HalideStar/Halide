@@ -19,7 +19,7 @@
 namespace Halide {
 namespace Border {
 
-class BorderHandler;
+class BorderFunc;
 class BorderIndex;
 
 /** Base class for border handlers, especially index manipulating border handlers. */
@@ -52,17 +52,17 @@ public:
 };
 
 /** Border handler class is a simple wrapper for pointers to border base class objects. */
-class BorderHandler {
+class BorderFunc {
     BorderBase *ptr;
 public:
-    BorderHandler() : ptr(0) {}
-    BorderHandler(BorderBase *p) : ptr(p) {}
-    BorderHandler(BorderBase &b) : ptr(&b) {}
+    BorderFunc() : ptr(0) {}
+    BorderFunc(BorderBase *p) : ptr(p) {}
+    BorderFunc(BorderBase &b) : ptr(&b) {}
     
     // When invoking BorderBase, set initial dim to zero and work from there.
     Expr indexExpr(Expr expr, Expr min, Expr max) { assert(ptr && "Undefined border handler"); return ptr->indexExpr(0, expr, min, max); }
     Expr valueExpr(Expr value, Expr expr, Expr min, Expr max) { assert(ptr && "Undefined border handler"); return ptr->valueExpr(0, value, expr, min, max); }
-    BorderHandler dim(int d) { return BorderHandler(new BorderIndex(ptr, d)); }
+    BorderFunc dim(int d) { return BorderFunc(new BorderIndex(ptr, d)); }
     
     // Border::replicate(in) means apply replication to all dimensions of in.
     // It only works on Func objects, because we have to get the dimension count.
@@ -77,15 +77,15 @@ public:
 };
 
 /** Border handling expressions. */
-Func border(std::vector<BorderHandler> handlers, Func f);
+Func border(std::vector<BorderFunc> handlers, Func f);
 
-Func border(BorderHandler h1, Func f);
+Func border(BorderFunc h1, Func f);
 
-Func border(BorderHandler h1, BorderHandler h2, Func f);
+Func border(BorderFunc h1, BorderFunc h2, Func f);
 
-Func border(BorderHandler h1, BorderHandler h2, BorderHandler h3, Func f);
+Func border(BorderFunc h1, BorderFunc h2, BorderFunc h3, Func f);
 
-Func border(BorderHandler h1, BorderHandler h2, BorderHandler h3, BorderHandler h4, Func f);
+Func border(BorderFunc h1, BorderFunc h2, BorderFunc h3, BorderFunc h4, Func f);
 
 /** A border handler that provides no border. */
 class BorderNone : public BorderBase {
@@ -130,7 +130,7 @@ public:
     }
     
     /** Write Border::constant(k) to create a border handler with k as the constant expression */
-    BorderHandler operator()(Expr k) { return BorderHandler(new BorderConstant(k)); }
+    BorderFunc operator()(Expr k) { return BorderFunc(new BorderConstant(k)); }
 };
 
 /** A border handler that replicates tiles of the image at the borders. */
@@ -148,10 +148,10 @@ public:
     /** Write Border::tile(t1, t2, ...) to create a border handler with tiling dimensions t1, t2, ...
      * For dimensions with no tile size specified, it behaves as though Border::none were specified.
      */
-    BorderHandler operator()(Expr t1) { return BorderHandler(new BorderTile(vec(t1))); }
-    BorderHandler operator()(Expr t1, Expr t2) { return BorderHandler(new BorderTile(vec(t1, t2))); }
-    BorderHandler operator()(Expr t1, Expr t2, Expr t3) { return BorderHandler(new BorderTile(vec(t1, t2, t3))); }
-    BorderHandler operator()(Expr t1, Expr t2, Expr t3, Expr t4) { return BorderHandler(new BorderTile(vec(t1, t2, t3, t4))); }
+    BorderFunc operator()(Expr t1) { return BorderFunc(new BorderTile(vec(t1))); }
+    BorderFunc operator()(Expr t1, Expr t2) { return BorderFunc(new BorderTile(vec(t1, t2))); }
+    BorderFunc operator()(Expr t1, Expr t2, Expr t3) { return BorderFunc(new BorderTile(vec(t1, t2, t3))); }
+    BorderFunc operator()(Expr t1, Expr t2, Expr t3, Expr t4) { return BorderFunc(new BorderTile(vec(t1, t2, t3, t4))); }
 };
 
 /** The actual instances of border handlers, for use in expressions */
