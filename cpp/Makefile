@@ -35,6 +35,8 @@ NAME = HalideStar
 .PHONY: all
 all: bin/lib$(NAME).a bin/lib$(NAME).so include/Halide.h test_internal
 
+debug: lib/libg$(NAME).a include/Halide.h gtest_internal
+
 bin/lib$(NAME).a: $(OBJECTS) $(INITIAL_MODULES)
 	@-mkdir -p bin
 	ld -r -o build/Halide.o $(OBJECTS) $(INITIAL_MODULES) $(LIBS)

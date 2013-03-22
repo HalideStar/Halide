@@ -76,6 +76,9 @@ public:
     const Expr min(int index) const;
     const Expr max(int index) const;
     const Expr exact(int index) const;
+    
+    // Accessors to read the domain as native C data.
+    
 };
 
 namespace Internal {

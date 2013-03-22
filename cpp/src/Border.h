@@ -56,12 +56,12 @@ public:
     BorderFunc(BorderBase *p) : contents(p) {}
     
     // When invoking BorderBase, set initial dim to zero and work from there.
-    Expr indexExpr(Expr expr, Expr min, Expr max) { assert(contents.ptr && "Undefined border function"); return contents.ptr->indexExpr(0, expr, min, max); }
-    Expr valueExpr(Expr value, Expr expr, Expr min, Expr max) { assert(contents.ptr && "Undefined border function"); return contents.ptr->valueExpr(0, value, expr, min, max); }
+    Expr indexExpr(Expr expr, Expr min, Expr max);
+    Expr valueExpr(Expr value, Expr expr, Expr min, Expr max);
 
     // For use from BorderIndex, provide dim parameter
-    Expr indexExpr(int dim, Expr expr, Expr min, Expr max) { assert(contents.ptr && "Undefined border function"); return contents.ptr->indexExpr(dim, expr, min, max); }
-    Expr valueExpr(int dim, Expr value, Expr expr, Expr min, Expr max) { assert(contents.ptr && "Undefined border function"); return contents.ptr->valueExpr(dim, value, expr, min, max); }
+    Expr indexExpr(int dim, Expr expr, Expr min, Expr max);
+    Expr valueExpr(int dim, Expr value, Expr expr, Expr min, Expr max);
 
     // BorderFunc.dim(d) returns a border function with the dimension index set to d.
     // Example is Border::tile(2,3).dim(0).  This is used to split a BorderFunc up into individual dimensions.
@@ -69,7 +69,7 @@ public:
     
     // Simple application such as Border::replicate(in) means apply border function to all dimensions of in.
     // It uses the dimension of the function to split up the border function into separate dimensions.
-    Func operator()(Func in) { return contents.ptr->operator()(in); }
+    Func operator()(Func in);
 };
 
 /** Class to provide access to a particular dimension of a border function that has dimension-specific behaviour.
@@ -90,15 +90,15 @@ public:
     
     // indexExpr and valueExpr can also specify the dimension of interest, which is then
     // relative to the base dimension specified in the constructor call.
-    virtual Expr indexExpr(int _dim, Expr expr, Expr min, Expr max) { return base.indexExpr(_dim + dim, expr, min, max); }
-    virtual Expr valueExpr(int _dim, Expr value, Expr expr, Expr min, Expr max) { return base.valueExpr(_dim + dim, value, expr, min, max); }
+    virtual Expr indexExpr(int _dim, Expr expr, Expr min, Expr max);
+    virtual Expr valueExpr(int _dim, Expr value, Expr expr, Expr min, Expr max);
 };
 
 /** Base class for borderfuncs that manipulate only the value, not the index. */
 class BorderValueBase : public BorderBase {
 public:
     // The index must be clamped to avoid out-of-bounds access.
-    virtual Expr indexExpr(int dim, Expr expr, Expr min, Expr max) { return clamp(expr, min, max); }
+    virtual Expr indexExpr(int dim, Expr expr, Expr min, Expr max);
 };
 
 /** A border function that uses individual border functions for individual dimensions.
@@ -175,10 +175,7 @@ public:
     BorderConstant() { constant = Expr(); } // There is no default constant: require it to be set.
     BorderConstant(Expr k) : constant(k) {}
     
-    virtual Expr valueExpr(int dim, Expr value, Expr expr, Expr min, Expr max) {
-        assert(constant.defined() && "Border::constant requires constant value to be specified"); 
-        return select(expr < min, constant, select(expr > max, constant, value)); 
-    }
+    virtual Expr valueExpr(int dim, Expr value, Expr expr, Expr min, Expr max);
 };
 
 /** A border function that replicates tiles of the image at the borders.
@@ -190,11 +187,7 @@ public:
     BorderTile() { tile.clear(); } // There is no default tile.
     BorderTile(std::vector<Expr> _tile) : tile(_tile) {}
     
-    virtual Expr indexExpr(int dim, Expr expr, Expr min, Expr max) {
-        assert(tile.size() > 0 && "BorderTile requires at least one tile dimension");
-        dim = dim % ((int) tile.size());
-        return new Internal::Clamp(Internal::Clamp::Tile, expr, min, max, tile[dim]); 
-    }
+    virtual Expr indexExpr(int dim, Expr expr, Expr min, Expr max);
     
 };
 

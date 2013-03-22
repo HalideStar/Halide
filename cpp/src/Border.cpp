@@ -124,11 +124,78 @@ BorderFunc tile(Expr t1, Expr t2, Expr t3, Expr t4) {
     return BorderFunc(new BorderTile(vec(t1, t2, t3, t4))); 
 }
 
+Expr BorderFunc::indexExpr(Expr expr, Expr min, Expr max) { 
+    assert(contents.ptr && "Undefined border function"); 
+    return contents.ptr->indexExpr(0, expr, min, max); 
+}
+Expr BorderFunc::valueExpr(Expr value, Expr expr, Expr min, Expr max) { 
+    assert(contents.ptr && "Undefined border function"); 
+    return contents.ptr->valueExpr(0, value, expr, min, max); 
+}
+
+Expr BorderFunc::indexExpr(int dim, Expr expr, Expr min, Expr max) { 
+    assert(contents.ptr && "Undefined border function"); 
+    return contents.ptr->indexExpr(dim, expr, min, max); 
+}
+Expr BorderFunc::valueExpr(int dim, Expr value, Expr expr, Expr min, Expr max) { 
+    assert(contents.ptr && "Undefined border function"); 
+    return contents.ptr->valueExpr(dim, value, expr, min, max); 
+}
+
 BorderFunc BorderFunc::dim(int d) {
     return BorderFunc(new BorderIndex(*this, d)); 
 }
 
-// End namespace Border
+Func BorderFunc::operator()(Func in) { 
+    assert(contents.ptr != NULL && "BorderFunc has NULL contents");
+    return contents.ptr->operator()(in); 
+}
+
+Expr BorderIndex::indexExpr(int _dim, Expr expr, Expr min, Expr max) { 
+    return base.indexExpr(_dim + dim, expr, min, max); 
+}
+
+Expr BorderIndex::valueExpr(int _dim, Expr value, Expr expr, Expr min, Expr max) { 
+    return base.valueExpr(_dim + dim, value, expr, min, max); 
+}
+
+Expr BorderValueBase::indexExpr(int dim, Expr expr, Expr xmin, Expr xmax) { 
+    if (! xmin.defined() && ! xmax.defined()) {
+        return expr;
+    }
+    if (! xmin.defined()) {
+        return min(xmax, expr);
+    }
+    if (! xmax.defined()) {
+        return max(xmin, expr);
+    }
+    return clamp(expr, xmin, xmax); 
+}
+
+Expr BorderConstant::valueExpr(int dim, Expr value, Expr expr, Expr min, Expr max) {
+    assert(constant.defined() && "Border::constant requires constant value to be specified"); 
+    assert(expr.defined() && "Border::constant - undefined index expression");
+    assert(value.defined() && "Border::constant - undefined value expression");
+    if (! max.defined()) {
+        std::cout << "Warning: undefined upper bound for Border::constant(" << constant << ")" << value << "\n";
+    } else {
+        value = select(expr > max, cast(value.type(), constant), value);
+    }
+    if (! min.defined()) {
+        std::cout << "Warning: undefined lower bound for Border::constant(" << constant << ")" << value << "\n";
+    } else {
+        value = select(expr < min, cast(value.type(), constant), value);
+    }
+    return value; 
+}
+
+Expr BorderTile::indexExpr(int dim, Expr expr, Expr min, Expr max) {
+    assert(tile.size() > 0 && "BorderTile requires at least one tile dimension");
+    dim = dim % ((int) tile.size());
+    return new Internal::Clamp(Internal::Clamp::Tile, expr, min, max, tile[dim]); 
+}
+
+    // End namespace Border
 }
 
 namespace Internal {

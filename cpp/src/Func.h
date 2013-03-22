@@ -339,6 +339,9 @@ public:
      * strange things may happen, as the pipeline isn't necessarily
      * safe to run in-place. */
     EXPORT void realize(Buffer dst);
+    
+    /** Evaluate this function into a new buffer using the valid domain */
+    //EXPORT void realize();
 
     /** Statically compile this function to llvm bitcode, with the
      * given filename (which should probably end in .bc), type
@@ -851,6 +854,13 @@ public:
     EXPORT Func &kernel_of(Func f1, Func f2);
     EXPORT Func &kernel_of(Func f1, Func f2, Func f3);
     EXPORT Func &kernel_of(Func f1, Func f2, Func f3, Func f4);
+    
+    //LH
+    /** Get the type of this Func node */
+    Type type() const {
+        return value().type();
+    }
+
 };
 
 

@@ -730,7 +730,10 @@ void FuncRefExpr::operator/=(Expr e) {
 }
 
 FuncRefExpr::operator Expr() const {
-    assert(func.value().defined() && "Can't call function with undefined value");
+    if (! func.value().defined()) {
+        std::cout << "Error: Can't call function with undefined value: " << func.name() << "\n";
+        assert(0 && "Abort");
+    }
     return new Call(func, args);
 }
 
@@ -741,6 +744,16 @@ Buffer Func::realize(int x_size, int y_size, int z_size, int w_size) {
     realize(buf);
     return buf;
 }
+
+# if 0
+Buffer Func::realize() {
+    assert(value().defined() && "Can't realize undefined function");
+    Type t = value().type();
+    Buffer buf(t, x_size, y_size, z_size, w_size);
+    realize(buf);
+    return buf;
+}
+#endif
 
 void Func::compile_to_bitcode(const string &filename, vector<Argument> args, const string &fn_name) {
     assert(value().defined() && "Can't compile undefined function");    

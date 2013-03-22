@@ -396,6 +396,9 @@ private:
             
             // Paste in the args directly - introducing too many let
             // statements messes up all our peephole matching
+            if (func.args().size() < args.size()) { //LH
+                std::cout << "Too many arguments for call to " << func.name() << "  Expect " << func.args().size() << " got " << args.size() << "\n";
+            }
             for (size_t i = 0; i < args.size(); i++) {
                 body = substitute(func.name() + "." + func.args()[i], 
                                   args[i], body);
@@ -726,10 +729,10 @@ Stmt lower(Function f) {
 # if ! LOWER_CLAMP_LATE
     //LH
     // Lowering Clamp here does not produce the same results as using the original clamp.
-    log(0) << "Lowering Clamp\n";
+    log(0) << "Lowering Clamp late\n";
     s = lower_clamp(s);
     s = simplify(s);
-    log(0) << "Clamp lowered:\n" << s << '\n';
+    log(1) << "Clamp lowered:\n" << s << '\n';
 # endif
 
     log(1) << "Injecting tracing...\n";

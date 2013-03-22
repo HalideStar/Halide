@@ -522,7 +522,7 @@ private:
     
     void visit(const Clamp *op) {
         for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-            log(0,"DOMINF") << Expr(op) << " on " << callee[j] << "\n";
+            log(3,"DOMINF") << Expr(op) << " on " << callee[j] << "\n";
         }
         // Clamp operators are particularly significant for forward domain inference.
         if (op->clamptype == Clamp::None) {
@@ -626,7 +626,7 @@ std::vector<VarInterval> backwards_interval(const std::vector<std::string> &varl
         // concrete data and the other is inexact; in this case the result is inexact but
         // is restricted to the concrete data.  Of course, if we wanted to use expressions then
         // we could represent all the cases.
-        log(0,"DOMINF") << "Result[" << j << "]: " << result[j] << "\n";
+        log(2,"DOMINF") << "Result[" << j << "]: " << result[j] << "\n";
         if (result[j].poison.defined() && ! equal(result[j].poison, const_false())) {
             result[j].imin = Expr();
             result[j].imax = Expr();
@@ -645,8 +645,8 @@ std::vector<VarInterval> backwards_interval(const std::vector<std::string> &varl
     
     // Implementation of kernel semantics
     if (kernel_semantics) {
-        log(0) << "Kernel semantics apply\n";
-        log(0) << "result[0]: " << result[0] << "  callee[0]: " << callee[0] <<"\n";
+        log(2) << "Kernel semantics apply\n";
+        log(2) << "result[0]: " << result[0] << "  callee[0]: " << callee[0] <<"\n";
         // If kernel semantics apply, then the computable domain is whatever was computed by
         // backwards interval analysis, but the valid domain is copied from the callee and then is intersected
         // with the computable domain.  The efficient domain is as computed above.
@@ -655,7 +655,7 @@ std::vector<VarInterval> backwards_interval(const std::vector<std::string> &varl
         result[Domain::Valid].update(result[Domain::Computable]); // Intersect with the computable domain
     }
     else
-        log(0) << "Kernel semantics do not apply\n";
+        log(2) << "Kernel semantics do not apply\n";
     
     return result;
 }
@@ -669,7 +669,7 @@ std::vector<VarInterval> backwards_interval(const std::vector<std::string> &varl
     // This applies to images and to testing.
     for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
         intervals.push_back(callee);
-        log(0) << "backward interval initialisation [" << j << "]: " << intervals[j] << '\n';
+        log(2) << "backward interval initialisation [" << j << "]: " << intervals[j] << '\n';
     }
     return backwards_interval(varlist, domains, e, intervals);
 }
