@@ -74,7 +74,9 @@ RUNTIME_LL_STUBS_x86_avx = src/runtime/x86.ll src/runtime/x86_avx.ll
 RUNTIME_LL_STUBS_arm = src/runtime/arm.ll
 RUNTIME_LL_STUBS_arm_android = src/runtime/arm.ll
 
+# Include the generated make rules
 -include $(OBJECTS:.o=.d)
+-include $(GOBJECTS:.o=.d)
 
 build/initmod.%.cpp: bin/bitcode2cpp src/runtime/*.cpp src/runtime/*.ll build/llvm_ok build/clang_ok
 	@-mkdir -p build
@@ -90,6 +92,8 @@ bin/bitcode2cpp: src/bitcode2cpp.cpp
 build/initmod.%.o: build/initmod.%.cpp
 	$(CXX) -c $< -o $@ -MMD -MP -MF build/$*.d -MT build/$*.o
 
+# -MF: Specify the file for the generated make rules.
+# -MT: Specify the target for the generated make rules.
 build/%.o: src/%.cpp src/%.h build/llvm_ok
 	@-mkdir -p build
 	$(CXX) $(CXX_FLAGS) -c $< -o $@ -MMD -MP -MF build/$*.d -MT build/$*.o 
