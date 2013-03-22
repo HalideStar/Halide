@@ -128,7 +128,7 @@ bin/gtest_%: test/%.cpp lib/libg$(NAME).a include/Halide.h
 
 test_%: bin/test_%
 	@-mkdir -p tmp
-	cd tmp ; HL_DEBUG_DOMINF=4 DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
+	cd tmp ; DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
 	@-echo
 
 gtest_%: bin/gtest_%

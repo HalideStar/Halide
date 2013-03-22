@@ -4,6 +4,9 @@
 #include "Scope.h"
 #include "Func.h"
 
+#include "IRPrinter.h"
+#include "Simplify.h"
+
 namespace Halide {
 
 using std::string;
@@ -148,10 +151,11 @@ RDom::RDom(const Func &f) {
     // A reduction domain for a function is built directly from the
     // valid domain of the function which is represented as expressions.
     Expr min[4], extent[4];
+    std::cout << "Dimensions of " << f.name() << " " << f.dimensions() << "\n";
     for (int i = 0; i < 4; i++) {
         if (f.dimensions() > i) {
             min[i] = f.valid().min(i);
-            extent[i] = f.valid().max(i) - f.valid().min(i) + 1;
+            extent[i] = simplify(f.valid().max(i) - f.valid().min(i) + 1);
         }    
     }
     string names[] = {f.name() + ".x", f.name() + ".y", f.name() + ".z", f.name() + ".w"};
@@ -164,6 +168,7 @@ RDom::RDom(const Func &f) {
         if (f.dimensions() > i) {
             *(vars[i]) = RVar(names[i], min[i], extent[i], domain);
         }
+        std::cout << "RVar[" << i << "]: " << vars[i]->name() << " " << vars[i]->min() << " " << vars[i]->extent() << "\n";
     }
 }
 
