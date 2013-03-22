@@ -8,8 +8,11 @@
 
 #include "IR.h"
 #include "Param.h"
+#include "Image.h"
 
 namespace Halide {
+
+class Func;
 
 /** A reduction variable represents a single dimension of a reduction
  * domain (RDom). Don't construct them directly, instead construct an
@@ -189,6 +192,10 @@ public:
     // @{
     EXPORT RDom(Buffer);
     EXPORT RDom(ImageParam);
+    EXPORT RDom(const Func &);
+    template<typename T> RDom(Image<T> image) {
+        (*this) = RDom(Buffer(image));
+    }
     // @}
 
     /** Check if this reduction domain is non-NULL */

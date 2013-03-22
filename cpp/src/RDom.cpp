@@ -2,6 +2,7 @@
 #include "Util.h"
 #include "IROperator.h"
 #include "Scope.h"
+#include "Func.h"
 
 namespace Halide {
 
@@ -143,6 +144,28 @@ RDom::RDom(ImageParam p) {
     }
 }
 
+RDom::RDom(const Func &f) {
+    // A reduction domain for a function is built directly from the
+    // valid domain of the function which is represented as expressions.
+    Expr min[4], extent[4];
+    for (int i = 0; i < 4; i++) {
+        if (f.dimensions() > i) {
+            min[i] = f.valid().min(i);
+            extent[i] = f.valid().max(i) - f.valid().min(i) + 1;
+        }    
+    }
+    string names[] = {f.name() + ".x", f.name() + ".y", f.name() + ".z", f.name() + ".w"};
+    domain = build_domain(names[0], min[0], extent[0],
+                          names[1], min[1], extent[1],
+                          names[2], min[2], extent[2],
+                          names[3], min[3], extent[3]);    
+    RVar *vars[] = {&x, &y, &z, &w};
+    for (int i = 0; i < 4; i++) {
+        if (f.dimensions() > i) {
+            *(vars[i]) = RVar(names[i], min[i], extent[i], domain);
+        }
+    }
+}
 
 int RDom::dimensions() const {
     return (int)domain.domain().size();
