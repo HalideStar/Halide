@@ -3,12 +3,16 @@
 #include <stdint.h>
 #include <assert.h>
 
+int sdiv(int a, int b) {
+  return (a - ((a % b) + b) % b) / b;
+}
+
 bool u_method_0(int den, int sh_post, int bits) {
     int max = (1 << bits) - 1;
     for (int num = 0; num <= max; num++) {	
 	uint64_t result = num;
 	result >>= sh_post;
-	if (num / den != result) return false;
+	if (sdiv(num, den) != result) return false;
     }
     return true;
 }
@@ -21,7 +25,7 @@ bool u_method_1(int den, int mul, int sh_post, int bits) {
 	result >>= bits;
 	if (result > max) return false;
 	result >>= sh_post;
-	if (num / den != result) return false;
+	if (sdiv(num, den) != result) return false;
     }
     return true;
 }
@@ -33,72 +37,69 @@ bool u_method_2(int den, int mul, int sh_post, int bits) {
 	result *= mul;
 	result >>= bits;
 	if (result > max) return false;
-	result += (num - result)/2;
+	result += (num - result)>>1;
 	if (result > max) return false;
 	result >>= sh_post;
-	if (num / den != result) return false;
+	if (sdiv(num, den) != result) return false;
     }
     return true;    
 }
 
-
-//LH
-// Make this code able to build tables for division with halide modulus semantics also.
-// However, I have not found a working method.
-# define USE_MODULUS 0
-
-int divide(int num, int den, int modulus)
-{
-    if (modulus) {
-        int hmod = ((num % den) + den) % num; // This is how Halide implements % operator
-        // The following line relies on the fact that int is large compared to the value of num.
-        return (num - hmod) / den; // Calculate division result corresponding to the mod definition.
-    }
-    return num / den;
-}
-
-//LH
-bool s_method_m0(int den, int mul, int sh_post, int bits, int modulus) {
+//These are not useful when you want signed division to always round to negative infinity 
+bool s_method_0(int den, int sh_post, int bits) {
     int min = -(1 << (bits-1)), max = (1 << (bits-1))-1;
     for (int num = min; num <= max; num++) {
-	int64_t result = num;
+        int64_t result = num;
 	result >>= sh_post;
-	if (divide(num,den,modulus) != result) return false;
+	if (sdiv(num, den) != result) return false;
     }
     return true;
 }
 
-//LH: Add parameter modulus
-bool s_method_0(int den, int mul, int sh_post, int bits, int modulus) {
+/*
+bool s_method_1(int den, int mul, int sh_post, int bits) {
+    int min = -(1 << (bits-1)), max = (1 << (bits-1))-1;
+    for (int num = min; num <= max; num++) {    
+	int64_t result = num;
+        if (num < -1) result++;
+	result *= mul;
+	result >>= bits;
+	if (result > max || result < min) return false;
+        //if (num < 0) result += num;
+	if (result > max || result < min) return false;
+	result >>= sh_post;
+	if (sdiv(num, den) != result) return false;
+    }
+    return true;    
+}
+*/
+
+bool s_method_1(int den, int mul, int sh_post, int bits) {
+    int min = -(1 << (bits-1)), max = (1 << (bits-1))-1;
+    for (int num = min; num <= max; num++) {    
+	int64_t result = num;
+        uint64_t xsign = result >> (bits-1);
+        uint64_t q0 = (mul * (xsign ^ result)) >> bits;
+        result = xsign ^ (q0 >> sh_post);
+	if (sdiv(num, den) != result) return false;
+    }
+    return true;    
+}
+
+bool s_method_2(int den, int mul, int sh_post, int bits) {
     int min = -(1 << (bits-1)), max = (1 << (bits-1))-1;
     for (int num = min; num <= max; num++) {
 	int64_t result = num;
 	result *= mul;
 	result >>= bits;
 	if (result > max || result < min) return false;
+	result += (num - result+1)>>1;
+	if (result > max || result < min) return false;
 	result >>= sh_post;
-    result += (num < 0 ? 1 : 0);
-	if (divide(num,den,modulus) != result) return false;
+        int64_t correct = sdiv(num, den);
+	if (correct != result) return false;
     }
     return true;
-}
-
-//LH: Add parameter modulus
-bool s_method_1(int den, int mul, int sh_post, int bits, int modulus) {
-    int min = -(1 << (bits-1)), max = (1 << (bits-1))-1;
-    for (int num = min; num <= max; num++) {
-	int64_t result = num;
-	result *= mul;
-	result >>= bits;
-	if (result > max || result < min) return false;
-	result += num;
-	if (result > max || result < min) return false;
-	result >>= sh_post;
-    if (! modulus)
-        result += (num < 0 ? 1 : 0);
-	if (divide(num,den,modulus) != result) return false;
-    }
-    return true;    
 }
 
 
@@ -154,14 +155,20 @@ int main(int argc, char **argv) {
 	  next_unsigned:;
 	}
 	printf("};\n");
-    for (int modulus = 0; modulus < 2; modulus++) { //LH
-	printf("int table_s%s%d[][3] = {\n", modulus ? "m" : "", bits);
+	printf("int table_s%d[][3] = {\n", bits);
 	for (int den = 2; den <= 64; den++) {
 
 	    for (int shift = 0; shift < 8; shift++) {
-		for (int mul = s_min; mul <= s_max; mul++) {
-		    if (s_method_m0(den, mul, shift, bits, modulus)) {
-			printf("    {-1, %d, %d},\n", mul, shift);
+		if (s_method_0(den, shift, bits)) {
+		    printf("    {0, 0, %d},\n", shift);
+		    goto next_signed;
+		}
+	    }
+	    
+	    for (int shift = 0; shift < 8; shift++) {
+		for (int mul = 0; mul <= u_max; mul++) {
+		    if (s_method_1(den, mul, shift, bits)) {
+			printf("    {1, %d, %d},\n", mul, shift);
 			goto next_signed;
 		    }
 		}
@@ -169,7 +176,17 @@ int main(int argc, char **argv) {
 	    
 	    for (int shift = 0; shift < 8; shift++) {
 		for (int mul = s_min; mul <= s_max; mul++) {
-		    if (s_method_0(den, mul, shift, bits, modulus)) {
+		    if (s_method_2(den, mul, shift, bits)) {
+			printf("    {2, %d, %d},\n", mul, shift);
+			goto next_signed;
+		    }
+		}
+	    }
+
+          /*
+	    for (int shift = 0; shift < 8; shift++) {
+		for (int mul = s_min; mul <= s_max; mul++) {
+		    if (s_method_0(den, mul, shift, bits)) {
 			printf("    {0, %d, %d},\n", mul, shift);
 			goto next_signed;
 		    }
@@ -178,20 +195,17 @@ int main(int argc, char **argv) {
 	    
 	    for (int shift = 0; shift < 8; shift++) {
 		for (int mul = s_min; mul <= s_max; mul++) {
-		    if (s_method_1(den, mul, shift, bits, modulus)) {
+		    if (s_method_1(den, mul, shift, bits)) {
 			printf("    {1, %d, %d},\n", mul, shift);
 			goto next_signed;
 		    }
 		}
 	    }
+          */
 	    printf("ERROR! No solution found for signed %d\n", den);
 	  next_signed:;
 	}
-	printf("};\n"); 
-#if ! USE_MODULUS
-    break; //LH
-#endif
-    }
+	printf("};\n");        
     }
 
     printf("}}}\n");
