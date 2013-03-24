@@ -25,10 +25,12 @@ namespace Internal {
  * is determined by the value of the environment variable
  * HL_DEBUG_CODEGEN
  *
- * LH: Log with sections
  * log(verbosity,section) << ...
  * This log message is controlled by HL_DEBUG_<section> in addition to
- * HL_DEBUG_CODEGEN.  
+ * HL_DEBUG_CODEGEN.  This allows for finer control by setting an elevated
+ * debug level for a particular section name.  e.g. 
+ * log(3,"MINE") << ... would print the output in either of the cases that
+ * HL_DEBUG_CODEGEN was set to 3 or HL_DEBUG_MINE was set to 3.
  */
 
 struct log {
@@ -42,7 +44,14 @@ struct log {
     log(int verbosity) {
         if (!initialized) {
             // Read the debug level from the environment
+            #ifdef _WIN32
+            char lvl[32];
+            size_t read = 0;
+            getenv_s(&read, lvl, "HL_DEBUG_CODEGEN");
+            if (read) {
+            #else   
             if (char *lvl = getenv("HL_DEBUG_CODEGEN")) {
+            #endif
                 debug_level = atoi(lvl);
             } else {
                 debug_level = 0;
@@ -74,7 +83,14 @@ struct log {
         if (section != section_name)
         {
             // Read the debug level from the environment
+            #ifdef _WIN32
+            char lvl[32];
+            size_t read = 0;
+            getenv_s(&read, lvl, ("HL_DEBUG_" + section).c_str()));
+            if (read) {
+            #else   
             if (char *lvl = getenv(("HL_DEBUG_" + section).c_str())) {
+            #endif
                 section_debug_level = atoi(lvl);
             } else {
                 section_debug_level = 0;
