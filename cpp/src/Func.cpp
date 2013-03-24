@@ -58,8 +58,9 @@ Func::Func(Buffer b) {
 void Func::clear() {
     // Retain the name that the programmer assigned to this Func object.
     std::string thename = name();
-    // If the name has a period in it, drop the end.  There will then be a unique renaming.
-    size_t pos = thename.find('.');
+    // If the name has a dollar sign in it, drop the end.  This will return the original
+    // programmer supplied name and then the unique_name will append a new numeric suffix.
+    size_t pos = thename.find('$');
     if (pos != std::string::npos) {
         thename = thename.substr(0, pos);
     }

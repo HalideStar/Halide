@@ -122,15 +122,16 @@ TESTS = $(shell ls test/*.cpp)
 tests: $(TESTS:test/%.cpp=test_%)
 
 bin/test_internal: test/internal.cpp bin/lib$(NAME).so
-	$(CXX) $(CXX_FLAGS)  $< -Isrc -Lbin -lHalide -lpthread -ldl -o $@	
+	$(CXX) $(CXX_FLAGS)  $< -Isrc -Lbin -l$(NAME) -lpthread -ldl -o $@	
 
 bin/test_%: test/%.cpp bin/lib$(NAME).so include/Halide.h
 	$(CXX) $(TEST_CXX_FLAGS) -g $<  -Iinclude -Lbin -l$(NAME) -lpthread -ldl -o $@	
 
+#LH: Compilation with debugging option and static link of debugging library
 gtests: $(TESTS:test/%.cpp=gtest_%)
+
 bin/gtest_internal: test/internal.cpp lib/libg$(NAME).a
 	$(CXX) -g $< -Isrc -Llib -lg$(NAME) -lpthread -ldl -o $@	
-
 
 bin/gtest_%: test/%.cpp lib/libg$(NAME).a include/Halide.h
 	$(CXX) -g $<  -Iinclude -Llib -lg$(NAME) -lpthread -ldl -o $@	
