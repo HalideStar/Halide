@@ -8,6 +8,7 @@
 #include <iostream>
 #include "IR.h"
 #include <string>
+#include <set>
 
 namespace Halide {
 namespace Internal {
@@ -25,86 +26,106 @@ namespace Internal {
  * is determined by the value of the environment variable
  * HL_DEBUG_CODEGEN
  *
- * log(verbosity,section) << ...
+ \code
+ log(verbosity,section) << ...
+ \endcode
+ *
  * This log message is controlled by HL_DEBUG_<section> in addition to
  * HL_DEBUG_CODEGEN.  This allows for finer control by setting an elevated
  * debug level for a particular section name.  e.g. 
- * log(3,"MINE") << ... would print the output in either of the cases that
+ \code
+   log(3,"MINE") << ... 
+ \endcode
+ * would print in either of the cases that
  * HL_DEBUG_CODEGEN was set to 3 or HL_DEBUG_MINE was set to 3.
+ *
+ \code
+ log(filename,verbosity=2,section="") << ...
+ \endcode
+ * 
+ * This log message is written to a disk file.  The first time a particular file
+ * name is written to, the file is created/truncated to be empty.  The log class
+ * tracks file names so that subsequent writes to the same file are appended
+ * and do not overwrite the earlier write.  
+ *
+ * As with other forms of log, the verbosity level controls which information is
+ * written to the log files.  The verbosity level for log files is the maximum of
+ * HL_DEBUG_CODEGEN, HL_DEBUG_LOGFILE, and HL_DEBUG_<section>.  Thus, setting 
+ * HL_DEBUG_CODEGEN to 2 will generate detailed log data and log files.
+ * Setting HL_DEBUG_LOGFILE to 2 will generate the log files without the screen logs.
+ * Setting HL_DEBUG_<section> to 2 will generate detailed screen logs and log files
+ * for the specified section.
+ *
+ * The file name consists of the following parts.
+ *
+ * (1) The value of the environment variable HL_LOG_NAME, or if that is unset
+ * then the value of the static class member log::log_name is used.
+ * This allows a programmer to set log::log_name to the name of their program
+ * so that the log files will be unique, but override the setting with HL_LOG_NAME.
+ *
+ * (2) The string passed as filename to the log constructor, which cannot be empty.  
+ * (3) The file type extension ".log"
+ *
+ * The first two file name parts are concatenated with underscore between them,
+ * except that no underscore is used if the first part is empty.
+ * Only the characters a-z,A-Z,0-9 and the punctuation characters '_', '-' are 
+ * allowed in the generated filename. Any other characters are changed to _.
+ *
+ * verbosity defaults to 2 and section defaults to "". 
+ *
+ * Example: Suppose a program mine is run with HL_LOG_NAME=mine.
+ * Within the program, the code
+ \code
+   log("function_" + sobel.name()) << sobel.value();
+ \endcode
+ * would write the definition of the function sobel to the file
+ * mine_function_sobel.log
  */
 
 struct log {
     static int debug_level;
+private:
+    bool do_logging; // A boolean record of the decision to write or not to write.
+    std::ostream *stream; // The output stream to use for writing.
+    
     static bool initialized;
-    //int verbosity;
-    bool do_logging; // A boolean to avoid repeating the decision.
+    
     static std::string section_name;
     static int section_debug_level;
+    
+    static std::string log_name; // Base file name for file output
+    static bool log_name_env; // True if HL_LOG_BASE found in environment
+    static int logfile_debug_level; // Debugging level specific to log files
+    static std::set<std::string> known_files; // Files that have already been used
+public:
 
-    log(int verbosity) {
-        if (!initialized) {
-            // Read the debug level from the environment
-            #ifdef _WIN32
-            char lvl[32];
-            size_t read = 0;
-            getenv_s(&read, lvl, "HL_DEBUG_CODEGEN");
-            if (read) {
-            #else   
-            if (char *lvl = getenv("HL_DEBUG_CODEGEN")) {
-            #endif
-                debug_level = atoi(lvl);
-            } else {
-                debug_level = 0;
-            }
-            initialized = true;
-        }
-        do_logging = verbosity <= debug_level;
+    void constructor(std::string filename, int verbosity, std::string section = "");
+    
+    log(int verbosity, std::string section = "") {
+        constructor("", verbosity, section);
     }
-
-    log(int verbosity, std::string section) {
-        if (!initialized) {
-            // Read the debug level from the environment
-            #ifdef _WIN32
-            char lvl[32];
-            size_t read = 0;
-            getenv_s(&read, lvl, "HL_DEBUG_CODEGEN");
-            if (read) {
-            #else   
-            if (char *lvl = getenv("HL_DEBUG_CODEGEN")) {
-            #endif
-                debug_level = atoi(lvl);
-            } else {
-                debug_level = 0;
-            }
-
-            initialized = true;
-        }
-        // A single cache of the section, since we assume that we are operating in stages
-        if (section != section_name)
-        {
-            // Read the debug level from the environment
-            #ifdef _WIN32
-            char lvl[32];
-            size_t read = 0;
-            getenv_s(&read, lvl, ("HL_DEBUG_" + section).c_str()));
-            if (read) {
-            #else   
-            if (char *lvl = getenv(("HL_DEBUG_" + section).c_str())) {
-            #endif
-                section_debug_level = atoi(lvl);
-            } else {
-                section_debug_level = 0;
-            }
-            section_name = section;
-        }
-        do_logging = verbosity <= debug_level || verbosity <= section_debug_level;
+    
+    log(std::string filename, int verbosity = 2, std::string section = "FILE") {
+        constructor(filename, verbosity, section);
     }
+    
+    ~log(); // Destructor required to close file stream if used.
 
     template<typename T>
     log &operator<<(T x) {
         if (! do_logging) return *this;
-        std::cerr << x;
+        *stream << x;
         return *this;
+    }
+    
+    /** Specify the default base log file name.  The
+     * environment variable HL_LOG_NAME overrides this setting. */
+    void set_log_name(std::string name) {
+        // Only apply the programmer setting if HL_LOG_NAME was not found
+        // in the environment.
+        if (! log_name_env) {
+            log_name = name;
+        }
     }
 };
 

@@ -3,6 +3,9 @@
 # 'make test_foo' builds and runs test/foo.cpp for any cpp file in the test folder
 # 'make test_apps' checks some of the apps build and run (but does not check their output)
 
+# Set RUNDEBUG to select debugging options for running test programs
+RUNDEBUG = HL_DEBUG_LOGFILE=2
+
 CXX ?= g++
 LLVM_CONFIG ?= llvm-config
 LLVM_VERSION = $(shell $(LLVM_CONFIG) --version)
@@ -138,12 +141,12 @@ bin/gtest_%: test/%.cpp lib/libg$(NAME).a include/Halide.h
 
 test_%: bin/test_%
 	@-mkdir -p tmp
-	cd tmp ; DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
+	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
 	@-echo
 
 gtest_%: bin/gtest_%
 	@-mkdir -p tmp
-	cd tmp ; DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
+	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
 	@-echo
 
 

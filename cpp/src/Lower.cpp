@@ -5,6 +5,7 @@
 #include "Scope.h"
 #include "Bounds.h"
 #include "Simplify.h"
+#include "IREquality.h"
 #include "IRPrinter.h"
 #include "Log.h"
 #include <iostream>
@@ -712,6 +713,19 @@ Stmt add_image_checks(Stmt s, Function f) {
     return s;
 }
 
+namespace {
+static Stmt s_prev;
+
+// local method to write stmt to a named log file but only if it has changed compared to
+// the previous log file that was written.
+void log_to_file(std::string base, Stmt s) {
+    if (! equal(s, s_prev)) {
+        log(base, 2) << s << "\n"; 
+        s_prev = s; 
+    }
+}
+}
+
 Stmt lower(Function f) {
     // Compute an environment
     map<string, Function> env;
@@ -722,22 +736,31 @@ Stmt lower(Function f) {
     vector<string> order = realization_order(f.name(), env, graph);
     Stmt s = create_initial_loop_nest(f);
 
+    log(f.name() + "_101_initial", 2) << s << "\n";
+    s_prev = s;
+
     log(2) << "Initial statement: " << '\n' << s << '\n';
     s = schedule_functions(s, order, env, graph);
     log(2) << "All realizations injected:\n" << s << '\n';
+    log_to_file(f.name() + "_110_realize", s);
+    
+    s = simplify(s);
+    log_to_file(f.name() + "_111_simplify", s);
 
 # if ! LOWER_CLAMP_LATE
     //LH
     // Lowering Clamp here does not produce the same results as using the original clamp.
-    log(0) << "Lowering Clamp late\n";
+    log(1) << "Lowering Clamp early\n";
     s = lower_clamp(s);
     s = simplify(s);
     log(1) << "Clamp lowered:\n" << s << '\n';
+    log_to_file(f.name() + "_125_clamp", s);
 # endif
 
     log(1) << "Injecting tracing...\n";
     s = inject_tracing(s);
     log(2) << "Tracing injected:\n" << s << '\n';
+    log_to_file(f.name() + "_130_trace", s);
 
     log(1) << "Adding checks for images\n";
     s = add_image_checks(s, f);    
@@ -746,14 +769,16 @@ Stmt lower(Function f) {
     log(1) << "Performing bounds inference...\n";
     s = bounds_inference(s, order, env);
     log(2) << "Bounds inference:\n" << s << '\n';
+    log_to_file(f.name() + "_140_bounds", s);
     
 # if LOWER_CLAMP_LATE
     //LH
     // Lowering Clamp here does not produce the same results as using the original clamp.
-    log(0) << "Lowering Clamp\n";
+    log(1) << "Lowering Clamp late\n";
     s = lower_clamp(s);
     s = simplify(s);
-    log(0) << "Clamp lowered:\n" << s << '\n';
+    log(1) << "Clamp lowered:\n" << s << '\n';
+    log_to_file(f.name() + "_150_clamp", s);
 # endif
 
     log(1) << "Performing sliding window optimization...\n";
@@ -763,10 +788,12 @@ Stmt lower(Function f) {
     log(1) << "Simplifying...\n";
     s = simplify(s);
     log(2) << "Simplified: \n" << s << "\n\n";
+    log_to_file(f.name() + "_160_sliding", s);
 
     log(1) << "Performing storage folding optimization...\n";
     s = storage_folding(s);
     log(2) << "Storage folding:\n" << s << '\n';
+    log_to_file(f.name() + "_170_storefold", s);
 
     log(1) << "Injecting debug_to_file calls...\n";
     s = debug_to_file(s, env);
@@ -779,10 +806,12 @@ Stmt lower(Function f) {
     log(1) << "Simplifying...\n";
     s = simplify(s);
     log(2) << "Simplified: \n" << s << "\n\n";
+    log_to_file(f.name() + "_180_storeflatten", s);
 
     log(1) << "Vectorizing...\n";
     s = vectorize_loops(s);
     log(2) << "Vectorized: \n" << s << "\n\n";
+    log_to_file(f.name() + "_185_vector", s);
 
     log(1) << "Unrolling...\n";
     s = unroll_loops(s);
@@ -791,16 +820,20 @@ Stmt lower(Function f) {
     log(1) << "Simplifying...\n";
     s = simplify(s);
     log(2) << "Simplified: \n" << s << "\n\n";
+    log_to_file(f.name() + "_190_unroll", s);
 
     log(1) << "Detecting vector interleavings...\n";
     s = rewrite_interleavings(s);
-    log(2) << "Rewrote vector interleavings: \n" << s << "\n\n";
+    log(2) << "Rewrote vector interleavings: \n" << s << "\n\n";    
+    log_to_file(f.name() + "_195_interleave", s);
 
     log(1) << "Simplifying...\n";
     s = simplify(s);
     s = remove_trivial_for_loops(s);
     s = remove_dead_lets(s);
     log(1) << "Simplified: \n" << s << "\n\n";
+    
+    log(f.name() + "_199_final", 1) << s << "\n";
 
     return s;
 } 
