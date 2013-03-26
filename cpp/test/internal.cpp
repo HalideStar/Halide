@@ -13,6 +13,7 @@
 #include "DomainInference.h"
 #include "LowerClamp.h"
 #include "Border.h"
+#include "IntervalAnalysis.h"
 
 using namespace Halide;
 using namespace Halide::Internal;
@@ -36,5 +37,6 @@ int main(int argc, const char **argv) {
     domain_inference_test();
     lower_clamp_test();
     border_test();
+    interval_analysis_test();
     return 0;
 }

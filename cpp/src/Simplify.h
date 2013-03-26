@@ -20,9 +20,11 @@ Expr simplify(Expr);
 // @}  
 
 /** Perform simplification, but return undefined expression instead of
- * error for undefined expression as input. */
-Stmt simplify_undef(Stmt s) { return s.defined() ? simplify(s) : s; }
-Expr simplify_undef(Expr e) { return e.defined() ? simplify(e) : e; }
+ * error if passed an undefined expression as input. */
+// @{
+Stmt simplify_undef(Stmt s);
+Expr simplify_undef(Expr e);
+// @} 
 
 /** Use the simplifier to test whether an expression can be
  * evaluated to true.

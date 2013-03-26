@@ -26,7 +26,7 @@ void IRRewriter::visit(const Cast *op) {
     expr = op;
 }
     
-void IRRewriter::visit(const Variable *) {
+void IRRewriter::visit(const Variable *op) {
     defaulted = true;
     expr = op;
 }
@@ -177,17 +177,17 @@ void IRRewriter::visit(const Let *op) {
     expr = op;
 }
 
-void IRRewriter::visit(const Letvoid op) {
+void IRRewriter::visit(const LetStmt *op) {
     defaulted = true;
     stmt = op;
 }
 
-void IRRewriter::visit(const Printvoid op) {
+void IRRewriter::visit(const PrintStmt *op) {
     defaulted = true;
     stmt = op;
 }
 
-void IRRewriter::visit(const Assertvoid op) {
+void IRRewriter::visit(const AssertStmt *op) {
     defaulted = true;
     stmt = op;
 }

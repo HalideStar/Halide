@@ -2,6 +2,7 @@
 #define HALIDE_IR_REWRITER_H
 
 #include "IRVisitor.h"
+#include "IR.h"
 
 /** \file
  * Defines the base class for rewriters to get applied by a tree walker.
@@ -12,12 +13,14 @@ namespace Internal {
 
 /** A base class for adding rewriting to an existing algorithm that walks over
  * the tree.  Override the methods for the nodes that you care about.
- * Pass the derived class object to a tree walker based on IRMutator.
+ * Pass the derived class object to a tree walker based on IRMutator, such as IntervalAnalysis.
  * That tree walker will provide some base functionality that you need,
  * and it will call your rewriter on any nodes that you are interested in.
  */
 class IRRewriter {
 public:
+    Stmt stmt;
+    Expr expr;
     // Sometimes, you need to know if IRRewriter has adopted
     // the default behaviour of doing nothing for a node for which
     // no explicit visit method is defined.
@@ -58,9 +61,9 @@ public:
     virtual void visit(const Broadcast *);
     virtual void visit(const Call *);
     virtual void visit(const Let *);
-    virtual void visit(const Letvoid );
-    virtual void visit(const Printvoid );
-    virtual void visit(const Assertvoid );
+    virtual void visit(const LetStmt *);
+    virtual void visit(const PrintStmt *);
+    virtual void visit(const AssertStmt *);
     virtual void visit(const Pipeline *);
     virtual void visit(const For *);
     virtual void visit(const Store *);

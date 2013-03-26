@@ -1048,6 +1048,13 @@ Stmt simplify(Stmt s) {
     return Simplify().mutate(s);
 }
 
+Stmt simplify_undef(Stmt s) { 
+    return s.defined() ? simplify(s) : s; 
+}
+Expr simplify_undef(Expr e) { 
+    return e.defined() ? simplify(e) : e; 
+}
+
 bool proved(Expr e) {
     Expr b = Simplify().mutate(e);
     return is_one(b);
