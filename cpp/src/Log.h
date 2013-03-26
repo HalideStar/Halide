@@ -84,6 +84,7 @@ namespace Internal {
 
 struct log {
     static int debug_level;
+    static int logfile_debug_level; // Debugging level specific to log files
 private:
     bool do_logging; // A boolean record of the decision to write or not to write.
     std::ostream *stream; // The output stream to use for writing.
@@ -95,7 +96,6 @@ private:
     
     static std::string log_name; // Base file name for file output
     static bool log_name_env; // True if HL_LOG_BASE found in environment
-    static int logfile_debug_level; // Debugging level specific to log files
     static std::set<std::string> known_files; // Files that have already been used
 public:
 

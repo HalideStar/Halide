@@ -80,23 +80,29 @@ string unique_name(const string &name) {
         return unique_name('z');
     }    
 
-    // Check the '$' character doesn't appear in the prefix. This lets
+    // Ensure the '$' character doesn't appear in the prefix. This lets
     // us separate the name from the number using '$' as a delimiter,
     // which guarantees uniqueness of the generated name, without
     // having to track all name generated so far.
-    for (size_t i = 0; i < name.length(); i++) {
-        assert(name[i] != '$' && "names passed to unique_name may not contain the character '$'");
-    }
+    // Retain the name that the programmer assigned to this Func object.
 
-    int &count = known_names[name];
+    // If the name has a dollar sign in it, drop the end.  This will return the original
+    // programmer supplied name and then the unique_name will append a new numeric suffix.
+    std::string thename = name;
+    size_t pos = thename.find('$');
+    if (pos != std::string::npos) {
+        thename = thename.substr(0, pos);
+    }
+    
+    int &count = known_names[thename];
     count++;
     if (count == 1) {
         // The very first unique name is the original function name itself.
-        return name;
+        return thename;
     } else {
         // Use the programmer-specified name but append a number to make it unique.
         ostringstream oss;        
-        oss << name << '$' << count;
+        oss << thename << '$' << count;
         return oss.str();
     }
 }
