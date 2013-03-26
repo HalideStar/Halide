@@ -998,7 +998,7 @@ void domain_expr_test()
 {
     Image<uint8_t> in(20,40);
     Image<uint8_t> inb(30,35);
-    Func f("fred"), g("gold"), h("hamey"), fa("fa"), fb("fb"), fc("fc");
+    Func f("fred"), g("gold"), h("ham"), fa("fa"), fb("fb"), fc("fc");
     Var x("x"), y("y"), a("a"), b("b"), ext("fff.extent.0");
     Expr False = Internal::make_bool(false);
     Expr True = Internal::make_bool(true);
@@ -1049,7 +1049,6 @@ void domain_expr_test()
     g.set_valid() = in.valid(); // Manually update the valid region.
     
     // h is a kernel function of g, using the border handling
-    log(0) << "Defining hamey\n";
     h(a,b) = g(a,b)+g(a,b-1)+g(a,b+1);
     h.kernel_of(g); // h is a kernel function of g, so the valid region is copied and intersected with computable region
     check_domain_expr(Domain::Valid, vecS("x","y"), h(x,y), Domain("x", False, 0, 19, "y", False, 0, 39));
@@ -1067,12 +1066,9 @@ void domain_expr_test()
     // The following is not valid because fa() has been used already for domain inference.
     //fa.kernel_of(g,inb);
     Func ffa("ffa");
-    //ffa(x) = fa(x);
-    std::cout << "Hello 0\n";
-    ffa = fa;
-    std::cout << "Hello 1\n";
+    //ffa = fa();
+    ffa = fa();
     ffa.kernel_of(g,inb);
-    std::cout << "Helo 2\n";
     // Declaring fa to be a kernel function overrides the shifts implicit in the definition of fa.
     // For g, this means that the valid domain is copied but for inb the computable domain is restricting the valid
     // domain.
