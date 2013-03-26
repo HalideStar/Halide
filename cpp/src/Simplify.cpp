@@ -1050,7 +1050,7 @@ Stmt simplify(Stmt s) {
 
 bool proved(Expr e) {
     Expr b = Simplify().mutate(e);
-    return equal(b, const_true(e.type().width));
+    return is_one(b);
 }
 
 
