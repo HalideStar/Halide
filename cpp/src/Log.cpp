@@ -59,6 +59,8 @@ void log::constructor(std::string filename, int verbosity, std::string section) 
             log_name = base;
             log_name_env = true; // Prevent programmer overriding environment
         }
+        
+        //std::cerr << "Logging: HL_DEBUG_CODEGEN=" << debug_level << " HL_DEBUG_LOGFILE=" << logfile_debug_level << " HL_LOG_NAME=" << log_name << "\n";
 
         initialized = true;
     }

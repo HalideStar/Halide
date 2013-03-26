@@ -24,6 +24,7 @@
 #include "DebugToFile.h"
 
 #include "LowerClamp.h"
+#include "LoopPartition.h"
 
 namespace Halide {
 namespace Internal {
@@ -784,11 +785,18 @@ Stmt lower(Function f) {
     log(1) << "Performing sliding window optimization...\n";
     s = sliding_window(s, env);
     log(2) << "Sliding window:\n" << s << '\n';
+    log_to_file(f.name() + "_155_sliding", s);
+
+    log(1) << "Performing loop partition optimization...\n";
+    s = loop_partition(s);
+    log(2) << "Loop partition:\n" << s << '\n';
+    log_to_file(f.name() + "_165_partition", s);
 
     log(1) << "Simplifying...\n";
     s = simplify(s);
+    s = remove_dead_lets(s);
     log(2) << "Simplified: \n" << s << "\n\n";
-    log_to_file(f.name() + "_160_sliding", s);
+    log_to_file(f.name() + "_166_simplify", s);
 
     log(1) << "Performing storage folding optimization...\n";
     s = storage_folding(s);
