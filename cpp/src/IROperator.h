@@ -41,6 +41,14 @@ bool EXPORT is_one(Expr e);
  * to two (in all lanes, if a vector expression) */
 bool EXPORT is_two(Expr e);
 
+//LH
+/** Given an integer value, compute the value when it has been cast to
+ * Type t.  UInt() returns a positive integer, except for UInt(32) which
+ * may return a negative integer on machines where int is 32 bits.
+ * The returned value is in the valid range for the specified Type.
+ */
+int int_cast_constant(Type t, int val);
+
 /** Construct a const of the given type */
 Expr EXPORT make_const(Type t, int val);
 

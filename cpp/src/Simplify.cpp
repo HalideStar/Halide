@@ -77,6 +77,27 @@ class Simplify : public IRMutator {
             return false;
         }
     }
+    
+    bool const_castint(Expr e, int *i) { //LH
+        const IntImm *c = e.as<IntImm>();
+        const Cast *cast = e.as<Cast>();
+        if (c) {
+            *i = c->value;
+            return true;
+        } else if (cast) {
+            const IntImm *imm = cast->value.as<IntImm>();
+            if (imm) {
+                // When fetching a cast integer, ensure that the return
+                // value is in the correct range for the cast type.
+                *i = int_cast_constant(cast->type, imm->value);
+                return true;
+            } else {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
 
     void visit(const Cast *op) {
         Expr value = mutate(op->value);        
@@ -148,8 +169,6 @@ class Simplify : public IRMutator {
     }
 
     void visit(const Add *op) {
-        log(3) << "Simplifying " << Expr(op) << "\n";
-
         int ia, ib;
         float fa, fb;
 
@@ -182,6 +201,8 @@ class Simplify : public IRMutator {
             expr = a;
         } else if (is_zero(a)) {
             expr = b;
+        } else if (const_castint(a, &ia) && const_castint(b, &ib)) { //LH
+            expr = make_const(op->type, ia + ib);
         } else if (ramp_a && ramp_b) {
             // Ramp + Ramp
             expr = mutate(new Ramp(ramp_a->base + ramp_b->base,
@@ -229,8 +250,6 @@ class Simplify : public IRMutator {
     }
 
     void visit(const Sub *op) {
-        log(3) << "Simplifying " << Expr(op) << "\n";
-
         Expr a = mutate(op->a), b = mutate(op->b);
 
         int ia, ib; 
@@ -259,6 +278,8 @@ class Simplify : public IRMutator {
             expr = mutate(a + (-ib));
         } else if (const_float(b, &fb)) {
             expr = mutate(a + (-fb));
+        } else if (const_castint(a, &ia) && const_castint(b, &ib)) { //LH
+            expr = make_const(op->type, ia - ib);
         } else if (ramp_a && ramp_b) {
             // Ramp - Ramp
             expr = mutate(new Ramp(ramp_a->base - ramp_b->base,
@@ -339,6 +360,8 @@ class Simplify : public IRMutator {
             expr = ia*ib;
         } else if (const_float(a, &fa) && const_float(b, &fb)) {
             expr = fa*fb;
+        } else if (const_castint(a, &ia) && const_castint(b, &ib)) { //LH
+            expr = make_const(op->type, ia * ib);
         } else if (broadcast_a && broadcast_b) {
             expr = new Broadcast(mutate(broadcast_a->value * broadcast_b->value), broadcast_a->width);
         } else if (ramp_a && broadcast_b) {
@@ -392,6 +415,8 @@ class Simplify : public IRMutator {
             expr = ia/ib;
         } else if (const_float(a, &fa) && const_float(b, &fb)) {
             expr = fa/fb;
+        } else if (const_castint(a, &ia) && const_castint(b, &ib)) { //LH
+            expr = make_const(op->type, ia / ib); // Not the new definition of division
         } else if (broadcast_a && broadcast_b) {
             expr = mutate(new Broadcast(broadcast_a->value / broadcast_b->value, broadcast_a->width));
         } else if (ramp_a && broadcast_b && 
@@ -467,6 +492,10 @@ class Simplify : public IRMutator {
             float f = fa - fb * ((int)(fa / fb));
             if (f < 0) f += fb;
             expr = f;
+        } else if (const_castint(a, &ia) && const_castint(b, &ib)) { //LH
+            // Build the mod operator then evaluate it; better would be to call
+            // an implementation.
+            expr = new Cast(op->type, mutate(Expr(ia) % ib));
         } else if (broadcast_a && broadcast_b) {
             expr = mutate(new Broadcast(broadcast_a->value % broadcast_b->value, broadcast_a->width));
         } else if (mul_a && const_int(b, &ib) && const_int(mul_a->b, &ia) && (ia % ib == 0)) {
@@ -522,6 +551,12 @@ class Simplify : public IRMutator {
             expr = std::min(ia, ib);
         } else if (const_float(a, &fa) && const_float(b, &fb)) {
             expr = std::min(fa, fb);
+        } else if (const_castint(a, &ia) && const_castint(b, &ib)) { //LH
+            if (op->type.is_uint()) {
+                expr = make_const(op->type, std::min(((unsigned int) ia), ((unsigned int) ib)));
+            } else {
+                expr = make_const(op->type, std::min(ia,ib));
+            }
         } else if (broadcast_a && broadcast_b) {
             expr = mutate(new Broadcast(new Min(broadcast_a->value, broadcast_b->value), broadcast_a->width));
         } else if (add_a && const_int(add_a->b, &ia) && 
@@ -598,6 +633,12 @@ class Simplify : public IRMutator {
             expr = std::max(ia, ib);
         } else if (const_float(a, &fa) && const_float(b, &fb)) {
             expr = std::max(fa, fb);
+        } else if (const_castint(a, &ia) && const_castint(b, &ib)) { //LH
+            if (op->type.is_uint()) {
+                expr = make_const(op->type, std::max(((unsigned int) ia), ((unsigned int) ib)));
+            } else {
+                expr = make_const(op->type, std::max(ia, ib));
+            }
         } else if (broadcast_a && broadcast_b) {
             expr = mutate(new Broadcast(new Max(broadcast_a->value, broadcast_b->value), broadcast_a->width));
         } else if (add_a && const_int(add_a->b, &ia) && add_b && const_int(add_b->b, &ib) && equal(add_a->a, add_b->a)) {
@@ -732,7 +773,19 @@ class Simplify : public IRMutator {
         const Mul *mul_a = a.as<Mul>();
         const Mul *mul_b = b.as<Mul>();
 
-        if (is_zero(delta) || is_positive_const(delta)) {
+        int ia, ib;
+        
+        // Note that the computation of delta could be incorrect if 
+        // ia and/or ib are large unsigned integer constants, especially when
+        // int is 32 bits on the machine.  
+        // Explicit comparison is preferred.
+        if (const_castint(a, &ia) && const_castint(b, &ib)) { //LH
+            if (a.type().is_uint()) {
+                expr = make_bool(((unsigned int) ia) < ((unsigned int) ib), op->type.width);
+            } else {
+                expr = make_bool(ia < ib, op->type.width);
+            }
+        } else if (is_zero(delta) || is_positive_const(delta)) {
             expr = const_false(op->type.width);
         } else if (is_negative_const(delta)) {
             expr = const_true(op->type.width);
@@ -1057,6 +1110,7 @@ Expr simplify_undef(Expr e) {
 
 bool proved(Expr e) {
     Expr b = Simplify().mutate(e);
+    //log(4) << "Attempt to prove  " << e << "  yielded  " << b << "\n";;
     return is_one(b);
 }
 
@@ -1083,7 +1137,14 @@ void simplify_test() {
 
     check(new Cast(Int(32), new Cast(Int(8), 3)), 3);
     check(new Cast(Int(32), new Cast(Int(8), 1232)), -48);
-
+    
+    check(cast(UInt(16), 84) + cast(UInt(16), 5), new Cast(UInt(16), 89));
+    check(cast(UInt(16), 84) - cast(UInt(16), 89), new Cast(UInt(16), 65531));
+    check(cast(UInt(16), 84) * cast(UInt(16), 2), new Cast(UInt(16), 168));
+    check(cast(UInt(16), 84) / cast(UInt(16), 2), new Cast(UInt(16), 42));
+    check(cast(UInt(16), 84) % cast(UInt(16), 5), new Cast(UInt(16), 4));
+    check(cast(UInt(16), 65535) < cast(UInt(16), 5), new Cast(UInt(1), 0));
+    
     check(3 + x, x + 3);
     check(Expr(3) + Expr(8), 11);
     check(Expr(3.25f) + Expr(7.75f), 11.0f);
@@ -1180,6 +1241,8 @@ void simplify_test() {
     check(new Min(new Min(x, y), y), new Min(x, y));
     check(new Min(x, new Min(x, y)), new Min(x, y));
     check(new Min(y, new Min(x, y)), new Min(x, y));
+    
+    check(new Min(new Cast(UInt(16), 65535), new Cast(UInt(16), 4)), new Cast(UInt(16), 4));
 
     check(new Max(7, 3), 7);
     check(new Max(4.25f, 1.25f), 4.25f);
@@ -1193,6 +1256,8 @@ void simplify_test() {
     check(new Max(new Max(x, y), y), new Max(x, y));
     check(new Max(x, new Max(x, y)), new Max(x, y));
     check(new Max(y, new Max(x, y)), new Max(x, y));
+
+    check(new Max(new Cast(UInt(16), 65535), new Cast(UInt(16), 4)), new Cast(UInt(16), 65535));
 
     Expr t = const_true(), f = const_false();
     check(x == x, t);
