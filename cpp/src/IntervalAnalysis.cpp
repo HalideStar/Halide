@@ -249,14 +249,52 @@ public:
     void visit(const Clamp *op) {
         Expr a = mutate(op->a);
         Expr min_a = min, max_a = max;
-        Expr lo = mutate(op->min);
-        Expr min_lo = min, max_lo = max;
-        Expr hi = mutate(op->max);
-        Expr min_hi = min, max_hi = max;
+        Expr lo, min_lo, max_lo;
+        if (op->min.defined()) {
+            lo = mutate(op->min);
+            min_lo = min;
+            max_lo = max;
+        } else {
+            lo = Expr();
+            min_lo = Expr();
+            max_lo = Expr();
+        }
+        Expr hi, min_hi, max_hi;
+        if (op->max.defined()) {
+            hi = mutate(op->max);
+            min_hi = min;
+            max_hi = max;
+        } else {
+            hi = Expr();
+            min_hi = Expr();
+            max_hi = Expr();
+        }
         Expr p1 = op->p1;
         if (p1.defined()) { p1 = mutate(op->p1); }
 
         //log(3) << "Bounds of " << Expr(op) << "\n";
+        
+        if (do_simplify) {
+            // If the clamped expression is in range, then
+            // no clamp needs to be applied to it.
+            // The expression is in range if max_lo <= a <= min_hi is proved
+            // This simplification works for all types of clamps, but it should
+            // not be applied before domain analysis is complete. Fortunately, domain
+            // analysis is done very early.
+            // Note that the clamp minimum is effectively -infinity if lo is undefined,
+            // and the maximum is similarly +infinity if hi is undefined.
+            bool lo_ok, hi_ok;
+            lo_ok = (! lo.defined() || op->clamptype == Clamp::None) || 
+                (max_lo.defined() && min_a.defined() && proved(max_lo <= min_a));
+            hi_ok = (! hi.defined() || op->clamptype == Clamp::None) ||
+                (min_hi.defined() && max_a.defined() && proved(min_hi >= max_a));
+            if (lo_ok && hi_ok) {
+                min = min_a;
+                max = max_a;
+                expr = a;
+                return;
+            }
+        }
 
 		// Bounds of result are no greater than bounds of hi
         if (min_a.defined() && min_hi.defined()) {
@@ -316,14 +354,24 @@ public:
             max = max_a.defined() ? max_a : max_b;
         }
         
-        if (do_simplify && max_a.defined() && min_b.defined() && proved(max_a < min_b)) {
-            // Intervals do not overlap. a is always the minimum
+        if (do_simplify) {
+        int oldlevel = log::debug_level;
+        log::debug_level = oldlevel > 0 ? 4 : 0;
+        log(4) << "IA_Simplify Min(" << a << ", " << b << ")  on (" 
+            << min_a << "," << max_a << ") ("
+            << min_b << "," << max_b << ")\n";
+        if (do_simplify && max_a.defined() && min_b.defined() && proved(max_a <= min_b)) {
+            // Intervals do not overlap (except at one point). a is always the minimum
             expr = a;
+            log::debug_level = oldlevel;
             return;
         }
-        if (do_simplify && max_b.defined() && min_a.defined() && proved(max_b < min_a)) {
+        if (do_simplify && max_b.defined() && min_a.defined() && proved(max_b <= min_a)) {
             expr = b;
+            log::debug_level = oldlevel;
             return;
+        }
+        log::debug_level = oldlevel;
         }
 
         //log(3) << min << ", " << max << "\n";
@@ -357,14 +405,24 @@ public:
             max = Expr();
         }
 
-        if (do_simplify && max_a.defined() && min_b.defined() && proved(max_a < min_b)) {
-            // Intervals do not overlap. b is always the maximum
+        if (do_simplify) {
+        int oldlevel = log::debug_level;
+        log::debug_level = oldlevel > 0 ? 4 : 0;
+        log(4) << "IA_Simplify Min(" << a << ", " << b << ")  on (" 
+            << min_a << "," << max_a << ") ("
+            << min_b << "," << max_b << ")\n";
+        if (do_simplify && max_a.defined() && min_b.defined() && proved(min_b >= max_a)) {
+            // Intervals do not overlap (except at one point). b is always the maximum
             expr = b;
+            log::debug_level = oldlevel;
             return;
         }
-        if (do_simplify && max_b.defined() && min_a.defined() && proved(max_b < min_a)) {
+        if (do_simplify && max_b.defined() && min_a.defined() && proved(min_a >= max_b)) {
             expr = a;
+            log::debug_level = oldlevel;
             return;
+        }
+        log::debug_level = oldlevel;
         }
 
         //log(3) << min << ", " << max << "\n";
@@ -650,6 +708,7 @@ public:
 
     void visit(const Ramp *op) {
         // Not handled.
+        log(1) << "Encountered Ramp node\n";
         min = max = Expr();
         expr = op;
     }
@@ -667,9 +726,32 @@ public:
     }
 
     void visit(const Call *op) {
-        // Could surely do better than simply take the bounds of the type!
+        // Could surely do better than simply take the bounds of the type.
+        // The full solution for interval analysis of the current
+        // expression involves interval analysis on the called function, but that 
+        // is better done by caching information in the Function itself.
+        log(1) << "Encountered Call Node\n";
+        // Process all the arguments.  They do not contribute to the interval
+        // analysis of the current expression, but they can be analysed and/or
+        // simplified.  
+        std::vector<Expr> new_args;
+        bool changed = false;
+        for (size_t i = 0; i < op->args.size(); i++) {
+            Expr arg = op->args[i];
+            Expr new_arg = mutate(arg);
+            if (arg.same_as(new_arg)) {
+                new_args.push_back(arg);
+            } else {
+                new_args.push_back(new_arg);
+                changed = true;
+            }
+        }
+        if (changed) {
+            rewriter->visit(new Call(op->type, op->name, new_args, op->call_type, op->func, op->image, op->param));
+        } else {
+            rewriter->visit(op);
+        }
         bounds_of_type(op->type);
-        rewriter->visit(op);
         expr = rewriter->expr;
     }
 
@@ -844,15 +926,22 @@ Stmt interval_analysis_simplify(Stmt s) {
     IntervalAnalysis b;
     b.rewriter = &nochange;
     b.do_simplify = true;
-    log::debug_level = 4;
     Stmt r = b.mutate(s); // Perform the mutation.
-    log::debug_level = 0;
     return r;
 }
 
 Expr interval_analysis_simplify(Expr e) {
     IRRewriter nochange;
     IntervalAnalysis b;
+    b.rewriter = &nochange;
+    b.do_simplify = true;
+    return b.mutate(e); // Perform the mutation.
+}
+
+Expr interval_analysis_simplify(const Scope<Interval> &scope, Expr e) {
+    IRRewriter nochange;
+    IntervalAnalysis b;
+    b.scope = scope;
     b.rewriter = &nochange;
     b.do_simplify = true;
     return b.mutate(e); // Perform the mutation.
@@ -880,12 +969,25 @@ void check(const Scope<Interval> &scope, Expr e, Expr correct_min, Expr correct_
     }
     assert(success && "Bounds test failed");
 }
+
+void check_ia_simplify(const Scope<Interval> &scope, Expr a, Expr b) {
+    Expr simpler = interval_analysis_simplify(scope, a);
+    if (!equal(simpler, b)) {
+        std::cout << std::endl << "Interval analysis simplification failure: " << std::endl;
+        std::cout << "Input: " << a << std::endl;
+        std::cout << "Output: " << simpler << std::endl;
+        std::cout << "Expected output: " << b << std::endl;
+        assert(false);
+    }
+}
+        
 }
 
 void interval_analysis_test() {
     Scope<Interval> scope;
-    Var x("x"), y("y");
+    Var x("x"), y("y"), z("z");
     scope.push("x", Interval(Expr(0), Expr(10)));
+    scope.push("z", Interval(Expr(), Expr(20)));
 
     //check(scope, Expr(2), 2, 2);
     check(scope, x, 0, 10);
@@ -918,6 +1020,15 @@ void interval_analysis_test() {
                                         new Call(Int(32), "input", input_site_2)),
                                     output_site));
 
+    check_ia_simplify(scope, new Select(x < 11, x*2, x*3), x*2);
+    check_ia_simplify(scope, new Min(x, 9), new Min(x, 9));
+    check_ia_simplify(scope, new Min(x, 10), x);
+    log::debug_level = 1;
+    check_ia_simplify(scope, clamp(x, 1, 5), clamp(x, 1, 5));
+    check_ia_simplify(scope, clamp(x, -1, 15), x);
+    check_ia_simplify(scope, new Clamp(Clamp::Wrap, x, 0, 10), x);
+    check_ia_simplify(scope, new Clamp(Clamp::None, x), x);
+    
     std::cout << "Interval analysis test passed" << std::endl;
 }
 

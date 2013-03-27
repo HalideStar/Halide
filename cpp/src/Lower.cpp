@@ -788,6 +788,7 @@ Stmt lower(Function f) {
     log(2) << "Sliding window:\n" << s << '\n';
     log_to_file(f.name() + "_155_sliding", s);
 
+# if 0
     log(1) << "Simplifying...\n";
     s = simplify(s);
     s = remove_dead_lets(s);
@@ -799,17 +800,20 @@ Stmt lower(Function f) {
     log(2) << "Loop partition:\n" << s << '\n';
     log_to_file(f.name() + "_165_partition", s);
 
+    //log::debug_level = 1;
     log(1) << "Performing interval analysis simplification...\n";
     s = simplify(s);
     s = interval_analysis_simplify(s);
     log(2) << "IA Simplify:\n" << s << '\n';
     log_to_file(f.name() + "_166_IA_simplify", s);
+    log::debug_level = 0;
 
     log(1) << "Simplifying...\n";
     s = simplify(s);
     s = remove_dead_lets(s);
     log(2) << "Simplified: \n" << s << "\n\n";
     log_to_file(f.name() + "_167_simplify", s);
+#endif
 
     log(1) << "Performing storage folding optimization...\n";
     s = storage_folding(s);
@@ -847,6 +851,34 @@ Stmt lower(Function f) {
     s = rewrite_interleavings(s);
     log(2) << "Rewrote vector interleavings: \n" << s << "\n\n";    
     log_to_file(f.name() + "_195_interleave", s);
+
+
+# if 1
+    log(1) << "Simplifying...\n";
+    s = simplify(s);
+    s = remove_dead_lets(s);
+    log(2) << "Simplified: \n" << s << "\n\n";
+    log_to_file(f.name() + "_196_simplify", s);
+
+    log(1) << "Performing loop partition optimization...\n";
+    s = loop_partition(s);
+    log(2) << "Loop partition:\n" << s << '\n';
+    log_to_file(f.name() + "_197_partition", s);
+
+    //log::debug_level = 1;
+    log(1) << "Performing interval analysis simplification...\n";
+    s = simplify(s);
+    s = interval_analysis_simplify(s);
+    log(2) << "IA Simplify:\n" << s << '\n';
+    log_to_file(f.name() + "_198_IA_simplify", s);
+    log::debug_level = 0;
+
+    log(1) << "Simplifying...\n";
+    s = simplify(s);
+    s = remove_dead_lets(s);
+    log(2) << "Simplified: \n" << s << "\n\n";
+    log_to_file(f.name() + "_199_simplify", s);
+#endif
 
     log(1) << "Simplifying...\n";
     s = simplify(s);

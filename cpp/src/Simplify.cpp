@@ -1110,7 +1110,7 @@ Expr simplify_undef(Expr e) {
 
 bool proved(Expr e) {
     Expr b = Simplify().mutate(e);
-    //log(4) << "Attempt to prove  " << e << "  yielded  " << b << "\n";;
+    log(4) << "Attempt to prove  " << e << "  yielded  " << b << "\n";;
     return is_one(b);
 }
 

@@ -32,6 +32,8 @@ namespace Halide {
 
 namespace Internal {
 
+void check_same_type(std::string opname, Expr a, Expr b);
+
 /** A class representing a type of IR node (e.g. Add, or Mul, or
  * PrintStmt). We use it for rtti (without having to compile with
  * rtti). */
@@ -344,7 +346,7 @@ struct Max : public ExprNode<Max> {
     Max(Expr _a, Expr _b) : ExprNode<Max>(_a.type()), a(_a), b(_b) {
         assert(a.defined() && "Max of undefined");
         assert(b.defined() && "Max of undefined");
-        assert(b.type() == type && "Max of mismatched types");
+        check_same_type("Max",a,b);
     }
 };
 

@@ -2,6 +2,7 @@
 #include "IntervalAnalysis.h"
 #include "IRMutator.h"
 #include "IROperator.h"
+#include "IRPrinter.h"
 #include "IRRewriter.h"
 #include "Scope.h"
 #include "Log.h"
@@ -167,9 +168,10 @@ class LoopPartition : public IRMutator {
         // optimised for each iteration due to the unrolling.
         Stmt new_body = mutate(op->body);
         if (op->for_type == For::Serial) {
+            //log(0) << "Found serial for loop \n" << Stmt(op) << "\n";
             // Heuristic solution.  Assume that it might help to specialise the first
             // N and last N iterations.
-            int N = 5;
+            int N = 16;
             Expr before_min = op->min;
             Expr before_extent = min(N, op->extent);
             Expr main_min = before_min + before_extent;
