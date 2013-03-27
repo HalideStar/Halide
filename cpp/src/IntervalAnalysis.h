@@ -27,6 +27,9 @@ namespace Internal {
  */
 Interval interval_of_expr_in_scope(Expr expr, const Scope<Interval> &scope);    
 
+Stmt interval_analysis_simplify(Stmt s);
+Expr interval_analysis_simplify(Expr e);
+
 /** Call bounds_of_expr_in_scope with an empty scope */
 //Interval bounds_of_expr(Expr expr);
 

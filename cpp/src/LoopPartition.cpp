@@ -1,6 +1,8 @@
 #include "LoopPartition.h"
+#include "IntervalAnalysis.h"
 #include "IRMutator.h"
 #include "IROperator.h"
+#include "IRRewriter.h"
 #include "Scope.h"
 #include "Log.h"
 #include "Substitute.h"
@@ -11,6 +13,7 @@ namespace Internal {
 using std::string;
 using std::map;
 
+# if 0
 // Does an expression depend on a particular variable?
 class ExprDependsOnVar : public IRVisitor {    
     using IRVisitor::visit;
@@ -149,6 +152,7 @@ class LoopPartitionOnFunction : public IRMutator {
 public:
     LoopPartitionOnFunction(Function f) : func(f) {}
 };
+#endif
 
 // Perform loop partition optimisation for all For loops
 class LoopPartition : public IRMutator {

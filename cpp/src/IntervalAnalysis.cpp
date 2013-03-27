@@ -33,8 +33,11 @@ public:
     Scope<Interval> scope;
     
     IRRewriter *rewriter;
+    // Simplification removes unnecessary Min, Max, Select, ... nodes
+    // Apply simplification after loop bounds have been determined.
+    bool do_simplify;
     
-    IntervalAnalysis() { rewriter = 0; }
+    IntervalAnalysis() { rewriter = 0; do_simplify = false;}
 
     using IRVisitor::visit;
 
@@ -312,6 +315,16 @@ public:
         } else {
             max = max_a.defined() ? max_a : max_b;
         }
+        
+        if (do_simplify && max_a.defined() && min_b.defined() && proved(max_a < min_b)) {
+            // Intervals do not overlap. a is always the minimum
+            expr = a;
+            return;
+        }
+        if (do_simplify && max_b.defined() && min_a.defined() && proved(max_b < min_a)) {
+            expr = b;
+            return;
+        }
 
         //log(3) << min << ", " << max << "\n";
 
@@ -326,9 +339,9 @@ public:
 
     void visit(const Max *op) {
         Expr a = mutate(op->a);
-        Expr min_a = min, max_a = max;
+        Expr min_a = simplify_undef(min), max_a = simplify_undef(max);
         Expr b = mutate(op->b);
-        Expr min_b = min, max_b = max;
+        Expr min_b = simplify_undef(min), max_b = simplify_undef(max);
 
         //log(3) << "Bounds of " << Expr(op) << "\n";
 
@@ -342,6 +355,16 @@ public:
             max = new Max(max_a, max_b);
         } else {
             max = Expr();
+        }
+
+        if (do_simplify && max_a.defined() && min_b.defined() && proved(max_a < min_b)) {
+            // Intervals do not overlap. b is always the maximum
+            expr = b;
+            return;
+        }
+        if (do_simplify && max_b.defined() && min_a.defined() && proved(max_b < min_a)) {
+            expr = a;
+            return;
         }
 
         //log(3) << min << ", " << max << "\n";
@@ -583,14 +606,28 @@ public:
         Expr false_value = mutate(op->false_value);
         Expr min_b = min, max_b = max;
         
+        log(3) << "select(" << op->condition << ",...) => select(" << condition << ",...) on (" 
+            << min_cond << ", " << max_cond << ")\n";
         if (is_one(min_cond)) {
             // If the condition is provably true, then the range is copied from true_value.
             min = min_a;
             max = max_a;
+            
+            if (do_simplify) {
+                log(4) << "Proved false: simplify\n";
+                expr = true_value;
+                return;
+            } else log(4) << "Proved true but not simplified\n";
         } else if (is_zero(max_cond)) {
             // Condition is provably false, copy range from false_value.
             min = min_b;
             max = max_b;
+            
+            if (do_simplify) {
+                log(4) << "Proved false: simplify\n";
+                expr = false_value;
+                return;
+            } else log(4) << "Proved false but not simplified\n";
         } else {
             min = (min_b.defined() && min_a.defined()) ? new Min(min_b, min_a) : Expr();
             max = (max_b.defined() && max_a.defined()) ? new Max(max_b, max_a) : Expr();
@@ -739,15 +776,29 @@ public:
     }
 
     void visit(const Provide *op) {
-        // Not handled.
+        Expr value = mutate(op->value);
+        
         min = max = Expr();
-        stmt = op;
+        
+        if (value.same_as(op->value)) {
+            rewriter->visit(op);
+        } else {
+            rewriter->visit(new Provide(op->name, value, op->args));
+        }
+        stmt = rewriter->stmt;
     }
 
     void visit(const Allocate *op) {
-        // Not handled.
+        Stmt body = mutate(op->body);
+        
         min = max = Expr();
-        stmt = op;
+        
+        if (body.same_as(op->body)) {
+            rewriter->visit(op);
+        } else {
+            rewriter->visit(new Allocate(op->name, op->type, op->size, body));
+        }
+        stmt = rewriter->stmt;
     }
 
     void visit(const Realize *op) {
@@ -788,149 +839,25 @@ Interval interval_of_expr_in_scope(Expr expr, const Scope<Interval> &scope) {
     return Interval(b.min, b.max);
 }
 
-# if 0
-Interval interval_union(const Interval &a, const Interval &b) {    
-    Expr max, min;
-    log(3) << "Interval union of " << a.min << ", " << a.max << ",  " << b.min << ", " << b.max << "\n";
-    if (a.max.defined() && b.max.defined()) max = new Max(a.max, b.max);
-    if (a.min.defined() && b.min.defined()) min = new Min(a.min, b.min);
-    return Interval(min, max);
+Stmt interval_analysis_simplify(Stmt s) {
+    IRRewriter nochange;
+    IntervalAnalysis b;
+    b.rewriter = &nochange;
+    b.do_simplify = true;
+    log::debug_level = 4;
+    Stmt r = b.mutate(s); // Perform the mutation.
+    log::debug_level = 0;
+    return r;
 }
 
-Region region_union(const Region &a, const Region &b) {
-    assert(a.size() == b.size() && "Mismatched dimensionality in region union");
-    Region result;
-    for (size_t i = 0; i < a.size(); i++) {
-        Expr min = new Min(a[i].min, b[i].min);
-        Expr max_a = a[i].min + a[i].extent;
-        Expr max_b = b[i].min + b[i].extent;
-        Expr max_plus_one = new Max(max_a, max_b);
-        Expr extent = max_plus_one - min;
-        result.push_back(Range(simplify(min), simplify(extent)));
-    }
-    return result;
+Expr interval_analysis_simplify(Expr e) {
+    IRRewriter nochange;
+    IntervalAnalysis b;
+    b.rewriter = &nochange;
+    b.do_simplify = true;
+    return b.mutate(e); // Perform the mutation.
 }
 
-class RegionTouched : public IRVisitor {
-public:
-    // The bounds of things in scope
-    Scope<Interval> scope;
-
-    // If this is non-empty, we only care about this one function
-    string func;
-
-    // Min, Max per dimension of each function found. Used if func is empty
-    map<string, vector<Interval> > regions;
-
-    // Min, Max per dimension of func, if it is non-empty
-    vector<Interval> region; 
-
-    // Take into account call nodes
-    bool consider_calls;
-
-    // Take into account provide nodes
-    bool consider_provides;
-
-    // Which buffers are we inside the update step of? We ignore
-    // recursive calls from a function to itself to avoid recursive
-    // bounds expressions. These bounds are handled during lowering
-    // instead.
-    Scope<int> inside_update;
-private:
-    using IRVisitor::visit;
-
-    void visit(const LetStmt *op) {
-        op->value.accept(this);
-        Interval value_bounds = bounds_of_expr_in_scope(op->value, scope);
-        scope.push(op->name, value_bounds);
-        op->body.accept(this);
-        scope.pop(op->name);
-    }
-    
-    void visit(const Let *op) {
-        op->value.accept(this);
-        Interval value_bounds = bounds_of_expr_in_scope(op->value, scope);
-        scope.push(op->name, value_bounds);
-        op->body.accept(this);        
-        scope.pop(op->name);
-    }
-
-    void visit(const For *op) {
-        op->min.accept(this);
-        op->extent.accept(this);
-        Interval min_bounds = bounds_of_expr_in_scope(op->min, scope);
-        Interval extent_bounds = bounds_of_expr_in_scope(op->extent, scope);
-        Expr min = min_bounds.min;
-        Expr max = (min_bounds.max + extent_bounds.max) - 1;
-        scope.push(op->name, Interval(min, max));
-        op->body.accept(this);
-        scope.pop(op->name);
-    }
-
-    void visit(const Call *op) {        
-        IRVisitor::visit(const op);
-        // Ignore calls to a function from within it's own update step
-        // (i.e. recursive calls from a function to itself). Including
-        // these gives recursive definitions of the bounds (f requires
-        // as much as f requires!). We make sure we cover the bounds
-        // required by the update step of a reduction elsewhere (in
-        // InjectRealization in Lower.cpp)
-        if (consider_calls && !inside_update.contains(op->name) && 
-            (func.empty() || func == op->name)) {
-            log(3) << "Found call to " << op->name << ": " << Expr(op) << "\n";
-
-            vector<Interval> &r = func.empty() ? regions[op->name] : region;
-            for (size_t i = 0; i < op->args.size(); i++) {
-                Interval bounds = bounds_of_expr_in_scope(op->args[i], scope);
-                log(3) << "Bounds of call to " << op->name << " in dimension " << i << ": " 
-                       << bounds.min << ", " << bounds.max << "\n";
-                if (r.size() > i) {
-                    r[i] = interval_union(r[i], bounds);
-                } else {
-                    r.push_back(bounds);
-                }
-            }
-        }
-    }
-
-    void visit(const Provide *op) {        
-        IRVisitor::visit(const op);
-        if (consider_provides && (func.empty() || func == op->name)) {
-            vector<Interval> &r = func.empty() ? regions[op->name] : region;
-            for (size_t i = 0; i < op->args.size(); i++) {
-                Interval bounds = bounds_of_expr_in_scope(op->args[i], scope);
-                if (r.size() > i) {
-                    r[i] = interval_union(r[i], bounds);
-                } else {
-                    r.push_back(bounds);
-                }
-            }
-        }
-    }
-
-    void visit(const Pipeline *op) {
-        op->produce.accept(this);
-        if (op->update.defined()) {
-            inside_update.push(op->name, 0);
-            op->update.accept(this);
-            inside_update.pop(op->name);
-        }
-        op->consume.accept(this);
-    }
-};
-
-// Convert from (min, max) to (min, extent)
-Range interval_to_range(const Interval &i) {
-    if (!i.min.defined() || !i.max.defined()) {
-        return Range();
-    } else {
-        return Range(simplify(i.min), 
-                     simplify((i.max + 1) - i.min));
-    }
-}
-
-
-# endif
 
 namespace{
 void check(const Scope<Interval> &scope, Expr e, Expr correct_min, Expr correct_max) {

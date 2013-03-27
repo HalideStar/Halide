@@ -25,6 +25,7 @@
 
 #include "LowerClamp.h"
 #include "LoopPartition.h"
+#include "IntervalAnalysis.h"
 
 namespace Halide {
 namespace Internal {
@@ -720,7 +721,7 @@ static Stmt s_prev;
 // local method to write stmt to a named log file but only if it has changed compared to
 // the previous log file that was written.
 void log_to_file(std::string base, Stmt s) {
-    if (! equal(s, s_prev)) {
+    if (! s.same_as(s_prev)) {
         log(base, 2) << s << "\n"; 
         s_prev = s; 
     }
@@ -787,16 +788,28 @@ Stmt lower(Function f) {
     log(2) << "Sliding window:\n" << s << '\n';
     log_to_file(f.name() + "_155_sliding", s);
 
+    log(1) << "Simplifying...\n";
+    s = simplify(s);
+    s = remove_dead_lets(s);
+    log(2) << "Simplified: \n" << s << "\n\n";
+    log_to_file(f.name() + "_164_simplify", s);
+
     log(1) << "Performing loop partition optimization...\n";
     s = loop_partition(s);
     log(2) << "Loop partition:\n" << s << '\n';
     log_to_file(f.name() + "_165_partition", s);
 
+    log(1) << "Performing interval analysis simplification...\n";
+    s = simplify(s);
+    s = interval_analysis_simplify(s);
+    log(2) << "IA Simplify:\n" << s << '\n';
+    log_to_file(f.name() + "_166_IA_simplify", s);
+
     log(1) << "Simplifying...\n";
     s = simplify(s);
     s = remove_dead_lets(s);
     log(2) << "Simplified: \n" << s << "\n\n";
-    log_to_file(f.name() + "_166_simplify", s);
+    log_to_file(f.name() + "_167_simplify", s);
 
     log(1) << "Performing storage folding optimization...\n";
     s = storage_folding(s);
