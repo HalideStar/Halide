@@ -397,7 +397,7 @@ void CodeGen_X86::test() {
 
     // We'll clear out the initial buffer except for the first and
     // last two elements using dense unaligned vectors
-    Stmt init = new For("i", 0, 3, For::Serial, 
+    Stmt init = new For("i", 0, 3, For::Serial, 0, 0, 
                         new Store("buf", 
                                   new Ramp(i*4+2, 1, 4),
                                   new Ramp(i*4+2, 1, 4)));
@@ -409,7 +409,7 @@ void CodeGen_X86::test() {
 
     // Then multiply the even terms by 17 using sparse vectors
     init = new Block(init, 
-                     new For("i", 0, 2, For::Serial, 
+                     new For("i", 0, 2, For::Serial, 0, 0, 
                              new Store("buf", 
                                        new Mul(new Broadcast(17, 4), 
                                                new Load(Int(32, 4), "buf", new Ramp(i*8, 2, 4), Buffer(), Parameter())),
@@ -427,7 +427,7 @@ void CodeGen_X86::test() {
     // Do some local allocations within the loop
     loop = new Allocate("tmp_stack", Int(32), 127, loop);
     loop = new Allocate("tmp_heap", Int(32), 43 * beta, loop);
-    loop = new For("i", -1, 3, For::Parallel, loop);        
+    loop = new For("i", -1, 3, For::Parallel, 0, 0, loop);        
 
     Stmt s = new Block(init, loop);
 

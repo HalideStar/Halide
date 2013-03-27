@@ -167,7 +167,7 @@ class LoopPartition : public IRMutator {
         // Vectorised loops are not eligible, and unrolled loops should be fully
         // optimised for each iteration due to the unrolling.
         Stmt new_body = mutate(op->body);
-        if (op->for_type == For::Serial) {
+        if (op->for_type == For::Serial && (op->partition_begin > 0 || op->partition_end > 0)) {
             //log(0) << "Found serial for loop \n" << Stmt(op) << "\n";
             // Heuristic solution.  Assume that it might help to specialise the first
             // N and last N iterations.
@@ -179,9 +179,9 @@ class LoopPartition : public IRMutator {
             Expr after_min = main_min + main_extent;
             Expr after_extent = op->extent - before_extent - main_extent;
            // Now generate the partitioned loops.
-            Stmt before = new For(op->name, before_min, before_extent, op->for_type, op->body);
-            Stmt main = new For(op->name, main_min, main_extent, op->for_type, new_body);
-            Stmt after = new For(op->name, after_min, after_extent, op->for_type, op->body);
+            Stmt before = new For(op->name, before_min, before_extent, op->for_type, 0, 0, op->body);
+            Stmt main = new For(op->name, main_min, main_extent, op->for_type, 0, 0, new_body);
+            Stmt after = new For(op->name, after_min, after_extent, op->for_type, 0, 0, op->body);
             stmt = new Block(new Block(before,main),after);
             if (stmt.same_as(op)) {
                 stmt = op;
@@ -190,7 +190,7 @@ class LoopPartition : public IRMutator {
             if (new_body.same_as(op->body)) {
                 stmt = op;
             } else {
-                stmt = new For(op->name, op->min, op->extent, op->for_type, new_body);
+                stmt = new For(*op, op->min, op->extent, new_body);
             }
         }
     }

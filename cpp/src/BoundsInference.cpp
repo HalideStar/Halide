@@ -52,7 +52,7 @@ public:
         if (body.same_as(for_loop->body)) {
             stmt = for_loop;
         } else {
-            stmt = new For(for_loop->name, for_loop->min, for_loop->extent, for_loop->for_type, body);
+            stmt = new For(*for_loop, for_loop->min, for_loop->extent, body);
         }
     }    
 
@@ -78,7 +78,7 @@ public:
 
 Stmt bounds_inference(Stmt s, const vector<string> &order, const map<string, Function> &env) {
     // Add a new outermost loop to make sure we get outermost bounds definitions too
-    s = new For("outermost", 0, 1, For::Serial, s);
+    s = new For("outermost", 0, 1, For::Serial, 0, 0, s);
 
     s = BoundsInference(order, env).mutate(s);
 

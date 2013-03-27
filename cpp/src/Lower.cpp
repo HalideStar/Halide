@@ -111,7 +111,7 @@ Stmt build_provide_loop_nest(string buffer, string prefix, vector<Expr> site, Ex
         const Schedule::Dim &dim = s.dims[i];
         Expr min = new Variable(Int(32), prefix + dim.var + ".min");
         Expr extent = new Variable(Int(32), prefix + dim.var + ".extent");
-        stmt = new For(prefix + dim.var, min, extent, dim.for_type, stmt);
+        stmt = new For(prefix + dim.var, min, extent, dim.for_type, dim.partition_begin, dim.partition_end, stmt);
     }
 
     // Define the bounds on the split dimensions using the bounds
@@ -341,10 +341,9 @@ private:
         if (body.same_as(for_loop->body)) {
             stmt = for_loop;
         } else {
-            stmt = new For(for_loop->name, 
+            stmt = new For(*for_loop, 
                            for_loop->min, 
                            for_loop->extent, 
-                           for_loop->for_type, 
                            body);
         }
     }
@@ -580,7 +579,7 @@ Stmt schedule_functions(Stmt s, const vector<string> &order,
 
     // Inject a loop over root to give us a scheduling point
     string root_var = Schedule::LoopLevel::root().func + "." + Schedule::LoopLevel::root().var;
-    s = new For(root_var, 0, 1, For::Serial, s);
+    s = new For(root_var, 0, 1, For::Serial, 0, 0, s);
 
     for (size_t i = order.size()-1; i > 0; i--) {
         Function f = env.find(order[i-1])->second;

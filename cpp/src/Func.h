@@ -232,6 +232,12 @@ public:
     /** Reorder five dimensions to have the given nesting order, from
      * innermost out */
     EXPORT ScheduleHandle &reorder(Var x, Var y, Var z, Var w, Var t);
+
+    /** Partition a loop so that the first begin iterations and the last
+     * end iterations are handled separately from the main body of the loop.
+     * Use this to optimise code where a select statement depends on the
+     * loop index as arises in border handling in particular.*/
+    EXPORT ScheduleHandle &partition(Var var, int begin, int end);
 };
 
 /** A halide function. This class represents one stage in a Halide
@@ -500,6 +506,9 @@ public:
     EXPORT Func &reorder(Var x, Var y, Var z, Var w);
     EXPORT Func &reorder(Var x, Var y, Var z, Var w, Var t);
     // @}
+
+    /** Scheduling of loop partitioning. */
+    EXPORT Func &partition(Var var, int begin, int end);
 
     /** Scheduling calls that control how the storage for the function
      * is laid out. Right now you can only reorder the dimensions. */

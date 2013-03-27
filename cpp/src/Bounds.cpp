@@ -628,7 +628,7 @@ void bounds_test() {
     vector<Expr> input_site_2 = vec(2*x+1);
     vector<Expr> output_site = vec(x+1);
 
-    Stmt loop = new For("x", 3, 10, For::Serial, 
+    Stmt loop = new For("x", 3, 10, For::Serial, 0, 0, 
                         new Provide("output", 
                                     new Add(
                                         new Call(Int(32), "input", input_site_1),

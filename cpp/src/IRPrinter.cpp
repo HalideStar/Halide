@@ -54,11 +54,11 @@ void IRPrinter::test() {
     assert(expr_source.str() == "((x + 3)*((y/2) + 17))");
 
     Stmt store = new Store("buf", (x * 17) / (x - 3), y - 1);
-    Stmt for_loop = new For("x", -2, y + 2, For::Parallel, store);
+    Stmt for_loop = new For("x", -2, y + 2, For::Parallel, 0, 0, store);
     vector<Expr> args(1); args[0] = x % 3;
     Expr call = new Call(i32, "buf", args);
     Stmt store2 = new Store("out", call + 1, x);
-    Stmt for_loop2 = new For("x", 0, y, For::Vectorized , store2);
+    Stmt for_loop2 = new For("x", 0, y, For::Vectorized , 0, 0, store2);
     Stmt pipeline = new Pipeline("buf", for_loop, Stmt(), for_loop2);
     Stmt assertion = new AssertStmt(y > 3, "y is greater than 3");
     Stmt block = new Block(assertion, pipeline);
@@ -475,6 +475,9 @@ void IRPrinter::visit(const For *op) {
     print(op->min);
     stream << ", ";
     print(op->extent);
+    if (op->partition_begin > 0 || op->partition_end > 0) {
+        stream << ", " << op->partition_begin << ", " << op->partition_end;
+    }
     stream << ") {" << endl;
         
     indent += 2;

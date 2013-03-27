@@ -74,6 +74,7 @@ struct Schedule {
     struct Dim {
         std::string var;
         For::ForType for_type;
+        int partition_begin, partition_end; // LH. Zero means no loop partition is applied.
     };
     /** The list and ordering of dimensions used to evaluate this
      * function, after all splits have taken place. The first

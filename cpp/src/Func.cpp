@@ -329,6 +329,31 @@ ScheduleHandle &ScheduleHandle::reorder(Var x, Var y, Var z, Var w, Var t) {
 }
 
 
+ScheduleHandle &ScheduleHandle::partition(Var var, int begin, int end) {
+    bool found = false;
+    vector<Schedule::Dim> &dims = schedule.dims;
+    for (size_t i = 0; (!found) && i < dims.size(); i++) {
+        if (var_name_match(dims[i].var, var.name())) {
+            found = true;
+            dims[i].partition_begin = begin;
+            dims[i].partition_end = end;
+        }
+    }
+    
+    if (! found) // LH provide more information if cannot find dimensions
+    {
+        Internal::log(0) << "Searched for " << var.name() << " in";
+        for (size_t i = 0; (!found) && i < dims.size(); i++) {
+            Internal::log(0) << " " << dims[i].var;
+        }
+        Internal::log(0) << "\n";
+    }
+    assert(found && "Could not find dimension in argument list for function");
+
+    return *this;
+}
+
+
 Func &Func::split(Var old, Var outer, Var inner, Expr factor) {
     ScheduleHandle(func.schedule()).split(old, outer, inner, factor);
     return *this;
@@ -391,6 +416,11 @@ Func &Func::reorder(Var x, Var y, Var z, Var w) {
 
 Func &Func::reorder(Var x, Var y, Var z, Var w, Var t) {
     ScheduleHandle(func.schedule()).reorder(x, y, z, w, t);
+    return *this;
+}
+
+Func &Func::partition(Var x, int begin, int end) {
+    ScheduleHandle(func.schedule()).partition(x, begin, end);
     return *this;
 }
 

@@ -838,7 +838,7 @@ public:
         if (begin.same_as(op->min) && extent.same_as(op->extent) && body.same_as(op->body)) {
             rewriter->visit(op);
         } else {
-            rewriter->visit(new For(op->name, begin, extent, op->for_type, body));
+            rewriter->visit(new For(*op, begin, extent, body));
         }
         stmt = rewriter->stmt;
     }
@@ -1013,7 +1013,7 @@ void interval_analysis_test() {
     vector<Expr> input_site_2 = vec(2*x+1);
     vector<Expr> output_site = vec(x+1);
 
-    Stmt loop = new For("x", 3, 10, For::Serial, 
+    Stmt loop = new For("x", 3, 10, For::Serial, 0, 0, 
                         new Provide("output", 
                                     new Add(
                                         new Call(Int(32), "input", input_site_1),

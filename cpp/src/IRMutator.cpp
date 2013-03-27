@@ -200,7 +200,7 @@ void IRMutator::visit(const For *op) {
         body.same_as(op->body)) {
         stmt = op;
     } else {
-        stmt = new For(op->name, min, extent, op->for_type, body);
+        stmt = new For(*op, min, extent, body);
     }
 }
 

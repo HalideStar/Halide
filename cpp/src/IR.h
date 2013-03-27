@@ -614,10 +614,23 @@ struct For : public StmtNode<For> {
     Expr min, extent;
     typedef enum {Serial, Parallel, Vectorized, Unrolled} ForType;
     ForType for_type;
+    int partition_begin, partition_end;
     Stmt body;
 
-    For(std::string n, Expr m, Expr e, ForType f, Stmt b) :
-        name(n), min(m), extent(e), for_type(f), body(b) {
+    For(std::string n, Expr m, Expr e, ForType f, int pbegin, int pend, Stmt b) :
+        name(n), min(m), extent(e), for_type(f), partition_begin(pbegin), partition_end(pend), body(b) {
+        assert(min.defined() && "For of undefined");
+        assert(extent.defined() && "For of undefined");
+        assert(min.type().is_scalar() && "For with vector min");
+        assert(extent.type().is_scalar() && "For with vector extent");
+        assert(body.defined() && "For of undefined");
+    }
+    
+    /** Convenience constructor that inherits information from an existing For structure.
+     * name, for_type and partitioning are inherited. */
+    For(For oldloop, Expr m, Expr e, Stmt b) :
+        name(oldloop.name), min(m), extent(e), for_type(oldloop.for_type), 
+        partition_begin(oldloop.partition_begin), partition_end(oldloop.partition_end), body(b) {
         assert(min.defined() && "For of undefined");
         assert(extent.defined() && "For of undefined");
         assert(min.type().is_scalar() && "For with vector min");

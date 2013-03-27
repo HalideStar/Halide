@@ -142,7 +142,7 @@ class SlidingWindowOnFunction : public IRMutator {
         if (new_body.same_as(op->body)) {
             stmt = op;
         } else {
-            stmt = new For(op->name, op->min, op->extent, op->for_type, new_body);
+            stmt = new For(*op, op->min, op->extent, new_body);
         }
     }
 
