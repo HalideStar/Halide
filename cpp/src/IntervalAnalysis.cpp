@@ -128,7 +128,6 @@ public:
         Expr min_a = min, max_a = max;
         Expr b = mutate(op->b);
         Expr min_b = min, max_b = max;
-        if (min_a.type() != min_b.type()) log(0) << "Type mismatch " << a << " " << b << "\n";
         min = (max_b.defined() && min_a.defined()) ? new Sub(min_a, max_b) : Expr();
         max = (min_b.defined() && max_a.defined()) ? new Sub(max_a, min_b) : Expr();
         
@@ -341,7 +340,7 @@ public:
         Expr b = mutate(op->b);
         Expr min_b = min, max_b = max;
 
-        //log(3) << "Bounds of " << Expr(op) << "\n";
+        //log(4) << "Bounds of " << Expr(op) << "\n";
 
         if (min_a.defined() && min_b.defined()) {
             min = new Min(min_a, min_b);
@@ -357,7 +356,7 @@ public:
         
         if (do_simplify) {
         int oldlevel = log::debug_level;
-        log::debug_level = oldlevel > 0 ? 4 : 0;
+        //log::debug_level = oldlevel > 0 ? 4 : 0;
         log(4) << "IA_Simplify Min(" << a << ", " << b << ")  on (" 
             << min_a << "," << max_a << ") ("
             << min_b << "," << max_b << ")\n";
@@ -408,8 +407,8 @@ public:
 
         if (do_simplify) {
         int oldlevel = log::debug_level;
-        log::debug_level = oldlevel > 0 ? 4 : 0;
-        log(4) << "IA_Simplify Min(" << a << ", " << b << ")  on (" 
+        //log::debug_level = oldlevel > 0 ? 4 : 0;
+        log(4) << "IA_Simplify Max(" << a << ", " << b << ")  on (" 
             << min_a << "," << max_a << ") ("
             << min_b << "," << max_b << ")\n";
         if (do_simplify && max_a.defined() && min_b.defined() && proved(min_b >= max_a)) {
@@ -702,8 +701,17 @@ public:
     }
 
     void visit(const Load *op) {
+        Expr index = mutate(op->index);
+        
+        // Here we could do better than the bounds of the type if we know what computed
+        // the data that we are loading - i.e. if it comes from another function.
         bounds_of_type(op->type);
-        rewriter->visit(op);
+        
+        if (index.same_as(op->index)) {
+            rewriter->visit(op);
+        } else {
+            rewriter->visit(new Load(op->type, op->name, index, op->image, op->param));
+        }
         expr = rewriter->expr;
     }
 
@@ -737,32 +745,25 @@ public:
     }
 
     void visit(const Call *op) {
+        vector<Expr > new_args(op->args.size());
+        bool changed = false;
+
+        // Mutate the args
+        for (size_t i = 0; i < op->args.size(); i++) {
+            Expr old_arg = op->args[i];
+            Expr new_arg = mutate(old_arg);
+            if (!new_arg.same_as(old_arg)) changed = true;
+            new_args[i] = new_arg;
+        }
+
         // Could surely do better than simply take the bounds of the type.
         // The full solution for interval analysis of the current
         // expression involves interval analysis on the called function, but that 
         // is better done by caching information in the Function itself.
-        log(1) << "Encountered Call Node\n";
-        // Process all the arguments.  They do not contribute to the interval
-        // analysis of the current expression, but they can be analysed and/or
-        // simplified.  
-        std::vector<Expr> new_args;
-        bool changed = false;
-        for (size_t i = 0; i < op->args.size(); i++) {
-            Expr arg = op->args[i];
-            Expr new_arg = mutate(arg);
-            if (arg.same_as(new_arg)) {
-                new_args.push_back(arg);
-            } else {
-                new_args.push_back(new_arg);
-                changed = true;
-            }
-        }
-        if (changed) {
-            rewriter->visit(new Call(op->type, op->name, new_args, op->call_type, op->func, op->image, op->param));
-        } else {
-            rewriter->visit(op);
-        }
         bounds_of_type(op->type);
+        
+        if (!changed) rewriter->visit(op);
+        else rewriter->visit(new Call(op->type, op->name, new_args, op->call_type, op->func, op->image, op->param));
         expr = rewriter->expr;
     }
 
@@ -798,29 +799,29 @@ public:
     }
 
     void visit(const PrintStmt *op) {
-        // Not handled.
+        IRMutator::visit(op);
+        
         min = max = Expr();
-        stmt = op;
+        
+        stmt.accept(rewriter);
+        stmt = rewriter->stmt;
     }
 
     void visit(const AssertStmt *op) {
-        // Not handled.
+        IRMutator::visit(op);
+        
         min = max = Expr();
-        stmt = op;
+        
+        stmt.accept(rewriter);
+        stmt = rewriter->stmt;
     }
 
     void visit(const Pipeline *op) {
-        Stmt produce = mutate(op->produce);
-        Stmt update = mutate(op->update);
-        Stmt consume = mutate(op->consume);
+        IRMutator::visit(op);
         
         min = max = Expr();
-
-        if (produce.same_as(op->produce) && update.same_as(op->update) && consume.same_as(op->consume)) {
-            rewriter->visit(op);
-        } else {
-            rewriter->visit(new Pipeline(op->name, produce, update, consume));
-        }
+        
+        stmt.accept(rewriter);
         stmt = rewriter->stmt;
     }
 
@@ -855,69 +856,46 @@ public:
     }
 
     void visit(const Store *op) {
-        Expr a = mutate(op->value);
-        Expr b = mutate(op->index);
+        IRMutator::visit(op);
         
         min = max = Expr();
-
-        if (a.same_as(op->value) && b.same_as(op->index)) {
-            rewriter->visit(op);
-        } else {
-            rewriter->visit(new Store(op->name, a, b));
-        }
+        
+        stmt.accept(rewriter);
         stmt = rewriter->stmt;
     }
 
     void visit(const Provide *op) {
-        Expr value = mutate(op->value);
+        IRMutator::visit(op);
         
         min = max = Expr();
         
-        if (value.same_as(op->value)) {
-            rewriter->visit(op);
-        } else {
-            rewriter->visit(new Provide(op->name, value, op->args));
-        }
+        stmt.accept(rewriter);
         stmt = rewriter->stmt;
     }
 
     void visit(const Allocate *op) {
-        Stmt body = mutate(op->body);
+        IRMutator::visit(op);
         
         min = max = Expr();
         
-        if (body.same_as(op->body)) {
-            rewriter->visit(op);
-        } else {
-            rewriter->visit(new Allocate(op->name, op->type, op->size, body));
-        }
+        stmt.accept(rewriter);
         stmt = rewriter->stmt;
     }
 
     void visit(const Realize *op) {
-        Stmt body = mutate(op->body);
-        
+        IRMutator::visit(op);
         min = max = Expr();
         
-        if (body.same_as(op->body)) {
-            rewriter->visit(op);
-        } else {
-            rewriter->visit(new Realize(op->name, op->type, op->bounds, body));
-        }
+        stmt.accept(rewriter);
         stmt = rewriter->stmt;
     }
 
     void visit(const Block *op) {
-        Stmt first = mutate(op->first);
-        Stmt rest = mutate(op->rest);
+        IRMutator::visit(op);
         
         min = max = Expr();
         
-        if (first.same_as(op->first) && rest.same_as(op->rest)) {
-            rewriter->visit(op);
-        } else {
-            rewriter->visit(new Block(first, rest));
-        }
+        stmt.accept(rewriter);
         stmt = rewriter->stmt;
     }
 };
@@ -950,6 +928,15 @@ Expr interval_analysis_simplify(Expr e) {
 }
 
 Expr interval_analysis_simplify(const Scope<Interval> &scope, Expr e) {
+    IRRewriter nochange;
+    IntervalAnalysis b;
+    b.scope = scope;
+    b.rewriter = &nochange;
+    b.do_simplify = true;
+    return b.mutate(e); // Perform the mutation.
+}
+
+Stmt interval_analysis_simplify(const Scope<Interval> &scope, Stmt e) {
     IRRewriter nochange;
     IntervalAnalysis b;
     b.scope = scope;
@@ -992,6 +979,17 @@ void check_ia_simplify(const Scope<Interval> &scope, Expr a, Expr b) {
     }
 }
         
+void check_ia_simplify(const Scope<Interval> &scope, Stmt a, Stmt b) {
+    Stmt simpler = interval_analysis_simplify(scope, a);
+    if (!equal(simpler, b)) {
+        std::cout << std::endl << "Interval analysis simplification failure: " << std::endl;
+        std::cout << "Input: " << a << std::endl;
+        std::cout << "Output: " << simpler << std::endl;
+        std::cout << "Expected output: " << b << std::endl;
+        assert(false);
+    }
+}
+        
 }
 
 void interval_analysis_test() {
@@ -1020,18 +1018,26 @@ void interval_analysis_test() {
     check(scope, new Select(x < 11, x, x+100), 0, 10); // select can be proved true
     check(scope, new Select(x == -1, x, x+100), 100, 110); // select can be proved false
 
-    vector<Expr> input_site_1 = vec(2*x);
-    vector<Expr> input_site_2 = vec(2*x+1);
+    vector<Expr> input_site_1 = vec(clamp(x,0,10));
+    vector<Expr> input_site_2 = vec(clamp(x+1,0,10));
+    vector<Expr> input_site_1_simplified = vec(min(x,10));
+    vector<Expr> input_site_2_simplified = vec(min(x+1,10));
     vector<Expr> output_site = vec(x+1);
 
-    Stmt loop = new For("x", 3, 10, For::Serial, 0, 0, 
+    Stmt loop = new For("x", 3, 10 /* 3 to 12 inclusive */, For::Serial, 0, 0, 
                         new Provide("output", 
                                     new Add(
                                         new Call(Int(32), "input", input_site_1),
                                         new Call(Int(32), "input", input_site_2)),
                                     output_site));
+    Stmt result = new For("x", 3, 10, For::Serial, 0, 0, 
+                        new Provide("output", 
+                                    new Add(
+                                        new Call(Int(32), "input", input_site_1_simplified),
+                                        new Call(Int(32), "input", input_site_2_simplified)),
+                                    output_site));
 
-    check_ia_simplify(scope, new Select(x < 11, x*2, x*3), x*2);
+                                    check_ia_simplify(scope, new Select(x < 11, x*2, x*3), x*2);
     check_ia_simplify(scope, new Min(x, 9), new Min(x, 9));
     check_ia_simplify(scope, new Min(x, 10), x);
     log::debug_level = 1;
@@ -1039,6 +1045,13 @@ void interval_analysis_test() {
     check_ia_simplify(scope, clamp(x, -1, 15), x);
     check_ia_simplify(scope, new Clamp(Clamp::Wrap, x, 0, 10), x);
     check_ia_simplify(scope, new Clamp(Clamp::None, x), x);
+    check_ia_simplify(scope, abs(min(x,10)), new Call(Int(32), "abs_i32", vec(Expr(x))));
+    check_ia_simplify(scope, abs(new Call(Int(16), "input", input_site_1)),
+        abs(new Call(Int(16), "input", vec(Expr(x)))));
+    check_ia_simplify(scope, abs(cast(Int(16), new Call(UInt(8), "input", input_site_1))),
+        abs(cast(Int(16), new Call(UInt(8), "input", vec(Expr(x))))));
+    
+    check_ia_simplify(scope, loop, result);
     
     std::cout << "Interval analysis test passed" << std::endl;
 }
