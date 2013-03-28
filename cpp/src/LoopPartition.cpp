@@ -179,9 +179,10 @@ class LoopPartition : public IRMutator {
             Expr after_min = main_min + main_extent;
             Expr after_extent = op->extent - before_extent - main_extent;
             // Now generate the partitioned loops.
-            Stmt before = new For(op->name, before_min, before_extent, op->for_type, 0, 0, op->body);
-            Stmt main = new For(op->name, main_min, main_extent, op->for_type, 0, 0, new_body);
-            Stmt after = new For(op->name, after_min, after_extent, op->for_type, 0, 0, op->body);
+            // Mark them by using negative numbers for the partition information.
+            Stmt before = new For(op->name, before_min, before_extent, op->for_type, -2, -2, op->body);
+            Stmt main = new For(op->name, main_min, main_extent, op->for_type, -3, -3, new_body);
+            Stmt after = new For(op->name, after_min, after_extent, op->for_type, -4, -4, op->body);
             stmt = new Block(new Block(before,main),after);
             if (stmt.same_as(op)) {
                 stmt = op;

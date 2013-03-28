@@ -113,30 +113,31 @@ main () {
     
     // Now to apply edge detection
     Func e1("e1"), e2("e2");
-    Expr e = cast(UInt(8), sobel_amp(cast(Int(16), input), "sum_abs")(x,y));
+    Expr e = cast(UInt(8), sobel_amp(cast(Int(16), input), "x")(x,y));
     e1(x,y) = e;
     e2(x,y) = e;
-    e2.partition(x,N,N).partition(y,N,N);
+    e2.bound(x,0,1000).bound(y,0,1000).partition(x,N,N).partition(y,N,N);
     compare("simple", e1, e2);
     
     Func e3("e3"), e4("e4");
     e3(x,y) = e;
     e4(x,y) = e;
     e3.vectorize(x,8);
-    e4.vectorize(x,8).partition(x,N,N).partition(y,N,N);
+    e4.bound(x,0,1000).bound(y,0,1000).vectorize(x,8).partition(x,N,N).partition(y,N,N);
     compare("vector", e3, e4);
     
     Func e5("e5"), e6("e6");
     e5(x,y) = e;
     e6(x,y) = e;
     e5.parallel(y);
-    e6.parallel(y).partition(x,N,N).partition(y,N,N);
+    e6.bound(x,0,1000).bound(y,0,1000).parallel(y).partition(x,N,N).partition(y,N,N);
     compare("parallel", e5, e6);
     
     Func e7("e7"), e8("e8");
     e7(x,y) = e;
     e8(x,y) = e;
     e7.split(y,y,yi,8).parallel(y);
-    e8.split(y,y,yi,8).parallel(y).partition(x,N,N).partition(y,N,N);
+    e8.bound(x,0,1000).bound(y,0,1000).split(y,y,yi,8).parallel(y).partition(x,N,N).partition(y,N,N);
     compare("parallel block", e7, e8);
+    
 }
