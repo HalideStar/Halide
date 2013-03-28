@@ -475,7 +475,7 @@ void IRPrinter::visit(const For *op) {
     print(op->min);
     stream << ", ";
     print(op->extent);
-    if (op->partition_begin > 0 || op->partition_end > 0) {
+    if (op->partition_begin != 0 || op->partition_end != 0) {
         stream << ", " << op->partition_begin << ", " << op->partition_end;
     }
     stream << ") {" << endl;
