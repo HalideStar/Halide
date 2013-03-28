@@ -522,6 +522,69 @@ class Simplify : public IRMutator {
         }
     }
 
+    // Utility routine to compare ramp/broadcast with ramp/broadcast by comparing both ends.
+    bool compare_lt(Expr base_a, Expr stride_a, Expr base_b, Expr stride_b, int width, const LT *op) { //LH
+        // Compare two ramps and/or broadcast nodes.
+        Expr first_lt = simplify(base_a < base_b);
+        Expr last_lt = simplify(base_a + stride_a * (width-1) < base_b + stride_b * (width - 1));
+        log(4) << "First " << first_lt << "\n";
+        log(4) << "Last  " << last_lt << "\n";
+        // If both expressions produce the same result, then that is the result.
+        if (equal(first_lt, last_lt)) {
+            expr = mutate(new Broadcast(first_lt, width));
+            return true; // Tell caller it worked.
+        } else {
+            if (op) expr = op; // Cannot simplify it. Possible that part of ramp is < and part is not.
+        }
+        return false;
+    }
+
+    bool vector_min(Expr a, Expr base_a, Expr stride_a, Expr b, Expr base_b, Expr stride_b, int width, const Min *op) { //LH
+        // Try to find if a <= b; i.e. if (b<a) is false.
+        bool a_lt_b = compare_lt(base_a, stride_a, base_b, stride_b, width, 0);
+        if (a_lt_b && is_zero(expr)) {
+            // Proved that a >= b so minimum is b.
+            expr = b;
+            return true;
+        }
+        if (a_lt_b && is_one(expr)) {
+            // Proved that a < b so minimum is a.
+            expr = a;
+            return true;
+        }
+        bool b_lt_a = compare_lt(base_b, stride_b, base_a, stride_a, width, 0);
+        if (b_lt_a && is_zero(expr)) {
+            // Proved that a <= b so minimum is a.
+            expr = a;
+            return true;
+        }
+        expr = op;
+        return false;
+    }
+
+    bool vector_max(Expr a, Expr base_a, Expr stride_a, Expr b, Expr base_b, Expr stride_b, int width, const Max *op) { //LH
+        // Try to find if a <= b; i.e. if (b<a) is false.
+        bool a_lt_b = compare_lt(base_a, stride_a, base_b, stride_b, width, 0);
+        if (a_lt_b && is_zero(expr)) {
+            // Proved that a >= b so maximum is a.
+            expr = a;
+            return true;
+        }
+        if (a_lt_b && is_one(expr)) {
+            // Proved that a < b so maximum is b.
+            expr = b;
+            return true;
+        }
+        bool b_lt_a = compare_lt(base_b, stride_b, base_a, stride_a, width, 0);
+        if (b_lt_a && is_zero(expr)) {
+            // Proved that a <= b so maximum is b.
+            expr = b;
+            return true;
+        }
+        expr = op;
+        return false;
+    }
+
     void visit(const Min *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
 
@@ -532,6 +595,8 @@ class Simplify : public IRMutator {
 
         int ia, ib;
         float fa, fb;
+        const Ramp *ramp_a = a.as<Ramp>();
+        const Ramp *ramp_b = b.as<Ramp>();
         const Broadcast *broadcast_a = a.as<Broadcast>();
         const Broadcast *broadcast_b = b.as<Broadcast>();
         const Add *add_a = a.as<Add>();
@@ -559,6 +624,13 @@ class Simplify : public IRMutator {
             }
         } else if (broadcast_a && broadcast_b) {
             expr = mutate(new Broadcast(new Min(broadcast_a->value, broadcast_b->value), broadcast_a->width));
+        } else if (broadcast_a && ramp_b) { //LH
+            // Simplify the minimum if possible
+            vector_min(a, broadcast_a->value, 0, b, ramp_b->base, ramp_b->stride, ramp_b->width, op);
+        } else if (ramp_a && broadcast_b) { //LH
+            vector_min(a, ramp_a->base, ramp_a->stride, b, broadcast_b->value, 0, ramp_a->width, op);
+        } else if (ramp_a && ramp_b) { //LH
+            vector_min(a, ramp_a->base, ramp_a->stride, b, ramp_b->base, ramp_b->stride, ramp_b->width, op);
         } else if (add_a && const_int(add_a->b, &ia) && 
                    add_b && const_int(add_b->b, &ib) && 
                    equal(add_a->a, add_b->a)) {
@@ -617,6 +689,8 @@ class Simplify : public IRMutator {
 
         int ia, ib;
         float fa, fb;
+        const Ramp *ramp_a = a.as<Ramp>();
+        const Ramp *ramp_b = b.as<Ramp>();
         const Broadcast *broadcast_a = a.as<Broadcast>();
         const Broadcast *broadcast_b = b.as<Broadcast>();
         const Add *add_a = a.as<Add>();
@@ -641,6 +715,13 @@ class Simplify : public IRMutator {
             }
         } else if (broadcast_a && broadcast_b) {
             expr = mutate(new Broadcast(new Max(broadcast_a->value, broadcast_b->value), broadcast_a->width));
+        } else if (broadcast_a && ramp_b) { //LH
+            // Simplify the maximum if possible
+            vector_max(a, broadcast_a->value, 0, b, ramp_b->base, ramp_b->stride, ramp_b->width, op);
+        } else if (ramp_a && broadcast_b) { //LH
+            vector_max(a, ramp_a->base, ramp_a->stride, b, broadcast_b->value, 0, ramp_a->width, op);
+        } else if (ramp_a && ramp_b) { //LH
+            vector_max(a, ramp_a->base, ramp_a->stride, b, ramp_b->base, ramp_b->stride, ramp_b->width, op);
         } else if (add_a && const_int(add_a->b, &ia) && add_b && const_int(add_b->b, &ib) && equal(add_a->a, add_b->a)) {
             // max(x + 3, x - 2) -> x - 2
             if (ia > ib) {
@@ -757,7 +838,7 @@ class Simplify : public IRMutator {
     void visit(const NE *op) {
         expr = mutate(new Not(op->a == op->b));
     }
-
+    
     void visit(const LT *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
         Expr delta = mutate(a - b);
@@ -796,6 +877,12 @@ class Simplify : public IRMutator {
             // Ramps with matching stride
             Expr bases_lt = (ramp_a->base < ramp_b->base);
             expr = mutate(new Broadcast(bases_lt, ramp_a->width));
+        } else if (ramp_a && broadcast_b) { //LH
+            compare_lt(ramp_a->base, ramp_a->stride, broadcast_b->value, 0, ramp_a->width, op);
+        } else if (broadcast_a && ramp_b) { //LH
+            compare_lt(broadcast_a->value, 0, ramp_b->base, ramp_b->stride, ramp_b->width, op);
+        } else if (ramp_a && ramp_b) { //LH
+            compare_lt(ramp_a->base, ramp_a->stride, ramp_b->base, ramp_b->stride, ramp_b->width, op);
         } else if (add_a && add_b && equal(add_a->a, add_b->a)) {
             // Subtract a term from both sides
             expr = mutate(add_a->b < add_b->b);
@@ -1110,8 +1197,10 @@ Expr simplify_undef(Expr e) {
 
 bool proved(Expr e) {
     Expr b = Simplify().mutate(e);
-    log(4) << "Attempt to prove  " << e << "  yielded  " << b << "\n";;
-    return is_one(b);
+    log(4) << "Attempt to prove  " << e << "  ==>  " << b << "  ==>  ";;
+    bool result = is_one(b);
+    log(4) << (result ? "true" : "false") << "\n";
+    return result;
 }
 
 
@@ -1283,6 +1372,17 @@ void simplify_test() {
     check(x*0 < y*0, f);
     check(x < x+y, 0 < y);
     check(x+y < x, y < 0);
+    
+    //LH
+    check(new LT(new Ramp(0, 1, 8), new Broadcast(8, 8)), const_true(8));
+    check(new GT(new Ramp(0, -1, 8), new Broadcast(1, 8)), const_false(8));
+    check(new Min(new Ramp(0, 1, 8), new Ramp(2, 1, 8)), new Ramp(0, 1, 8));
+    check(new Min(new Ramp(0, 1, 8), new Broadcast(0, 8)), new Broadcast(0, 8));
+    check(new Max(new Ramp(0, 1, 8), new Ramp(2, 1, 8)), new Ramp(2, 1, 8));
+    check(new Max(new Ramp(0, 1, 8), new Broadcast(0, 8)), new Ramp(0, 1, 8));
+    check(new Max(new Ramp(0, 1, 8), new Ramp(2, 1, 8)), new Ramp(2, 1, 8));
+    check(new Max(new Ramp(0, 1, 8), new Broadcast(1, 8)), 
+            new Max(new Ramp(0, 1, 8), new Broadcast(1, 8)));
 
     check(select(x < 3, 2, 2), 2);
     check(select(x < (x+1), 9, 2), 9);

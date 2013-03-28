@@ -355,24 +355,25 @@ public:
         }
         
         if (do_simplify) {
-        //int oldlevel = log::debug_level;
-        //log::debug_level = oldlevel > 0 ? 4 : 0;
-        //log(4) << "IA_Simplify Min(" << a << ", " << b << ")  on (" 
-        //    << min_a << "," << max_a << ") ("
-        //    << min_b << "," << max_b << ")\n";
+        int oldlevel = log::debug_level;
+        log::debug_level = oldlevel > 0 ? 4 : 0;
+        log(4) << "IA_Simplify Min(" << a << ", " << b << ")  on (" 
+            << min_a << "," << max_a << ") ("
+            << min_b << "," << max_b << ")\n";
         if (do_simplify && max_a.defined() && min_b.defined() && proved(max_a <= min_b)) {
             // Intervals do not overlap (except at one point). a is always the minimum
             expr = a;
-        //    log::debug_level = oldlevel;
+            log::debug_level = oldlevel;
             return;
         }
         if (do_simplify && max_b.defined() && min_a.defined() && proved(max_b <= min_a)) {
             expr = b;
-        //    log::debug_level = oldlevel;
+            log::debug_level = oldlevel;
             return;
         }
-        //log::debug_level = oldlevel;
-        log(1) << "Could not simplify " << Expr(op) << "\n";
+        log::debug_level = oldlevel;
+        log(1) << "Could not simplify " << Expr(op) << "\n    on ("
+            << min_a << ", " << max_a << ")  (" << min_b << ", " << max_b << ")\n";
         }
 
         //log(3) << min << ", " << max << "\n";
@@ -407,24 +408,25 @@ public:
         }
 
         if (do_simplify) {
-        //int oldlevel = log::debug_level;
-        //log::debug_level = oldlevel > 0 ? 4 : 0;
-        //log(4) << "IA_Simplify Max(" << a << ", " << b << ")  on (" 
-        //    << min_a << "," << max_a << ") ("
-        //    << min_b << "," << max_b << ")\n";
+        int oldlevel = log::debug_level;
+        log::debug_level = oldlevel > 0 ? 4 : 0;
+        log(4) << "IA_Simplify Max(" << a << ", " << b << ")  on (" 
+            << min_a << "," << max_a << ") ("
+            << min_b << "," << max_b << ")\n";
         if (do_simplify && max_a.defined() && min_b.defined() && proved(min_b >= max_a)) {
             // Intervals do not overlap (except at one point). b is always the maximum
             expr = b;
-        //    log::debug_level = oldlevel;
+            log::debug_level = oldlevel;
             return;
         }
         if (do_simplify && max_b.defined() && min_a.defined() && proved(min_a >= max_b)) {
             expr = a;
-        //    log::debug_level = oldlevel;
+            log::debug_level = oldlevel;
             return;
         }
-        //log::debug_level = oldlevel;
-        log(1) << "Could not simplify " << Expr(op) << "\n";
+        log::debug_level = oldlevel;
+        log(1) << "Could not simplify " << Expr(op) << "\n    on ("
+            << min_a << ", " << max_a << ")  (" << min_b << ", " << max_b << ")\n";
         }
 
         //log(3) << min << ", " << max << "\n";
@@ -719,14 +721,29 @@ public:
 
     void visit(const Ramp *op) {
         Expr base = mutate(op->base);
+        Expr base_min = min;
+        Expr base_max = max;
         Expr stride = mutate(op->stride);
+        Expr stride_min = min;
+        Expr stride_max = max;
+        
+        if (base_min.defined() && stride_min.defined()) {
+            min = new Ramp(base_min, stride_min, op->width);
+        } else {
+            min = Expr();
+        }
+        if (base_max.defined() && stride_max.defined()) {
+            max = new Ramp(base_max, stride_max, op->width);
+        } else {
+            max = Expr();
+        }
+        
+        //log(0) << "Mutate " << Expr(op) << "  ==>  Ramp " << base << ", " << stride << "\n";
         
         if (base.same_as(op->base) && stride.same_as(op->stride)) {
-            min = max = op;
             rewriter->visit(op);
         } else {
             Ramp *newop = new Ramp(base, stride, op->width);
-            min = max = newop;
             rewriter->visit(newop);
         }
         expr = rewriter->expr;
@@ -828,7 +845,7 @@ public:
         Expr extent_max = max;
         
         int oldlevel = log::debug_level;
-        log::debug_level = op->partition_begin == -3 ? 1 : 0;
+        //log::debug_level = op->partition_begin == -3 ? 1 : 0;
        
         Expr end_max;
         if (extent_max.defined() && begin_max.defined()) {
@@ -994,7 +1011,7 @@ void check_ia_simplify(const Scope<Interval> &scope, Stmt a, Stmt b) {
 
 void interval_analysis_test() {
     Scope<Interval> scope;
-    Var x("x"), y("y"), z("z");
+    Var x("x"), y("y"), z("z"), zz("zz");
     scope.push("x", Interval(Expr(0), Expr(10)));
     scope.push("z", Interval(Expr(), Expr(20)));
 
@@ -1013,6 +1030,9 @@ void interval_analysis_test() {
     check(scope, new Load(Int(8), "buf", x, Buffer(), Parameter()), cast(Int(8), -128), cast(Int(8), 127));
     check(scope, y + (new Let("y", x+3, y - x + 10)), y + 3, y + 23); // Once again, we don't know that y is correlated with x
     check(scope, clamp(1/(x-2), x-10, x+10), -10, 20);
+    check(scope, new Let("zz", 7, new Min(zz, 10)), 7, 7);
+    check(scope, new Let("zz", 7, new Ramp(zz,1,8)), new Ramp(7,1,8), new Ramp(7,1,8));
+    check(scope, new Let("zz", x, new Ramp(zz,1,8)), new Ramp(0,1,8), new Ramp(10,1,8));
     
     // Additional capabilities
     check(scope, new Select(x < 11, x, x+100), 0, 10); // select can be proved true

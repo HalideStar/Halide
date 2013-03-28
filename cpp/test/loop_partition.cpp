@@ -74,10 +74,30 @@ Func sobel_amp (Func input, std::string filtertype)
     return amp;
 }
 
+Image<uint8_t> input;
+
+int doclamp(int x, int lo, int hi) { return(x < lo ? lo : (x > hi ? hi : x)); }
+
+void check_clamp(std::string s, Image<uint8_t> output) {
+    for (int i = 0; i < WIDTH; i++) {
+        for (int j = 0; j < HEIGHT; j++) {
+            uint8_t val;
+            val = input(doclamp(i-1,0,WIDTH-1),doclamp(j-1,0,HEIGHT-1)) +
+                  input(doclamp(i+1,0,WIDTH-1),doclamp(j+1,0,HEIGHT-1));
+            if (val != output(i,j)) {
+                printf ("Error: %s(%d,%d) is %d, expected %d\n", s.c_str(), i, j, output(i,j), val);
+            }
+        }
+    }
+}
+
 void compare(std::string s, Func norm_nobound, Func part_nobound) {
     
     Image<uint8_t> r1 = norm_nobound.realize(1280,1280);
     Image<uint8_t> r2 = norm_nobound.realize(1280,1280);
+    
+    check_clamp(s + " norm", r1);
+    check_clamp(s + " part", r2);
     
     // For some reason, the first call to realize
     // in this manner with a specified buffer is slow.
@@ -129,21 +149,25 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
     part_nobound(x,y) = e;
     part_nobound.partition(x, xlo, xhi).partition(y, ylo, yhi);
     compare(prefix + "_simple no bound", norm_nobound, part_nobound);
-    
+#endif
+#if 1
     Func norm_simple(prefix + "norm_simple"), part_simple(prefix + "part_simple");
     norm_simple(x,y) = e;
     part_simple(x,y) = e;
     norm_simple.bound(x,0,WIDTH).bound(y,0,HEIGHT);
     part_simple.bound(x,0,WIDTH).bound(y,0,HEIGHT).partition(x, xlo, xhi).partition(y, ylo, yhi);
     compare(prefix + "_simple", norm_simple, part_simple);
-    
+#endif
+#if 1
     Func norm_vec8(prefix + "norm_vec8"), part_vec8(prefix + "part_vec8");
     norm_vec8(x,y) = e;
     part_vec8(x,y) = e;
     norm_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8);
-    part_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8).partition(x, xlo, xhi).partition(y, ylo, yhi);
+    //part_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8).partition(x, (xlo+7)/8*8, (xhi+7)/8*8).partition(y, ylo, yhi);
+    part_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8).partition(x, (xlo+7)/8, (xhi+7)/8).partition(y, ylo, yhi);
     compare(prefix + "_vector(8)", norm_vec8, part_vec8);
-    
+#endif
+#if 1  
     Func norm_par(prefix + "norm_par"), part_par(prefix + "part_par");
     norm_par(x,y) = e;
     part_par(x,y) = e;
@@ -172,14 +196,14 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
     part_par16.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,16).parallel(y).partition(x, xlo, xhi).partition(y, ylo, yhi);
     compare(prefix + "_parallel(16)", norm_par16, part_par16);
 #endif
-
+#if 1
     Func norm_par_u2(prefix + "norm_par_u2"), part_par_u2(prefix + "part_par_u2");
     norm_par_u2(x,y) = e;
     part_par_u2(x,y) = e;
     norm_par_u2.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,2);
     part_par_u2.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,2).partition(x, xlo, xhi).partition(y, ylo, yhi);
     compare(prefix + "_par(1) unroll(2)", norm_par_u2, part_par_u2);
-
+#endif
 #if 1
     Func norm_par_u4(prefix + "norm_par_u4"), part_par_u4(prefix + "part_par_u4");
     norm_par_u4(x,y) = e;
@@ -215,7 +239,7 @@ main () {
     Func init("init");
     Var x("x"), y("y"), yi("yi");
     init(x,y) = cast(UInt(8), (x + y * 123) % 256);
-    Image<uint8_t> input = init.realize(WIDTH,HEIGHT);
+    input = init.realize(WIDTH,HEIGHT);
     
     Func undefined;
     
