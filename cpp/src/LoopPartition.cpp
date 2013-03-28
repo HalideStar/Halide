@@ -167,18 +167,18 @@ class LoopPartition : public IRMutator {
         // Vectorised loops are not eligible, and unrolled loops should be fully
         // optimised for each iteration due to the unrolling.
         Stmt new_body = mutate(op->body);
-        if (op->for_type == For::Serial && (op->partition_begin > 0 || op->partition_end > 0)) {
+        if ((op->for_type == For::Serial || op->for_type == For::Parallel) && 
+            (op->partition_begin > 0 || op->partition_end > 0)) {
             //log(0) << "Found serial for loop \n" << Stmt(op) << "\n";
-            // Heuristic solution.  Assume that it might help to specialise the first
-            // N and last N iterations.
-            int N = 16;
+            // Greedy allocation of up to partition_begin loop iterations to before.
             Expr before_min = op->min;
-            Expr before_extent = min(N, op->extent);
+            Expr before_extent = min(op->partition_begin, op->extent);
+            // Greedy allocation of up to partition_end loop iterations to after.
             Expr main_min = before_min + before_extent;
-            Expr main_extent = max(0, op->extent - before_extent - N);
+            Expr main_extent = max(0, op->extent - before_extent - op->partition_end);
             Expr after_min = main_min + main_extent;
             Expr after_extent = op->extent - before_extent - main_extent;
-           // Now generate the partitioned loops.
+            // Now generate the partitioned loops.
             Stmt before = new For(op->name, before_min, before_extent, op->for_type, 0, 0, op->body);
             Stmt main = new For(op->name, main_min, main_extent, op->for_type, 0, 0, new_body);
             Stmt after = new For(op->name, after_min, after_extent, op->for_type, 0, 0, op->body);

@@ -271,7 +271,7 @@ struct Sub : public ExprNode<Sub> {
     Sub(Expr _a, Expr _b) : ExprNode<Sub>(_a.type()), a(_a), b(_b) {
         assert(a.defined() && "Sub of undefined");
         assert(b.defined() && "Sub of undefined");
-        assert(b.type() == type && "Sub of mismatched types");
+        check_same_type("Sub",a,b);
     }
 };
 

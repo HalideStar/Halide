@@ -128,6 +128,7 @@ public:
         Expr min_a = min, max_a = max;
         Expr b = mutate(op->b);
         Expr min_b = min, max_b = max;
+        if (min_a.type() != min_b.type()) log(0) << "Type mismatch " << a << " " << b << "\n";
         min = (max_b.defined() && min_a.defined()) ? new Sub(min_a, max_b) : Expr();
         max = (min_b.defined() && max_a.defined()) ? new Sub(max_a, min_b) : Expr();
         
@@ -707,15 +708,25 @@ public:
     }
 
     void visit(const Ramp *op) {
-        // Not handled.
-        log(1) << "Encountered Ramp node\n";
-        min = max = Expr();
-        expr = op;
+        Expr base = mutate(op->base);
+        Expr stride = mutate(op->stride);
+        
+        if (base.same_as(op->base) && stride.same_as(op->stride)) {
+            min = max = op;
+            rewriter->visit(op);
+        } else {
+            Ramp *newop = new Ramp(base, stride, op->width);
+            min = max = newop;
+            rewriter->visit(newop);
+        }
+        expr = rewriter->expr;
     }
 
     void visit(const Broadcast *op) {
         // Evaluate the interval of the underlying constant
         Expr value = mutate(op->value);
+        min = new Broadcast(min, op->width);
+        max = new Broadcast(max, op->width);
 
         if (value.same_as(op->value)) {
             rewriter->visit(op);
