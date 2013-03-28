@@ -24,6 +24,8 @@ double currentTime() {
 
 // Image dimension in this test is 1280.  That is 5 * 256 so not a power of 2, but also
 // a multiple of useful powers of 2.
+#define WIDTH 1280
+#define HEIGHT 1280
 
 // This is an implementation of sobel_amp based directly on the documentation of MVTec HALCON
 // see http://www.mvtec.com/download/reference/sobel_amp.html .  
@@ -72,17 +74,17 @@ Func sobel_amp (Func input, std::string filtertype)
     return amp;
 }
 
-void compare(std::string s, Func e1, Func e2) {
+void compare(std::string s, Func norm_nobound, Func part_nobound) {
     
-    Image<uint8_t> r1 = e1.realize(1280,1280);
-    Image<uint8_t> r2 = e1.realize(1280,1280);
+    Image<uint8_t> r1 = norm_nobound.realize(1280,1280);
+    Image<uint8_t> r2 = norm_nobound.realize(1280,1280);
     
     // For some reason, the first call to realize
     // in this manner with a specified buffer is slow.
     // Perhaps it recompiles?
     
-    double te1 = 1280000000.0;
-    double te2 = 1280000000.0;
+    double tnorm_nobound = 1280000000.0;
+    double tpart_nobound = 1280000000.0;
     
     int average = 200;
     int repeat = 2;
@@ -90,31 +92,121 @@ void compare(std::string s, Func e1, Func e2) {
     
     for (int j = 0; j < repeat; j++) {
         for (int i = 0; i < warmup; i++) {
-            e1.realize(r1);
+            norm_nobound.realize(r1);
         }
         double t1 = currentTime();
         for (int i = 0; i < average; i++) {
-            e1.realize(r1);
+            norm_nobound.realize(r1);
         }
         double t2 = currentTime();
         
         for (int i = 0; i < warmup; i++) {
-            e2.realize(r1);
+            part_nobound.realize(r1);
         }
         double t3 = currentTime();
         for (int i = 0; i < average; i++) {
-            e2.realize(r2);
+            part_nobound.realize(r2);
         }
         double t4 = currentTime();
         //printf ("%g %g\n", t2 - t1, t3 - t2);
-        //te1 = std::min(t2 - t1, te1);
-        //te2 = std::min(t3 - t2, te2);
-        te1 = t2 - t1;
-        te2 = t4 - t3;
-        printf ("%20s: normal: %7.3f partition: %7.3f\n", s.c_str(), te1/average, te2/average);
+        //tnorm_nobound = std::min(t2 - t1, tnorm_nobound);
+        //tpart_nobound = std::min(t3 - t2, tpart_nobound);
+        tnorm_nobound = t2 - t1;
+        tpart_nobound = t4 - t3;
+        printf ("%30s: norm: %7.3f   part: %7.3f\n", s.c_str(), tnorm_nobound/average, tpart_nobound/average);
         
     }
     
+}
+
+void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func &f) {
+    int N = 1;
+    Var x("x"), y("y"), yi("yi");
+
+# if 1
+    Func norm_nobound(prefix + "norm_nobound"), part_nobound(prefix + "part_nobound");
+    norm_nobound(x,y) = e;
+    part_nobound(x,y) = e;
+    part_nobound.partition(x, xlo, xhi).partition(y, ylo, yhi);
+    compare(prefix + "_simple no bound", norm_nobound, part_nobound);
+    
+    Func norm_simple(prefix + "norm_simple"), part_simple(prefix + "part_simple");
+    norm_simple(x,y) = e;
+    part_simple(x,y) = e;
+    norm_simple.bound(x,0,WIDTH).bound(y,0,HEIGHT);
+    part_simple.bound(x,0,WIDTH).bound(y,0,HEIGHT).partition(x, xlo, xhi).partition(y, ylo, yhi);
+    compare(prefix + "_simple", norm_simple, part_simple);
+    
+    Func norm_vec8(prefix + "norm_vec8"), part_vec8(prefix + "part_vec8");
+    norm_vec8(x,y) = e;
+    part_vec8(x,y) = e;
+    norm_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8);
+    part_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8).partition(x, xlo, xhi).partition(y, ylo, yhi);
+    compare(prefix + "_vector(8)", norm_vec8, part_vec8);
+    
+    Func norm_par(prefix + "norm_par"), part_par(prefix + "part_par");
+    norm_par(x,y) = e;
+    part_par(x,y) = e;
+    norm_par.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y);
+    part_par.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).partition(x, xlo, xhi).partition(y, ylo, yhi);
+    compare(prefix + "_parallel(1)", norm_par, part_par);
+    
+    Func norm_par4(prefix + "norm_par4"), part_par4(prefix + "part_par4");
+    norm_par4(x,y) = e;
+    part_par4(x,y) = e;
+    norm_par4.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,4).parallel(y);
+    part_par4.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,4).parallel(y).partition(x, xlo, xhi).partition(y, ylo, yhi);
+    compare(prefix + "_parallel(4)", norm_par4, part_par4);
+    
+    Func norm_par8(prefix + "norm_par8"), part_par8(prefix + "part_par8");
+    norm_par8(x,y) = e;
+    part_par8(x,y) = e;
+    norm_par8.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,8).parallel(y);
+    part_par8.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,8).parallel(y).partition(x, xlo, xhi).partition(y, ylo, yhi);
+    compare(prefix + "_parallel(8)", norm_par8, part_par8);
+    
+    Func norm_par16(prefix + "norm_par16"), part_par16(prefix + "part_par16");
+    norm_par16(x,y) = e;
+    part_par16(x,y) = e;
+    norm_par16.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,16).parallel(y);
+    part_par16.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,16).parallel(y).partition(x, xlo, xhi).partition(y, ylo, yhi);
+    compare(prefix + "_parallel(16)", norm_par16, part_par16);
+#endif
+
+    Func norm_par_u2(prefix + "norm_par_u2"), part_par_u2(prefix + "part_par_u2");
+    norm_par_u2(x,y) = e;
+    part_par_u2(x,y) = e;
+    norm_par_u2.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,2);
+    part_par_u2.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,2).partition(x, xlo, xhi).partition(y, ylo, yhi);
+    compare(prefix + "_par(1) unroll(2)", norm_par_u2, part_par_u2);
+
+#if 1
+    Func norm_par_u4(prefix + "norm_par_u4"), part_par_u4(prefix + "part_par_u4");
+    norm_par_u4(x,y) = e;
+    part_par_u4(x,y) = e;
+    norm_par_u4.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,4);
+    part_par_u4.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,4).partition(x, xlo, xhi).partition(y, ylo, yhi);
+    compare(prefix + "_par(1) unroll(4)", norm_par_u4, part_par_u4);
+    
+    Func norm_par_u8(prefix + "norm_par_u8"), part_par_u8(prefix + "part_par_u8");
+    norm_par_u8(x,y) = e;
+    part_par_u8(x,y) = e;
+    norm_par_u8.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,8);
+    part_par_u8.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,8).partition(x, xlo, xhi).partition(y, ylo, yhi);
+    compare(prefix + "_par(1) unroll(8)", norm_par_u8, part_par_u8);
+    
+    Func norm_par4_u8(prefix + "norm_par4_u8"), part_par4_u8(prefix + "part_par4_u8");
+    norm_par4_u8(x,y) = e;
+    part_par4_u8(x,y) = e;
+    norm_par4_u8.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,4).parallel(y).unroll(x,8);
+    part_par4_u8.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,4).parallel(y).unroll(x,8).partition(x, xlo, xhi).partition(y, ylo, yhi);
+    compare(prefix + "_par(4) unroll(8)", norm_par_u8, part_par_u8);
+    
+    Func party_par_u8(prefix + "party_par_u8");
+    party_par_u8(x,y) = e;
+    party_par_u8.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,8).partition(y, ylo, yhi);
+    compare(prefix + "_par(1) unroll(8) y", norm_par_u8, party_par_u8);
+#endif
 }
 
 
@@ -122,78 +214,22 @@ main () {
     // Start by generating an input image. 1MP in size.
     Func init("init");
     Var x("x"), y("y"), yi("yi");
-    int N = 1;
     init(x,y) = cast(UInt(8), (x + y * 123) % 256);
-    Image<uint8_t> input = init.realize(1280,1280);
+    Image<uint8_t> input = init.realize(WIDTH,HEIGHT);
     
-    // Now to apply edge detection
-    Func e1("e1"), e2("e2");
+    Func undefined;
+    
     //Expr e = cast(UInt(8), sobel_amp(cast(Int(16), input), "x")(x,y));
-    Expr e = input(clamp(x-1,0,1279),clamp(y-1,0,1279)) + input(clamp(x+1,0,1279),clamp(y+1,0,1279));
-    e1(x,y) = e;
-    e2(x,y) = e;
-    e2.partition(x,N,N).partition(y,N,N);
-    compare("simple no bound", e1, e2);
+    Expr e = input(clamp(x-1,0,WIDTH-1),clamp(y-1,0,HEIGHT-1)) + input(clamp(x+1,0,WIDTH-1),clamp(y+1,0,HEIGHT-1));
+    test("clamp",e,1,1,1,1,undefined);
+#if 0
+    Func cons = Border::constant(0)(input);
+    Expr part_nobound = cons(x-1,y-1) + cons(x+1,y+1);
+    test("cons0", part_nobound,1,1,1,1,undefined);
     
-    Func e1b("e1b"), e2b("e2b");
-    e1b(x,y) = e;
-    e2b(x,y) = e;
-    e1b.bound(x,0,1280).bound(y,0,1280);
-    e2b.bound(x,0,1280).bound(y,0,1280).partition(x,N,N).partition(y,N,N);
-    compare("simple", e1b, e2b);
-    
-    Func e3("e3"), e4("e4");
-    e3(x,y) = e;
-    e4(x,y) = e;
-    e3.bound(x,0,1280).bound(y,0,1280).vectorize(x,8);
-    e4.bound(x,0,1280).bound(y,0,1280).vectorize(x,8).partition(x,N,N).partition(y,N,N);
-    compare("vector", e3, e4);
-    
-    Func norm_par("norm_par"), part_par("part_par");
-    norm_par(x,y) = e;
-    part_par(x,y) = e;
-    norm_par.bound(x,0,1280).bound(y,0,1280).parallel(y);
-    part_par.bound(x,0,1280).bound(y,0,1280).parallel(y).partition(x,N,N).partition(y,N,N);
-    compare("parallel(1)", norm_par, part_par);
-    
-    Func norm_par4("norm_par4"), part_par4("part_par4");
-    norm_par4(x,y) = e;
-    part_par4(x,y) = e;
-    norm_par4.bound(x,0,1280).bound(y,0,1280).split(y,y,yi,4).parallel(y);
-    part_par4.bound(x,0,1280).bound(y,0,1280).split(y,y,yi,4).parallel(y).partition(x,N,N).partition(y,N,N);
-    compare("parallel(4)", norm_par4, part_par4);
-    
-    Func norm_par8("norm_par8"), part_par8("part_par8");
-    norm_par8(x,y) = e;
-    part_par8(x,y) = e;
-    norm_par8.bound(x,0,1280).bound(y,0,1280).split(y,y,yi,8).parallel(y);
-    part_par8.bound(x,0,1280).bound(y,0,1280).split(y,y,yi,8).parallel(y).partition(x,N,N).partition(y,N,N);
-    compare("parallel(8)", norm_par8, part_par8);
-    
-    Func norm_par16("norm_par16"), part_par16("part_par16");
-    norm_par16(x,y) = e;
-    part_par16(x,y) = e;
-    norm_par16.bound(x,0,1280).bound(y,0,1280).split(y,y,yi,16).parallel(y);
-    part_par16.bound(x,0,1280).bound(y,0,1280).split(y,y,yi,16).parallel(y).partition(x,N,N).partition(y,N,N);
-    compare("parallel(16)", norm_par16, part_par16);
-    
-    Func norm_par_u8("norm_par_u8"), part_par_u8("part_par_u8");
-    norm_par_u8(x,y) = e;
-    part_par_u8(x,y) = e;
-    norm_par_u8.bound(x,0,1280).bound(y,0,1280).parallel(y).unroll(x,8);
-    part_par_u8.bound(x,0,1280).bound(y,0,1280).parallel(y).unroll(x,8).partition(x,N,N).partition(y,N,N);
-    compare("par(1) unroll(8)", norm_par_u8, part_par_u8);
-    
-    Func norm_par4_u8("norm_par4_u8"), part_par4_u8("part_par4_u8");
-    norm_par4_u8(x,y) = e;
-    part_par4_u8(x,y) = e;
-    norm_par4_u8.bound(x,0,1280).bound(y,0,1280).split(y,y,yi,4).parallel(y).unroll(x,8);
-    part_par4_u8.bound(x,0,1280).bound(y,0,1280).split(y,y,yi,4).parallel(y).unroll(x,8).partition(x,N,N).partition(y,N,N);
-    compare("par(4) unroll(8)", norm_par_u8, part_par_u8);
-    
-    Func party_par_u8("party_par_u8");
-    party_par_u8(x,y) = e;
-    party_par_u8.bound(x,0,1280).bound(y,0,1280).parallel(y).unroll(x,8).partition(y,N,N);
-    compare("par(1) unroll(8) y", norm_par_u8, party_par_u8);
-    
+    Func blurx("blurx");
+    blurx(x,y) = input(clamp(x-1,0,WIDTH-1),y) + input(x,y) + input(clamp(x+1,0,WIDTH-1),y);
+    Expr blury = blurx(x,clamp(y-1,0,HEIGHT-1)) + blurx(x,y) + blurx(x,clamp(y+1,0,HEIGHT-1));
+    test("blur", blury,1,1,1,1,blurx);
+#endif
 }

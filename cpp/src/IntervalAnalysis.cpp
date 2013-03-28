@@ -355,23 +355,24 @@ public:
         }
         
         if (do_simplify) {
-        int oldlevel = log::debug_level;
+        //int oldlevel = log::debug_level;
         //log::debug_level = oldlevel > 0 ? 4 : 0;
-        log(4) << "IA_Simplify Min(" << a << ", " << b << ")  on (" 
-            << min_a << "," << max_a << ") ("
-            << min_b << "," << max_b << ")\n";
+        //log(4) << "IA_Simplify Min(" << a << ", " << b << ")  on (" 
+        //    << min_a << "," << max_a << ") ("
+        //    << min_b << "," << max_b << ")\n";
         if (do_simplify && max_a.defined() && min_b.defined() && proved(max_a <= min_b)) {
             // Intervals do not overlap (except at one point). a is always the minimum
             expr = a;
-            log::debug_level = oldlevel;
+        //    log::debug_level = oldlevel;
             return;
         }
         if (do_simplify && max_b.defined() && min_a.defined() && proved(max_b <= min_a)) {
             expr = b;
-            log::debug_level = oldlevel;
+        //    log::debug_level = oldlevel;
             return;
         }
-        log::debug_level = oldlevel;
+        //log::debug_level = oldlevel;
+        log(1) << "Could not simplify " << Expr(op) << "\n";
         }
 
         //log(3) << min << ", " << max << "\n";
@@ -406,23 +407,24 @@ public:
         }
 
         if (do_simplify) {
-        int oldlevel = log::debug_level;
+        //int oldlevel = log::debug_level;
         //log::debug_level = oldlevel > 0 ? 4 : 0;
-        log(4) << "IA_Simplify Max(" << a << ", " << b << ")  on (" 
-            << min_a << "," << max_a << ") ("
-            << min_b << "," << max_b << ")\n";
+        //log(4) << "IA_Simplify Max(" << a << ", " << b << ")  on (" 
+        //    << min_a << "," << max_a << ") ("
+        //    << min_b << "," << max_b << ")\n";
         if (do_simplify && max_a.defined() && min_b.defined() && proved(min_b >= max_a)) {
             // Intervals do not overlap (except at one point). b is always the maximum
             expr = b;
-            log::debug_level = oldlevel;
+        //    log::debug_level = oldlevel;
             return;
         }
         if (do_simplify && max_b.defined() && min_a.defined() && proved(min_a >= max_b)) {
             expr = a;
-            log::debug_level = oldlevel;
+        //    log::debug_level = oldlevel;
             return;
         }
-        log::debug_level = oldlevel;
+        //log::debug_level = oldlevel;
+        log(1) << "Could not simplify " << Expr(op) << "\n";
         }
 
         //log(3) << min << ", " << max << "\n";
@@ -672,7 +674,7 @@ public:
             max = max_a;
             
             if (do_simplify) {
-                log(4) << "Proved false: simplify\n";
+                log(4) << "Proved true: simplify\n";
                 expr = true_value;
                 return;
             } else log(4) << "Proved true but not simplified\n";
@@ -822,10 +824,15 @@ public:
         Expr begin_max = max;
         // Compute interval for extent of loop
         Expr extent = mutate(op->extent);
+        Expr extent_min = min;
+        Expr extent_max = max;
+        
+        int oldlevel = log::debug_level;
+        log::debug_level = op->partition_begin == -3 ? 1 : 0;
        
         Expr end_max;
-        if (max.defined() && begin_max.defined()) {
-            end_max = begin_max + max;
+        if (extent_max.defined() && begin_max.defined()) {
+            end_max = begin_max + extent_max - 1;
         }
         else {
             end_max = Expr();
@@ -842,6 +849,9 @@ public:
         } else {
             rewriter->visit(new For(*op, begin, extent, body));
         }
+        
+        log::debug_level = oldlevel;
+        
         stmt = rewriter->stmt;
     }
 

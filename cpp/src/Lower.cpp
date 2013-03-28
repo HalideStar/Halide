@@ -885,7 +885,7 @@ Stmt lower(Function f) {
     s = remove_dead_lets(s);
     log(1) << "Simplified: \n" << s << "\n\n";
     
-    log(f.name() + "_199_final", 1) << s << "\n";
+    log(f.name() + "_900_final", 1) << s << "\n";
 
     return s;
 } 
