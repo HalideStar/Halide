@@ -1,4 +1,6 @@
 #include "IRMutator.h"
+#include "Log.h"
+#include "IRPRinter.h"
 
 namespace Halide {
 namespace Internal {
@@ -12,6 +14,10 @@ Expr IRMutator::mutate(Expr e) {
         expr = Expr();
     }
     stmt = Stmt();
+    if (defaulted) {
+        log(0) << "Mutator executed default visitor on " << e << "\n";
+        assert(0 && "IRMutator executed default IRVisitor");
+    }
     return expr;
 }
 
