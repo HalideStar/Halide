@@ -745,16 +745,7 @@ public:
     }
 
     void visit(const Call *op) {
-        vector<Expr > new_args(op->args.size());
-        bool changed = false;
-
-        // Mutate the args
-        for (size_t i = 0; i < op->args.size(); i++) {
-            Expr old_arg = op->args[i];
-            Expr new_arg = mutate(old_arg);
-            if (!new_arg.same_as(old_arg)) changed = true;
-            new_args[i] = new_arg;
-        }
+        IRMutator::visit(op);
 
         // Could surely do better than simply take the bounds of the type.
         // The full solution for interval analysis of the current
@@ -762,8 +753,7 @@ public:
         // is better done by caching information in the Function itself.
         bounds_of_type(op->type);
         
-        if (!changed) rewriter->visit(op);
-        else rewriter->visit(new Call(op->type, op->name, new_args, op->call_type, op->func, op->image, op->param));
+        expr.accept(rewriter);
         expr = rewriter->expr;
     }
 
