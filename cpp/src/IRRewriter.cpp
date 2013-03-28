@@ -1,229 +1,231 @@
 #include "IRRewriter.h"
 #include "IR.h"
+#include "Log.h"
+#include "IRPrinter.h"
 
 namespace Halide { 
 namespace Internal {
 
 IRRewriter::IRRewriter() {
-    defaulted = false;
+    rewriter_defaulted = false;
 }
 
 IRRewriter::~IRRewriter() {
 }
     
 void IRRewriter::visit(const IntImm *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
     
 void IRRewriter::visit(const FloatImm *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
     
 void IRRewriter::visit(const Cast *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
     
 void IRRewriter::visit(const Variable *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 //LH
 void IRRewriter::visit(const BitAnd *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 //LH
 void IRRewriter::visit(const BitOr *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 //LH
 void IRRewriter::visit(const BitXor *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 //LH
 void IRRewriter::visit(const SignFill *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 //LH
 void IRRewriter::visit(const Clamp *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const Add *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const Sub *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const Mul *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const Div *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 //LH
 void IRRewriter::visit(const HDiv *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const Mod *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const Min *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const Max *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const EQ *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const NE *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const LT *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const LE *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const GT *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const GE *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const And *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }        
 
 void IRRewriter::visit(const Or *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const Not *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
     
 void IRRewriter::visit(const Select *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const Load *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const Ramp *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const Broadcast *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const Call *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const Let *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     expr = op;
 }
 
 void IRRewriter::visit(const LetStmt *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     stmt = op;
 }
 
 void IRRewriter::visit(const PrintStmt *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     stmt = op;
 }
 
 void IRRewriter::visit(const AssertStmt *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     stmt = op;
 }
 
 void IRRewriter::visit(const Pipeline *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     stmt = op;
 }
 
 void IRRewriter::visit(const For *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     stmt = op;
 }
 
 void IRRewriter::visit(const Store *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     stmt = op;
 }
 
 void IRRewriter::visit(const Provide *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     stmt = op;
 }
 
 void IRRewriter::visit(const Allocate *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     stmt = op;
 }
 
 void IRRewriter::visit(const Realize *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     stmt = op;
 }
 
 void IRRewriter::visit(const Block *op) {
-    defaulted = true;
+    rewriter_defaulted = true;
     stmt = op;
 }
 

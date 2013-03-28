@@ -17,16 +17,18 @@ namespace Internal {
  * That tree walker will provide some base functionality that you need,
  * and it will call your rewriter on any nodes that you are interested in.
  */
-class IRRewriter {
+class IRRewriter : public IRVisitor {
 public:
     Stmt stmt;
     Expr expr;
     // Sometimes, you need to know if IRRewriter has adopted
     // the default behaviour of doing nothing for a node for which
     // no explicit visit method is defined.
-    // Boolean defaulted is set to true so the caller can detect that
+    // Boolean rewriter_defaulted is set to true so the caller can detect that
     // this has happened and take some action.
-    bool defaulted;
+    // You could also check boolean defaulted in IRVisitor base class - if that is
+    // set true then IRRewriter has a missing node handler!
+    bool rewriter_defaulted;
     IRRewriter();
     virtual ~IRRewriter();
     virtual void visit(const IntImm *);
