@@ -121,9 +121,10 @@ clean:
 .SECONDARY:
 
 TESTS = $(shell ls test/*.cpp)
+ERROR_TESTS = $(shell ls test/error/*.cpp)
 
 # TODO: move this implementation into Makefile.tests which contains a .NOTPARALLEL rule?
-tests: $(TESTS:test/%.cpp=test_%)
+tests: $(TESTS:test/%.cpp=test_%) $(ERROR_TESTS:test/error/%.cpp=error_%)
 
 bin/test_internal: test/internal.cpp bin/lib$(NAME).so
 	$(CXX) $(CXX_FLAGS)  $< -Isrc -Lbin -l$(NAME) -lpthread -ldl -o $@	
@@ -140,6 +141,9 @@ bin/gtest_internal: test/internal.cpp lib/libg$(NAME).a
 bin/gtest_%: test/%.cpp lib/libg$(NAME).a include/Halide.h
 	$(CXX) -g $<  -Iinclude -Llib -lg$(NAME) -lpthread -ldl -o $@	
 
+bin/error_%: test/error/%.cpp bin/libHalide.so include/Halide.h
+	$(CXX) $(TEST_CXX_FLAGS) -g $<  -Iinclude -Lbin -lHalide -lpthread -ldl -o $@	
+
 test_%: bin/test_%
 	@-mkdir -p tmp
 	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
@@ -150,6 +154,10 @@ gtest_%: bin/gtest_%
 	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
 	@-echo
 
+error_%: bin/error_%
+	@-mkdir -p tmp
+	cd tmp ; DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$< 2>&1 | egrep --q "Assertion.*failed"
+	@-echo
 
 .PHONY: test_apps
 test_apps: bin/lib$(NAME).a
