@@ -132,6 +132,9 @@ bin/test_internal: test/internal.cpp bin/lib$(NAME).so
 bin/test_%: test/%.cpp bin/lib$(NAME).so include/Halide.h
 	$(CXX) $(TEST_CXX_FLAGS) -g $<  -Iinclude -Lbin -l$(NAME) -lpthread -ldl -o $@	
 
+bin/error_%: test/error/%.cpp bin/lib$(NAME).so include/Halide.h
+	$(CXX) $(TEST_CXX_FLAGS) -g $<  -Iinclude -Lbin -l$(NAME) -lpthread -ldl -o $@	
+
 #LH: Compilation with debugging option and static link of debugging library
 gtests: $(TESTS:test/%.cpp=gtest_%)
 
@@ -141,15 +144,7 @@ bin/gtest_internal: test/internal.cpp lib/libg$(NAME).a
 bin/gtest_%: test/%.cpp lib/libg$(NAME).a include/Halide.h
 	$(CXX) -g $<  -Iinclude -Llib -lg$(NAME) -lpthread -ldl -o $@	
 
-bin/error_%: test/error/%.cpp bin/libHalide.so include/Halide.h
-	$(CXX) $(TEST_CXX_FLAGS) -g $<  -Iinclude -Lbin -lHalide -lpthread -ldl -o $@	
-
 test_%: bin/test_%
-	@-mkdir -p tmp
-	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
-	@-echo
-
-gtest_%: bin/gtest_%
 	@-mkdir -p tmp
 	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
 	@-echo
@@ -157,6 +152,11 @@ gtest_%: bin/gtest_%
 error_%: bin/error_%
 	@-mkdir -p tmp
 	cd tmp ; DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$< 2>&1 | egrep --q "Assertion.*failed"
+	@-echo
+
+gtest_%: bin/gtest_%
+	@-mkdir -p tmp
+	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
 	@-echo
 
 .PHONY: test_apps
