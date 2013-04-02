@@ -22,10 +22,11 @@
  * 2. Add the node to the two lists in IRVisitor.h and an implementation in IRVisitor.cpp.
  * 3. Add the node to the list in IRPrinter.h and define a visitor for it in IRPrinter.cpp.
  * 4. Add a visitor in IRMutator.h and IRMutator.cpp
- * 5. If code generation is required (usually, it is); add visitor to CodeGen.cpp and CodeGen.h
+ * 5. Add to IREquality.cpp
+ * 6. If code generation is required (usually, it is); add visitor to CodeGen.cpp and CodeGen.h
  *    If code generation is not required because the node should not remain at code generation
  *    time, should add a visitor and assert an error.
- * 6. If the node appears in code subject to bounds analysis, add to Bounds.h and Bounds.cpp.
+ * 7. If the node appears in code subject to bounds analysis, add to Bounds.h and Bounds.cpp.
  */
 
 namespace Halide {

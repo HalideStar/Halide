@@ -9,9 +9,9 @@
 
 #include <vector>
 
-#ifndef BORDER_EXTERN
-#define BORDER_EXTERN extern
-#define BORDER_EXTERN_INIT(decl,init) extern decl
+#ifndef BORDER_EXTERN_CONSTRUCTOR
+// Define macro that is used to refer to externally defined C++ symbols.
+// BORDER_EXTERN_CONSTRUCTOR: Declare an object as external, with argument list for its constructor.
 #define BORDER_EXTERN_CONSTRUCTOR(decl,args) extern decl
 #endif
 
@@ -32,7 +32,7 @@ public:
     // expr: The index expression.
     // min, max: The limits for the border handling of that dimension.
     // value: The value of the function expression, typically returned when inside the border.
-    virtual Expr indexExpr(int dim, Expr expr, Expr min, Expr max) { assert(0 && "Called BorderBase"); return expr; }
+    virtual Expr indexExpr(int dim, Expr expr, Expr min, Expr max) = 0;
     virtual Expr valueExpr(int dim, Expr value, Expr expr, Expr min, Expr max) { return value; } // Default: no impact
     
     // dim() returns a border function specific to a particular dimension.  It uses BorderIndex.
@@ -172,7 +172,7 @@ public:
 class BorderConstant : public BorderValueBase {
     Expr constant; // Can be any Halide data type, really
 public:
-    BorderConstant() { constant = Expr(); } // There is no default constant: require it to be set.
+    //BorderConstant() { constant = Expr(); } // There is no default constant: require it to be set.
     BorderConstant(Expr k) : constant(k) {}
     
     virtual Expr valueExpr(int dim, Expr value, Expr expr, Expr min, Expr max);

@@ -219,16 +219,16 @@ void IRPrinter::visit(const SignFill *op) {
 
 //LH
 void IRPrinter::visit(const Clamp *op) {
-    stream << op->clamptype <<"(";
+    stream << "Clamp::" << op->clamptype <<"(";
     print(op->a);
     stream << ',';
     print(op->min);
     stream << ',';
     print(op->max);
-	if (op->clamptype == Clamp::Tile) {
+	//if (op->clamptype == Clamp::Tile) {
 		stream << ',';
 		print(op->p1);
-	}
+	//}
     stream << ')';
 }
 

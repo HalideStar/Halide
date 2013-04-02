@@ -48,6 +48,24 @@ public:
             result = false;
         }
     }
+    
+    void visit(const Clamp *op) {
+        const Clamp *e = expr.as<Clamp>();
+        if (! result || !e || e->clamptype != op->clamptype || e->type != op->type) {
+            result = false;
+        } else {
+            expr = e->a;
+            op->a.accept(this);
+            expr = e->min;
+            op->min.accept(this);
+            expr = e->max;
+            op->max.accept(this);
+            if (e->clamptype == Clamp::Tile) {
+                expr = e->p1;
+                op->p1.accept(this);
+            }
+        }
+    }
 
     template<typename T>
     void visit_binary_operator(const T *op) {

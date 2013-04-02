@@ -622,6 +622,12 @@ class Simplify : public IRMutator {
             } else {
                 expr = make_const(op->type, std::min(ia,ib));
             }
+        } else if (const_castint(b, &ib) && ib == b.type().imax()) { //LH
+            // Compute minimum of expression of type and maximum of type --> expression
+            expr = a;
+        } else if (const_castint(b, &ib) && ib == b.type().imin()) { //LH
+            // Compute minimum of expression of type and minimum of type --> min of type
+            expr = b;
         } else if (broadcast_a && broadcast_b) {
             expr = mutate(new Broadcast(new Min(broadcast_a->value, broadcast_b->value), broadcast_a->width));
         } else if (broadcast_a && ramp_b) { //LH
@@ -713,6 +719,12 @@ class Simplify : public IRMutator {
             } else {
                 expr = make_const(op->type, std::max(ia, ib));
             }
+        } else if (const_castint(b, &ib) && ib == b.type().imin()) { //LH
+            // Compute maximum of expression of type and minimum of type --> expression
+            expr = a;
+        } else if (const_castint(b, &ib) && ib == b.type().imax()) { //LH
+            // Compute maximum of expression of type and maximum of type --> max of type
+            expr = b;
         } else if (broadcast_a && broadcast_b) {
             expr = mutate(new Broadcast(new Max(broadcast_a->value, broadcast_b->value), broadcast_a->width));
         } else if (broadcast_a && ramp_b) { //LH
@@ -866,6 +878,12 @@ class Simplify : public IRMutator {
             } else {
                 expr = make_bool(ia < ib, op->type.width);
             }
+        } else if (const_castint(a, &ia) && ia == a.type().imax()) { //LH Extremes
+            // Comparing maximum of type < expression of type.  This can never be true.
+            expr = const_false(op->type.width);
+        } else if (const_castint(b, &ib) && ib == b.type().imin()) { //LH Extremes
+            // Comparing expression of type < minimum of type.  This can never be true.
+            expr = const_false(op->type.width);
         } else if (is_zero(delta) || is_positive_const(delta)) {
             expr = const_false(op->type.width);
         } else if (is_negative_const(delta)) {
@@ -1383,6 +1401,22 @@ void simplify_test() {
     check(new Max(new Ramp(0, 1, 8), new Ramp(2, 1, 8)), new Ramp(2, 1, 8));
     check(new Max(new Ramp(0, 1, 8), new Broadcast(1, 8)), 
             new Max(new Ramp(0, 1, 8), new Broadcast(1, 8)));
+            
+    //LH
+    // Check that simplifier can recognise instances where the extremes of the
+    // datatype appear as constants in comparisons, Min and Max expressions.
+    // Each of these tests was checked to ensure that it did not pass before adding new simplification code.
+    check(x <= Int(32).max(), const_true());
+    check(new Cast(Int(16), x) >= Int(16).min(), const_true());
+    check(x < Int(32).min(), const_false());
+    check(new Min(new Cast(UInt(16), x), new Cast(UInt(16), 65535)), new Cast(UInt(16), x));
+    check(new Min(x, Int(32).max()), x);
+    check(new Min(Int(32).min(), x), Int(32).min());
+    check(new Max(new Cast(Int(8), x), new Cast(Int(8), -128)), new Cast(Int(8), x));
+    check(new Max(x, Int(32).min()), x);
+    check(new Max(x, Int(32).max()), Int(32).max());
+    // Check that non-extremes do not lead to incorrect simplification
+    check(new Max(new Cast(Int(8), x), new Cast(Int(8), -127)), new Max(new Cast(Int(8), x), new Cast(Int(8), -127)));
 
     check(select(x < 3, 2, 2), 2);
     check(select(x < (x+1), 9, 2), 9);

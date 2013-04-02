@@ -1,6 +1,5 @@
 // Globals defined for border handling are defined within this module
-#define BORDER_EXTERN 
-#define BORDER_EXTERN_INIT(decl,init) decl = init
+// BORDER_EXTERN_CONSTRUCTOR: Declare a globally visible object with arguments to its constructor
 #define BORDER_EXTERN_CONSTRUCTOR(decl,args) decl args
 #include "Border.h"
 
@@ -10,6 +9,7 @@
 #include "Func.h"
 #include "Log.h"
 #include "Util.h"
+#include "Simplify.h"
 
 #include <vector>
 #include <string>
@@ -47,13 +47,26 @@ static Func border_builder(vector<BorderFunc> borderfuncs, Func f) {
         // Build the list of arguments for g.
         g_args.push_back(Var::gen(i));
         // Build the expression (..., BorderFunc.indexExpr(x, min, max), ...)
-        f_args.push_back(borderfuncs[i].indexExpr(Var::gen(i), f.valid().min(i), f.valid().max(i)));
+        // In case the min or max are undefined, set them to the extremes of the type of Var.
+        // This means that the relevant bound is not enforced.
+        Expr min = f.valid().min(i);
+        Expr max = f.valid().max(i);
+        Expr v = Var::gen(i);
+        if (! min.defined()) { min = v.type().min(); }
+        if (! max.defined()) { max = v.type().max(); }
+        f_args.push_back(borderfuncs[i].indexExpr(v, min, max));
     }
     // Apply the subscripts to the function f.
     expr = f(f_args);
     // Insert value expressions for each of the border functions.
     for (int i = 0; i < f.dimensions(); i++) {
-        expr = borderfuncs[i].valueExpr(expr, Var::gen(i), f.valid().min(i), f.valid().max(i));
+        // As above, undefined bounds are mapped to the extremes of a 32-bit integer.
+        Expr min = f.valid().min(i);
+        Expr max = f.valid().max(i);
+        Expr v = Var::gen(i);
+        if (! min.defined()) { min = v.type().min(); }
+        if (! max.defined()) { max = v.type().max(); }
+        expr = borderfuncs[i].valueExpr(expr, v, min, max);
     }
     Internal::log(4) << "Border handled expression: " << expr << "\n";
     g(g_args) = expr;
@@ -160,15 +173,6 @@ Expr BorderIndex::valueExpr(int _dim, Expr value, Expr expr, Expr min, Expr max)
 }
 
 Expr BorderValueBase::indexExpr(int dim, Expr expr, Expr xmin, Expr xmax) { 
-    if (! xmin.defined() && ! xmax.defined()) {
-        return expr;
-    }
-    if (! xmin.defined()) {
-        return min(xmax, expr);
-    }
-    if (! xmax.defined()) {
-        return max(xmin, expr);
-    }
     return clamp(expr, xmin, xmax); 
 }
 
@@ -176,16 +180,8 @@ Expr BorderConstant::valueExpr(int dim, Expr value, Expr expr, Expr min, Expr ma
     assert(constant.defined() && "Border::constant requires constant value to be specified"); 
     assert(expr.defined() && "Border::constant - undefined index expression");
     assert(value.defined() && "Border::constant - undefined value expression");
-    if (! max.defined()) {
-        std::cout << "Warning: undefined upper bound for Border::constant(" << constant << ")" << value << "\n";
-    } else {
-        value = select(expr > max, cast(value.type(), constant), value);
-    }
-    if (! min.defined()) {
-        std::cout << "Warning: undefined lower bound for Border::constant(" << constant << ")" << value << "\n";
-    } else {
-        value = select(expr < min, cast(value.type(), constant), value);
-    }
+    value = select(expr > max, cast(value.type(), constant), value);
+    value = select(expr < min, cast(value.type(), constant), value);
     return value; 
 }
 
@@ -200,8 +196,31 @@ Expr BorderTile::indexExpr(int dim, Expr expr, Expr min, Expr max) {
 
 namespace Internal {
 
+namespace {
+bool check(Func f, Expr e, Expr s) {
+    if (! equal(f.value(), e)) {
+        std::cout << "Border handler construction failed\n";
+        std::cout << "Expected: " << e << "\n";
+        std::cout << "Actual:   " << f.value() << "\n";
+        return false;
+    }
+    // Test whether the simplifiers does what we need it to do.
+    // It gets applied during compilation, so this is only an
+    // approximate test and does not guarantee correct compilation.
+    Expr fs = simplify(f.value());
+    if (! equal(fs, s)) {
+        std::cout << "Border handler simplification failed\n";
+        std::cout << "Expected: " << s << "\n";
+        std::cout << "Actual:   " << fs << "\n";
+        return false;
+    }
+    return true;
+}
+}
+
 // Some simple border function tests.
 void border_test() {
+    bool success = true;
     Var x("x");
     Func init("init"), f("f");
 
@@ -220,6 +239,24 @@ void border_test() {
             assert(0 && "Border function test failed: replication values");
         }
     }
+    
+    // Test what happens with undefined domain limit.
+    Func in2("in2"), f2("f2");
+    in2(x) = x;
+    in2.set_valid() = Domain("x", false, Expr(), 15);
+    
+    success &= check(Border::replicate(in2), 
+                     in2(max(min(Var::gen(0), 15), Int(32).min())), 
+                     in2(min(Var::gen(0), 15)));
+    success &= check(Border::wrap(in2), 
+                     in2(new Clamp(Clamp::Wrap, Var::gen(0), Int(32).min(), 15)), 
+                     in2(new Clamp(Clamp::Wrap, Var::gen(0), Int(32).min(), 15)));
+    success &= check(Border::constant(3)(in2), 
+                     select(Var::gen(0) < Int(32).min(), 3, select(Var::gen(0) > 15,
+                     3, in2(max(min(Var::gen(0), 15), Int(32).min())))), 
+                     select(15 < Var::gen(0), 3, in2(min(Var::gen(0), 15))));
+    
+    assert (success && "Border function tests failed\n");
     
     std::cout << "Border function tests passed\n";
 }
