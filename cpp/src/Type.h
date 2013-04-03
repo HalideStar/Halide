@@ -58,20 +58,16 @@ struct Type {
         Type type = {t, bits, 1};
         return type;
     }
-    
-    //LH
+
     /** Return an integer which is the maximum value of this type. */
     int imax() const; 
     
-    //LH
     /** Return an expression which is the maximum value of this type */
     Expr max() const;
     
-    //LH
     /** Return an integer which is the minimum value of this type */
     int imin() const;
     
-    //LH
     /** Return an expression which is the minimum value of this type */
     Expr min() const;
 };
