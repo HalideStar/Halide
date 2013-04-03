@@ -133,6 +133,7 @@ Expr make_const(Type t, int val) {
     if (t.is_vector()) {
         return new Broadcast(make_const(t.element_of(), val), t.width);
     }
+    // When constructing cast integer constants, use the canonical representation.
     if (t.is_int() || t.is_uint()) {
         val = int_cast_constant(t, val);
     }
