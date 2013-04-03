@@ -20,18 +20,8 @@ bool is_simple_const(Expr e) {
 
 // Is a constant representable as a certain type
 int do_indirect_int_cast(Type t, int x) {
-    if (t == Int(8)) {
-        return (int8_t)x;
-    } else if (t == UInt(8)) {
-        return (uint8_t)x;
-    } else if (t == Int(16)) {
-        return (int16_t)x;
-    } else if (t == UInt(16)) {
-        return (uint16_t)x;
-    } else if (t == UInt(32)) {
-        return (uint32_t)x;
-    } else if (t.is_int()) {
-        return x;
+    if (t.is_int() || t.is_uint()) {
+        return int_cast_constant(t, x);
     } else if (t == Float(32)) {
         return (int)((float)x);
     } else if (t == Float(64)) {
@@ -78,13 +68,14 @@ class Simplify : public IRMutator {
         }
     }
     
-    bool const_castint(Expr e, int *i) { //LH
-        const IntImm *c = e.as<IntImm>();
+    /* Recognise an integer or cast integer and fetch its value */
+    bool const_castint(Expr e, int *i) {
+        const IntImm *intimm = e.as<IntImm>();
         const Cast *cast = e.as<Cast>();
-        if (c) {
-            *i = c->value;
+        if (intimm) {
+            *i = intimm->value;
             return true;
-        } else if (cast) {
+        } else if (cast && (cast->type.is_int() || cast->type.is_uint())) {
             const IntImm *imm = cast->value.as<IntImm>();
             if (imm) {
                 // When fetching a cast integer, ensure that the return
@@ -1237,6 +1228,15 @@ void simplify_test() {
     Expr x = Var("x"), y = Var("y"), z = Var("z");
     Expr xf = cast<float>(x);
     Expr yf = cast<float>(y);
+
+    // Check the type casting operations.
+    assert((int_cast_constant(Int(8), 128) == (int8_t) 128) && "Simplify test failed: int_cast_constant");
+    assert((int_cast_constant(UInt(8), -1) == (uint8_t) -1) && "Simplify test failed: int_cast_constant");
+    assert((int_cast_constant(Int(16), 65000) == (int16_t) 65000) && "Simplify test failed: int_cast_constant");
+    assert((int_cast_constant(UInt(16), 128000) == (uint16_t) 128000) && "Simplify test failed: int_cast_constant");
+    assert((int_cast_constant(UInt(16), -53) == (uint16_t) -53) && "Simplify test failed: int_cast_constant");
+    assert((int_cast_constant(UInt(32), -53) == (int)((uint32_t) -53)) && "Simplify test failed: int_cast_constant");
+    assert((int_cast_constant(Int(32), -53) == -53) && "Simplify test failed: int_cast_constant");
 
     check(new Cast(Int(32), new Cast(Int(32), x)), x);
     check(new Cast(Float(32), 3), 3.0f);

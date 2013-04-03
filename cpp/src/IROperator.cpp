@@ -108,15 +108,21 @@ bool is_two(Expr e) {
     return false;
 }
 
-int int_cast_constant(Type t, int val) { //LH
-    // Restrict the value to the range allowed by the cast.
+int int_cast_constant(Type t, int val) {
     // Unsigned of less than 32 bits is masked to select the appropriate bits
-    if (t.is_uint() && t.bits < 32) {
-        val = val & ((((unsigned int) 1) << t.bits) - 1);
+    if (t.is_uint()) {
+        if (t.bits < 32) {
+            val = val & ((((unsigned int) 1) << t.bits) - 1);
+        }
     }
-    else if (t.is_int() && t.bits < 32) {
-        // sign extend the lower bits
-        val = ((val << (32 - t.bits)) >> (32 - t.bits));
+    else if (t.is_int()) {
+        if (t.bits < 32) {
+            // sign extend the lower bits
+            val = ((val << (32 - t.bits)) >> (32 - t.bits));
+        }
+    }
+    else {
+        assert(0 && "Cast of integer to non-integer not available here");
     }
     return val;
 }
@@ -127,7 +133,9 @@ Expr make_const(Type t, int val) {
     if (t.is_vector()) {
         return new Broadcast(make_const(t.element_of(), val), t.width);
     }
-    val = int_cast_constant(t, val);
+    if (t.is_int() || t.is_uint()) {
+        val = int_cast_constant(t, val);
+    }
     return new Cast(t, val);
 }
         
