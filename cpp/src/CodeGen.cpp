@@ -814,16 +814,33 @@ void CodeGen::visit(const Div *op) {
             }
         }
 
-        // Otherwise, we have to codegen a monster expression to do it right
-        Value *num = codegen(op->a), *den = codegen(op->b);
-        // First we compute the remainder
-        value = builder->CreateSRem(num, den);
-        value = builder->CreateAdd(value, den);
-        value = builder->CreateSRem(value, den);
-        // Subtract from the numerator
-        value = builder->CreateSub(num, value);
-        // Then do the divide
-        value = builder->CreateSDiv(value, den);
+        // We get the rounding to work correctly by introducing a pre
+        // and post offset by one. The offsets depend on the sign of
+        // the numerator and denominator
+        
+        /* Here's the C code that we're trying to match (due to Len Hamey)
+        T axorb = a ^ b;
+        post = a != 0 ? ((axorb) >> (t.bits-1)) : 0;
+        pre = a < 0 ? -post : post;
+        T num = a + pre;
+        T quo = num / b;
+        T result = quo + post;
+        */
+
+        Value *a = codegen(op->a), *b = codegen(op->b);
+
+        Value *a_xor_b = builder->CreateXor(a, b);
+        Value *shift = ConstantInt::get(a->getType(), op->a.type().bits-1);
+        Value *a_xor_b_sign = builder->CreateAShr(a_xor_b, shift);
+        Value *zero = ConstantInt::get(a->getType(), 0);
+        Value *a_not_zero = builder->CreateICmpNE(a, zero);
+        Value *post = builder->CreateSelect(a_not_zero, a_xor_b_sign, zero);
+        Value *minus_post = builder->CreateNeg(post);
+        Value *a_lt_zero = builder->CreateICmpSLT(a, zero);
+        Value *pre = builder->CreateSelect(a_lt_zero, minus_post, post);
+        Value *num = builder->CreateAdd(a, pre);
+        Value *quo = builder->CreateSDiv(num, b);
+        value = builder->CreateAdd(quo, post);
     }
 }
 
@@ -967,10 +984,20 @@ void CodeGen::visit(const Mod *op) {
             }
         }
 
-        // to ensure the result of a signed mod is positive, we have to mod, add the modulus, then mod again
-        value = builder->CreateSRem(a, b);
-        value = builder->CreateAdd(value, b);
-        value = builder->CreateSRem(value, b);
+        // Match this non-overflowing C code due to Len Hamey
+        /*
+        T rem = a % b;
+        rem = rem + (rem != 0 && (rem ^ b) < 0 ? b : 0);
+        */
+
+        Value *rem = builder->CreateSRem(a, b);
+        Value *zero = ConstantInt::get(rem->getType(), 0);
+        Value *rem_not_zero = builder->CreateICmpNE(rem, zero);
+        Value *rem_xor_b = builder->CreateXor(rem, b);
+        Value *rem_xor_b_lt_zero = builder->CreateICmpSLT(rem_xor_b, zero);
+        Value *need_to_add_b = builder->CreateAnd(rem_not_zero, rem_xor_b_lt_zero);
+        Value *offset = builder->CreateSelect(need_to_add_b, b, zero);
+        value = builder->CreateAdd(rem, offset);        
     }
 }
 

@@ -20,7 +20,9 @@ bool is_simple_const(Expr e) {
 
 // Is a constant representable as a certain type
 int do_indirect_int_cast(Type t, int x) {
-    if (t.is_int() || t.is_uint()) {
+    if (t == UInt(1)) {
+        return x ? 1 : 0;
+    } else if (t.is_int() || t.is_uint()) {
         return int_cast_constant(t, x);
     } else if (t == Float(32)) {
         return (int)((float)x);
@@ -104,6 +106,11 @@ class Simplify : public IRMutator {
         } else if (op->type == Int(32) && cast && const_int(cast->value, &i)) {
             // Cast to something then back to int
             expr = do_indirect_int_cast(cast->type, i);
+        } else if (!op->type.is_float() && 
+                   op->type.bits <= 32 && 
+                   const_int(value, &i) && 
+                   do_indirect_int_cast(op->type, i) != i) {
+            expr = new Cast(op->type, do_indirect_int_cast(op->type, i));
         } else if (value.same_as(op->value)) {
             expr = op;
         } else {
@@ -160,6 +167,8 @@ class Simplify : public IRMutator {
     }
 
     void visit(const Add *op) {
+        log(3) << "Simplifying " << Expr(op) << "\n";
+
         int ia, ib;
         float fa, fb;
 
@@ -241,6 +250,8 @@ class Simplify : public IRMutator {
     }
 
     void visit(const Sub *op) {
+        log(3) << "Simplifying " << Expr(op) << "\n";
+
         Expr a = mutate(op->a), b = mutate(op->b);
 
         int ia, ib; 
@@ -841,7 +852,7 @@ class Simplify : public IRMutator {
     void visit(const NE *op) {
         expr = mutate(new Not(op->a == op->b));
     }
-    
+
     void visit(const LT *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
         Expr delta = mutate(a - b);
@@ -1244,6 +1255,7 @@ void simplify_test() {
 
     check(new Cast(Int(32), new Cast(Int(8), 3)), 3);
     check(new Cast(Int(32), new Cast(Int(8), 1232)), -48);
+
     
     check(cast(UInt(16), 84) + cast(UInt(16), 5), new Cast(UInt(16), 89));
     check(cast(UInt(16), 84) - cast(UInt(16), 89), new Cast(UInt(16), 65531));

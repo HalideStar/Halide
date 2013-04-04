@@ -30,6 +30,7 @@
 #include <llvm/Support/IRReader.h>
 // They renamed this type in 3.3
 typedef llvm::Attributes Attribute;
+#include <llvm/Support/IRReader.h>
 #else
 #include <llvm/IR/Value.h>
 #include <llvm/IR/Module.h>
