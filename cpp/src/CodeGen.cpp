@@ -6,6 +6,7 @@
 #include "CodeGen_C.h"
 #include "Function.h"
 #include "Deinterleave.h"
+#include "Simplify.h"
 
 // No msvc warnings from llvm headers please
 #ifdef _WIN32
@@ -284,7 +285,8 @@ public:
 	options.NoNaNsFPMath = true;
 	options.HonorSignDependentRoundingFPMathOption = false;
 	options.UseSoftFloat = false;
-	options.FloatABIType = FloatABI::Soft;
+	options.FloatABIType = 
+            cg->use_soft_float_abi() ? FloatABI::Soft : FloatABI::Hard;
 	options.NoZerosInBSS = false;
 	options.GuaranteedTailCallOpt = false;
 	options.DisableTailCalls = false;
@@ -446,7 +448,8 @@ void CodeGen::compile_to_native(const string &filename, bool assembly) {
     options.NoNaNsFPMath = true;
     options.HonorSignDependentRoundingFPMathOption = false;
     options.UseSoftFloat = false;
-    options.FloatABIType = FloatABI::Soft;
+    options.FloatABIType =
+        use_soft_float_abi() ? FloatABI::Soft : FloatABI::Hard;
     options.NoZerosInBSS = false;
     options.GuaranteedTailCallOpt = false;
     options.DisableTailCalls = false;
@@ -961,14 +964,20 @@ void CodeGen::visit(const HDiv *op) {
 }
 
 void CodeGen::visit(const Mod *op) {
-    Value *a = codegen(op->a);
-    Value *b = codegen(op->b);
+    // To match our definition of division, mod should have this behavior:
+    // 3 % 2 -> 1;
+    // -3 % 2 -> 1;
+    // 3 % -2 -> -1;
+    // -3 % -2 -> -1;
+    // I.e. the remainder should be between zero and b
 
     if (op->type.is_float()) {
-        value = builder->CreateFRem(a, b);
+        value = codegen(simplify(op->a - op->b * floor(op->a/op->b)));
     } else if (op->type.is_uint()) {
-        value = builder->CreateURem(a, b);
+        value = builder->CreateURem(codegen(op->a), codegen(op->b));
     } else {
+        Value *a = codegen(op->a);
+        Value *b = codegen(op->b);
         Expr modulus = op->b;
         const Broadcast *broadcast = modulus.as<Broadcast>();
         const IntImm *int_imm = broadcast ? broadcast->value.as<IntImm>() : modulus.as<IntImm>();
