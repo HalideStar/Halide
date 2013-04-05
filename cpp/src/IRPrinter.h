@@ -3,6 +3,8 @@
 
 #include "IRVisitor.h"
 #include "Type.h"
+#include "IR.h"
+#include "DomainInference.h"
 #include <ostream>
 
 namespace Halide { 
@@ -27,6 +29,9 @@ std::ostream &operator<<(std::ostream &stream, Expr);
 /** Emit a halide type on an output stream (such as std::cout) in a
  * human-readable form */
 std::ostream &operator<<(std::ostream &stream, Type);
+
+/** Emit a halide Domain in a human readable form */
+std::ostream &operator<<(std::ostream &stream, Domain);
 
 namespace Internal {
 

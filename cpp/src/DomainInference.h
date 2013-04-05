@@ -76,9 +76,15 @@ public:
     const Expr min(int index) const;
     const Expr max(int index) const;
     const Expr exact(int index) const;
+    const Expr extent(int index) const;
     
     // Accessors to read the domain as native C data.
+    const int imin(int index) const;
+    const int imax(int index) const;
+    const int iextent(int index) const;
+    const bool bexact(int index) const;
     
+    const int dimensions() const { return intervals.size(); }
 };
 
 namespace Internal {

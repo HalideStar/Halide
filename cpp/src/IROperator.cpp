@@ -1,5 +1,6 @@
 #include "IROperator.h"
 #include "IRPrinter.h"
+#include "Simplify.h"
 #include <iostream>
 
 namespace Halide { 
@@ -28,6 +29,69 @@ bool is_const(Expr e, int value) {
     if (const Cast *c = e.as<Cast>()) return is_const(c->value, value);
     if (const Broadcast *b = e.as<Broadcast>()) return is_const(b->value, value);
     return false;
+}
+
+namespace {
+bool get_const_int_rec(Expr e, int &value) {
+    // Integer constant.  Ensure that the returned value captures all the data.
+    // (This code design ensures correct operation irrespective of the size
+    // of i->value).
+    if (const IntImm *i = e.as<IntImm>()) { 
+        int ival = i->value; 
+        if (ival == i->value) {
+            value = ival;
+            return true;
+        }
+        return false; 
+    }
+    // Floating point immediate is only accepted if the value is integral,
+    // otherwise there would be loss of data.
+    if (const FloatImm *i = e.as<FloatImm>()) { 
+        int ival = i->value; 
+        if (ival == i->value) {
+            value = ival;
+            return true;
+        }
+        return false;
+    }
+    if (const Cast *c = e.as<Cast>()) {
+        int ival;
+        bool status = get_const_int_rec(c->value, ival);
+        if (status) {
+            // Check on the type of the cast.
+            // Checks on the underlying value ensure that ival accurately
+            // reflects the underlying constant value.  Now we force it into
+            // range according to the cast and ensure that the result is
+            // correctly interpreted as an int.
+            if (c->type.is_int() || c->type.is_uint()) {
+                // Cast to an integer type.  Force the value into range.
+                int cval = int_cast_constant(c->type, ival);
+                // Check that the cast is not returning negative from unsigned.
+                // This will only happen when c->type.bits == sizeof(int) * 8
+                // and then only when the unsigned integer constant is very large.
+                if (c->type.is_uint() && cval < 0) return false;
+                value = cval;
+                return true;
+            } else if (c->type.is_float()) {
+                // Cast to a float type. Just accept the value from underneath.
+                value = ival;
+                return status;
+            }
+            return false; // Could not handle the cast
+        }
+        return false;
+    }
+    if (const Broadcast *b = e.as<Broadcast>()) return get_const_int_rec(b->value, value);
+    return false;
+}
+}
+
+bool get_const_int(Expr e, int &value) {
+    bool status;
+    status = get_const_int_rec(e, value);
+    if (! status) e = simplify(e);
+    status = get_const_int_rec(e, value);
+    return status;
 }
 
 bool is_const_power_of_two(Expr e, int *bits) {

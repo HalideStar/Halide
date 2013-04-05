@@ -1,6 +1,7 @@
 #include "IRPrinter.h"
 #include "IROperator.h"
 #include "IR.h"
+#include "DomainInference.h"
 
 #include <iostream>
 #include <sstream>
@@ -38,6 +39,14 @@ ostream &operator<<(ostream &stream, Expr ir) {
     } else {
         Internal::IRPrinter p(stream);
         p.print(ir);
+    }
+    return stream;
+}
+
+ostream &operator<<(ostream &stream, Domain d) {
+    for (int i = 0; i < d.dimensions(); i++) {
+        stream << d.intervals[i];
+        if (i < d.dimensions()) stream << " ";
     }
     return stream;
 }

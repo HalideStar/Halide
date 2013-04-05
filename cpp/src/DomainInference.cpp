@@ -166,6 +166,29 @@ const Expr Domain::exact(int index) const {
     return Internal::simplify(! intervals[index].poison);
 }
 
+const Expr Domain::extent(int index) const {
+    assert(index >= 0 && index < (int) intervals.size() && "Attempt to access Domain out of range");
+    return Internal::simplify(intervals[index].imax - intervals[index].imin + 1);
+}
+
+const int Domain::imin(int index) const {
+    int ival;
+    assert(get_const_int(Domain::min(index), ival) && "Domain minimum value is not integer constant");
+    return ival;
+}
+
+const int Domain::imax(int index) const {
+    int ival;
+    assert(get_const_int(Domain::max(index), ival) && "Domain maximum value is not integer constant");
+    return ival;
+}
+
+const int Domain::iextent(int index) const {
+    int ival;
+    assert(get_const_int(Domain::extent(index), ival) && "Domain extent value is not integer constant");
+    return ival;
+}
+
 
 namespace Internal {
 

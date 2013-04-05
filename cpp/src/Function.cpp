@@ -185,10 +185,10 @@ Domain &Function::set_domain(Domain::DomainType dt) {
 //LH
 /** Get a handle to a domain for the purpose of inspecting it */
 const Domain &Function::domain(Domain::DomainType dt) const {
-    contents.ptr->domains[dt].lock();
     log(4,"DOMINF") << "Reading domain " << (int) dt << " of " << contents.ptr->name << "\n";
     assert(dt >= 0 && dt < Domain::MaxDomains && "Domain type is not in range");
     assert((size_t) dt < contents.ptr->domains.size() && "Domain of type does not exist");
+    contents.ptr->domains[dt].lock();
     return contents.ptr->domains[dt]; // Lock the domain that is being read.
 }
 

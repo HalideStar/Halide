@@ -21,6 +21,13 @@ bool EXPORT is_const(Expr e);
  * Cast, or Broadcast of the same. */
 bool EXPORT is_const(Expr e, int v);
 
+/** Is the expression an IntImm, or a Cast or Broadcast of the same,
+ * and return the value. Unsigned 32 bit is not returned if overflow
+ * would occur. Expressions of constants are simplified if necessary to
+ * obtain a result. This function is intended for evaluating constant
+ * Expr and returning the value to an application program. */
+bool EXPORT get_const_int(Expr e, int &v);
+
 /** Is the expression a constant integer power of two. Also returns
  * log base two of the expression if it is. */
 bool EXPORT is_const_power_of_two(Expr e, int *bits);
@@ -57,6 +64,9 @@ int EXPORT int_cast_constant(Type t, int val);
 
 /** Construct a const of the given type */
 Expr EXPORT make_const(Type t, int val);
+
+/** Fetch the value of an integer constant, if it is an integer constant. */
+bool get_int_const(Expr e, int &ival);
 
 /** Construct a boolean constant from a C++ boolean value.
  * May also be a vector if width is given.
