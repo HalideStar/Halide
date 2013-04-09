@@ -149,6 +149,11 @@ test_%: bin/test_%
 	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
 	@-echo
 
+gdbtest_%: bin/test_%
+	@-mkdir -p tmp
+	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin gdb ../$<
+	@-echo
+
 error_%: bin/error_%
 	@-mkdir -p tmp
 	cd tmp ; DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$< 2>&1 | egrep --q "Assertion.*failed"
