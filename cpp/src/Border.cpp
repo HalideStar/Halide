@@ -59,7 +59,8 @@ static Func border_builder(vector<BorderFunc> borderfuncs, Func f) {
     // Apply the subscripts to the function f.
     expr = f(f_args);
     // Insert value expressions for each of the border functions.
-    for (int i = 0; i < f.dimensions(); i++) {
+    //for (int i = 0; i < f.dimensions(); i++) {
+    for (int i = f.dimensions()-1; i >= 0; i--) {
         // As above, undefined bounds are mapped to the extremes of a 32-bit integer.
         Expr min = f.valid().min(i);
         Expr max = f.valid().max(i);
