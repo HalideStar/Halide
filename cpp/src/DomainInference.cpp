@@ -168,6 +168,10 @@ const Expr Domain::exact(int index) const {
 
 const Expr Domain::extent(int index) const {
     assert(index >= 0 && index < (int) intervals.size() && "Attempt to access Domain out of range");
+    if (! intervals[index].imax.defined() || ! intervals[index].imin.defined()) {
+        // The interval is undefined so the extent is undefined.
+        return Expr();
+    }
     return Internal::simplify(intervals[index].imax - intervals[index].imin + 1);
 }
 
@@ -185,7 +189,12 @@ const int Domain::imax(int index) const {
 
 const int Domain::iextent(int index) const {
     int ival;
-    assert(get_const_int(Domain::extent(index), ival) && "Domain extent value is not integer constant");
+    bool status = get_const_int(Domain::extent(index), ival);
+    if (! status) {
+        std::cerr << "Domain extent for index " << index << " is not an integer constant" << std::endl;
+        std::cerr << "Domain is: " << *this << std::endl;
+        assert(false && "Domain extent value is not an integer constant");
+    }
     return ival;
 }
 
@@ -742,6 +751,13 @@ private:
         // and if it is an image parameter, Parameter func_call->param is that.
         // To check use ->func.value().defined(), ->image.defined() and ->param.defined().
         
+        // If it is an external function, then it is not of interest here.
+        // It acts in the same way as any other expression.
+        if (func_call->call_type == Call::Extern) {
+            IRVisitor::visit(func_call);
+            return;
+        }
+        
         //log(0,"LH") << "Call: " << func_call->name;
         // Look at the call type 
         //if (func_call->call_type == Call::Image)
@@ -1043,6 +1059,9 @@ void domain_expr_test()
     // Test interchange of variables (flip the domain of the function)
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(y,x), 
                         Domain("x", False, 0, 39, "y", False, 0, 19));
+    // Test an external function.
+    check_domain_expr(Domain::Valid, vecS("x", "y"), sin(in(x,y)),
+                        Domain("x", False, 0, 19, "y", False, 0, 39));
     // Test multiple use of the same variable
     check_domain_expr(Domain::Valid, vecS("x"), in(x,x), 
                         Domain("x", False, 0, 19));
