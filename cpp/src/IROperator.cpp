@@ -33,6 +33,7 @@ bool is_const(Expr e, int value) {
 
 namespace {
 bool get_const_int_rec(Expr e, int &value) {
+    if (! e.defined()) return false; // Undefined!
     // Integer constant.  Ensure that the returned value captures all the data.
     // (This code design ensures correct operation irrespective of the size
     // of i->value).
@@ -229,6 +230,17 @@ Expr const_false(int w) {
 }
 
 
+void check_defined(Expr &a, std::string op, Expr &b) {
+    if (a.defined() && b.defined()) return;
+    std::cerr << "Undefined operand: " << a << " " << op << " " << b << std::endl;
+    assert(false && "Undefined operand");
+}
+
+void check_defined(std::string op, Expr &a, Expr &b) {
+    if (a.defined() && b.defined()) return;
+    std::cerr << "Undefined argument: " << op << "(" << a << ", " << b << ")" << std::endl;
+    assert(false && "Undefined argument");
+}
 
 void match_types(Expr &a, Expr &b) {
     if (a.type() == b.type()) return;

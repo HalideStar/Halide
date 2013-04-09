@@ -95,6 +95,11 @@ Expr EXPORT const_true(int width = 1);
  * falses, if a width argument is given. */
 Expr EXPORT const_false(int width = 1);
 
+/** Check that operands are defined and report if not.  Print the
+ * expression as best we can. */
+void check_defined(Expr &a, std::string op, Expr &b);
+void check_defined(std::string op, Expr &a, Expr &b);
+
 /** Coerce the two expressions to have the same type, using C-style
  * casting rules. For the purposes of casting, a boolean type is
  * UInt(1). We use the following procedure:
@@ -153,7 +158,7 @@ inline Expr cast(Type t, Expr a) {
 /** Return the sum of two expressions, doing any necessary type
  * coercion using \ref Internal::match_types */
 inline Expr operator+(Expr a, Expr b) {
-    assert(a.defined() && b.defined() && "operator+ of undefined");
+    check_defined(a, "+", b);
     Internal::match_types(a, b);
     return new Internal::Add(a, b);
 }
@@ -162,7 +167,7 @@ inline Expr operator+(Expr a, Expr b) {
  * without changing its type. This casts the second argument to match
  * the type of the first. */
 inline Expr &operator+=(Expr &a, Expr b) {
-    assert(a.defined() && b.defined() && "operator+= of undefined");
+    check_defined(a, "+=", b);
     a = new Internal::Add(a, cast(a.type(), b));
     return a;
 }
@@ -170,7 +175,7 @@ inline Expr &operator+=(Expr &a, Expr b) {
 /** Return the difference of two expressions, doing any necessary type
  * coercion using \ref Internal::match_types */
 inline Expr operator-(Expr a, Expr b) {
-    assert(a.defined() && b.defined() && "operator- of undefined");
+    check_defined(a, "-", b);
     Internal::match_types(a, b);
     return new Internal::Sub(a, b);
 }
@@ -189,7 +194,7 @@ inline Expr operator-(Expr a) {
  * without changing its type. This casts the second argument to match
  * the type of the first. */
 inline Expr &operator-=(Expr &a, Expr b) {
-    assert(a.defined() && b.defined() && "operator-= of undefined");
+    check_defined(a, "-=", b);
     a = new Internal::Sub(a, cast(a.type(), b));
     return a;
 }
@@ -197,7 +202,7 @@ inline Expr &operator-=(Expr &a, Expr b) {
 /** Return the product of two expressions, doing any necessary type
  * coercion using \ref Internal::match_types */
 inline Expr operator*(Expr a, Expr b) {
-    assert(a.defined() && b.defined() && "operator* of undefined");
+    check_defined(a, "*", b);
     Internal::match_types(a, b);
     return new Internal::Mul(a, b);
 }
@@ -206,7 +211,7 @@ inline Expr operator*(Expr a, Expr b) {
  * without changing its type. This casts the second argument to match
  * the type of the first. */
 inline Expr &operator*=(Expr &a, Expr b) {
-    assert(a.defined() && b.defined() && "operator*= of undefined");
+    check_defined(a, "*=", b);
     a = new Internal::Mul(a, cast(a.type(), b));
     return a;
 }
@@ -214,7 +219,7 @@ inline Expr &operator*=(Expr &a, Expr b) {
 /** Return the ratio of two expressions, doing any necessary type
  * coercion using \ref Internal::match_types */
 inline Expr operator/(Expr a, Expr b) {
-    assert(a.defined() && b.defined() && "operator/ of undefined");
+    check_defined(a, "/", b);
     Internal::match_types(a, b);
     return new Internal::Div(a, b);
 }
@@ -241,7 +246,7 @@ inline Expr hdiv(Expr a, Expr b) {
  * without changing its type. This casts the second argument to match
  * the type of the first. */
 inline Expr &operator/=(Expr &a, Expr b) {
-    assert(a.defined() && b.defined() && "operator/= of undefined");
+    check_defined(a, "/=", b);
     a = new Internal::Div(a, cast(a.type(), b));
     return a;
 }
@@ -249,7 +254,7 @@ inline Expr &operator/=(Expr &a, Expr b) {
 /** Return the first argument reduced modulo the second, doing any
  * necessary type coercion using \ref Internal::match_types */
 inline Expr operator%(Expr a, Expr b) {
-    assert(a.defined() && b.defined() && "operator% of undefined");
+    check_defined(a, "%", b);
     Internal::match_types(a, b);
     return new Internal::Mod(a, b);
 }
@@ -258,7 +263,7 @@ inline Expr operator%(Expr a, Expr b) {
  * is greater than the second, after doing any necessary type coercion
  * using \ref Internal::match_types */
 inline Expr operator>(Expr a, Expr b) {
-    assert(a.defined() && b.defined() && "operator> of undefined");
+    check_defined(a, ">", b);
     Internal::match_types(a, b);
     return new Internal::GT(a, b);
 }
@@ -267,7 +272,7 @@ inline Expr operator>(Expr a, Expr b) {
  * is less than the second, after doing any necessary type coercion
  * using \ref Internal::match_types */
 inline Expr operator<(Expr a, Expr b) {
-    assert(a.defined() && b.defined() && "operator< of undefined");
+    check_defined(a, "<", b);
     Internal::match_types(a, b);
     return new Internal::LT(a, b);
 }
@@ -276,7 +281,7 @@ inline Expr operator<(Expr a, Expr b) {
  * is less than or equal to the second, after doing any necessary type
  * coercion using \ref Internal::match_types */
 inline Expr operator<=(Expr a, Expr b) {
-    assert(a.defined() && b.defined() && "operator<= of undefined");
+    check_defined(a, "<=", b);
     Internal::match_types(a, b);
     return new Internal::LE(a, b);
 }
@@ -286,7 +291,7 @@ inline Expr operator<=(Expr a, Expr b) {
  * type coercion using \ref Internal::match_types */
 
 inline Expr operator>=(Expr a, Expr b) {
-    assert(a.defined() && b.defined() && "operator>= of undefined");
+    check_defined(a, ">=", b);
     Internal::match_types(a, b);
     return new Internal::GE(a, b);
 }
@@ -295,7 +300,7 @@ inline Expr operator>=(Expr a, Expr b) {
  * is equal to the second, after doing any necessary type coercion
  * using \ref Internal::match_types */
 inline Expr operator==(Expr a, Expr b) {
-    assert(a.defined() && b.defined() && "operator== of undefined");
+    check_defined(a, "==", b);
     Internal::match_types(a, b);
     return new Internal::EQ(a, b);
 }
@@ -304,18 +309,20 @@ inline Expr operator==(Expr a, Expr b) {
  * is not equal to the second, after doing any necessary type coercion
  * using \ref Internal::match_types */
 inline Expr operator!=(Expr a, Expr b) {
-    assert(a.defined() && b.defined() && "operator!= of undefined");
+    check_defined(a, "!=", b);
     Internal::match_types(a, b);
     return new Internal::NE(a, b);
 }
 
 /** Returns the logical and of the two arguments */
 inline Expr operator&&(Expr a, Expr b) {
+    check_defined(a, "&&", b);
     return new Internal::And(a, b);
 }
 
 /** Returns the logical or of the two arguments */
 inline Expr operator||(Expr a, Expr b) {
+    check_defined(a, "||", b);
     return new Internal::Or(a, b);
 }
 
@@ -328,7 +335,7 @@ inline Expr operator!(Expr a) {
  * arguments, after doing any necessary type coercion using 
  * \ref Internal::match_types */
 inline Expr max(Expr a, Expr b) {
-    assert(a.defined() && b.defined() && "max of undefined");
+    check_defined("max", a, b);
     Internal::match_types(a, b);
     return new Internal::Max(a, b);
 }
@@ -337,7 +344,7 @@ inline Expr max(Expr a, Expr b) {
  * arguments, after doing any necessary type coercion using 
  * \ref Internal::match_types */
 inline Expr min(Expr a, Expr b) {
-    assert(a.defined() && b.defined() && "min of undefined");
+    check_defined("min", a, b);
     Internal::match_types(a, b);
     return new Internal::Min(a, b);
 }
