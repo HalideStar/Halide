@@ -29,13 +29,28 @@ using std::ofstream;
 
 using namespace Internal;
 
-Func::Func(const string &name) : func(unique_name(name)), error_handler(NULL), custom_malloc(NULL), custom_free(NULL) {
+Func::Func(const string &name) : func(unique_name(name)), 
+                                 error_handler(NULL), 
+                                 custom_malloc(NULL), 
+                                 custom_free(NULL), 
+                                 custom_do_par_for(NULL), 
+                                 custom_do_task(NULL) {
 }
 
-Func::Func() : func(unique_name('f')), error_handler(NULL), custom_malloc(NULL), custom_free(NULL) {
+Func::Func() : func(unique_name('f')), 
+               error_handler(NULL), 
+               custom_malloc(NULL), 
+               custom_free(NULL), 
+               custom_do_par_for(NULL), 
+               custom_do_task(NULL) {
 }
 
-Func::Func(Expr e) : func(unique_name('f')), error_handler(NULL), custom_malloc(NULL), custom_free(NULL) {
+Func::Func(Expr e) : func(unique_name('f')),
+                     error_handler(NULL), 
+                     custom_malloc(NULL), 
+                     custom_free(NULL), 
+                     custom_do_par_for(NULL), 
+                     custom_do_task(NULL) {
     (*this)() = e;
 }
 
@@ -44,6 +59,8 @@ void Func::constructor(Buffer b) {
     error_handler = NULL;
     custom_malloc = NULL;
     custom_free = NULL;
+    custom_do_par_for = NULL;
+    custom_do_task = NULL;
     vector<Expr> args;
     for (int i = 0; i < b.dimensions(); i++) {
         args.push_back(Var::implicit(i));
@@ -878,6 +895,20 @@ void Func::set_custom_allocator(void *(*cust_malloc)(size_t), void (*cust_free)(
     }
 }
 
+void Func::set_custom_do_par_for(void (*cust_do_par_for)(void (*)(int, uint8_t *), int, int, uint8_t *)) {
+    custom_do_par_for = cust_do_par_for;
+    if (compiled_module.set_custom_do_par_for) {
+        compiled_module.set_custom_do_par_for(cust_do_par_for);
+    }
+}
+
+void Func::set_custom_do_task(void (*cust_do_task)(void (*)(int, uint8_t *), int, uint8_t *)) {
+    custom_do_task = cust_do_task;
+    if (compiled_module.set_custom_do_task) {
+        compiled_module.set_custom_do_task(cust_do_task);
+    }
+}
+
 class InferArguments : public IRVisitor {
 public:
     vector<Argument> arg_types;
@@ -964,6 +995,8 @@ void Func::realize(Buffer dst) {
     // In case these have changed since the last realization
     compiled_module.set_error_handler(error_handler);
     compiled_module.set_custom_allocator(custom_malloc, custom_free);   
+    compiled_module.set_custom_do_par_for(custom_do_par_for);
+    compiled_module.set_custom_do_task(custom_do_task);
 
     // Update the address of the buffer we're realizing into
     arg_values[arg_values.size()-1] = dst.raw_buffer();
