@@ -94,7 +94,7 @@ void check_clamp(std::string s, Image<uint8_t> output) {
 void compare(std::string s, Func norm_nobound, Func part_nobound) {
     
     Image<uint8_t> r1 = norm_nobound.realize(1280,1280);
-    Image<uint8_t> r2 = norm_nobound.realize(1280,1280);
+    Image<uint8_t> r2 = part_nobound.realize(1280,1280);
     
     check_clamp(s + " norm", r1);
     check_clamp(s + " part", r2);
