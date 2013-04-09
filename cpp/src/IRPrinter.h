@@ -26,6 +26,12 @@ namespace Halide {
  * human-readable form */
 std::ostream &operator<<(std::ostream &stream, Expr);
 
+class Func;
+
+/** Emit a function on an output stream (such as std::cout) in a
+ * human-readable form */
+std::ostream &operator<<(std::ostream &stream, Func);
+
 /** Emit a halide type on an output stream (such as std::cout) in a
  * human-readable form */
 std::ostream &operator<<(std::ostream &stream, Type);

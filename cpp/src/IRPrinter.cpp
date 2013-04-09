@@ -1,6 +1,7 @@
 #include "IRPrinter.h"
 #include "IROperator.h"
 #include "IR.h"
+#include "Func.h"
 #include "DomainInference.h"
 
 #include <iostream>
@@ -39,6 +40,16 @@ ostream &operator<<(ostream &stream, Expr ir) {
     } else {
         Internal::IRPrinter p(stream);
         p.print(ir);
+    }
+    return stream;
+}
+
+ostream &operator<<(ostream &stream, Func f) {
+    stream << f.name() << " = ";
+    if (!f.value().defined()) {
+        stream << "(undefined)";
+    } else {
+        stream << f.value();
     }
     return stream;
 }
