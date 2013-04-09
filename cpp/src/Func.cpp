@@ -568,11 +568,11 @@ Domain Func::infinite() {
     return Domain(); // Unknown situation.
 }
 
-void Func::operator=(Func f) {
-    std::cout << "Simple defining " << name() << "\n";
+//void Func::operator=(Func f) {
+//    std::cout << "Simple defining " << name() << "\n";
     //assert(0);
-    (*this)() = Expr(f);
-}
+//    (*this)() = Expr(f);
+//}
 
 //LH
 /** Methods to indicate that the current function is a kernel of other functions. */

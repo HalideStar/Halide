@@ -801,7 +801,8 @@ public:
     }
     
     //LH
-    void operator=(Func f);
+    // Dont do this because it prevents using a vector of Func objects.
+    //void operator=(Func f);
 
 	//LH
 	/** Get a handle to a specified domain for the purpose of modifying it */
