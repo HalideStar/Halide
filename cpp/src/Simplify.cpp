@@ -518,10 +518,6 @@ class Simplify : public IRMutator {
             } else {
                 expr = new Cast(op->type, mod_imp(ia, ib));
             }
-        } else if (const_castint(a, &ia) && const_castint(b, &ib)) { //LH
-            // Build the mod operator then evaluate it; better would be to call
-            // an implementation.
-            expr = new Cast(op->type, mutate(Expr(ia) % ib));
         } else if (broadcast_a && broadcast_b) {
             expr = mutate(new Broadcast(broadcast_a->value % broadcast_b->value, broadcast_a->width));
         } else if (mul_a && const_int(b, &ib) && const_int(mul_a->b, &ia) && (ia % ib == 0)) {

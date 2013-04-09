@@ -827,14 +827,13 @@ Stmt lower(Function f) {
     s = interval_analysis_simplify(s);
     log(2) << "IA Simplify:\n" << s << '\n';
     log_to_file(f.name() + "_166_IA_simplify", s);
-    log::debug_level = 0;
+    //log::debug_level = 0;
+#endif
 
     log(1) << "Simplifying...\n";
     s = simplify(s);
-    s = remove_dead_lets(s);
     log(2) << "Simplified: \n" << s << "\n\n";
     log_to_file(f.name() + "_167_simplify", s);
-#endif
 
     log(1) << "Performing storage folding optimization...\n";
     s = storage_folding(s);
@@ -892,7 +891,7 @@ Stmt lower(Function f) {
     s = interval_analysis_simplify(s);
     log(2) << "IA Simplify:\n" << s << '\n';
     log_to_file(f.name() + "_198_IA_simplify", s);
-    log::debug_level = 0;
+    //log::debug_level = 0;
 
     log(1) << "Simplifying...\n";
     s = simplify(s);
