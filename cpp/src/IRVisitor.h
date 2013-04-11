@@ -25,7 +25,6 @@ struct Add;
 struct Sub;
 struct Mul;
 struct Div;
-struct HDiv; //LH
 struct Mod;
 struct Min;
 struct Max;
@@ -84,7 +83,6 @@ public:
     virtual void visit(const Sub *);
     virtual void visit(const Mul *);
     virtual void visit(const Div *);
-    virtual void visit(const HDiv *);
     virtual void visit(const Mod *);
     virtual void visit(const Min *);
     virtual void visit(const Max *);

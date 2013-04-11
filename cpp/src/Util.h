@@ -34,50 +34,6 @@
 
 namespace Halide { 
 
-//LH
-// Implementations of operators that are not native to C, for use in optimisation and in testing.
-// hmod is the Halide % operator.
-template<typename T>
-inline T hmod_imp(T a, T b)
-{
-    return ((long)(a % b) + b) % b;
-}
-// Special cases for float, double and unsigned int.
-template<> inline float hmod_imp<float>(float a, float b) { return std::fmod(a,b); }
-template<> inline double hmod_imp<double>(double a, double b) { return std::fmod(a,b); }
-template<> inline unsigned int hmod_imp<unsigned int>(unsigned int a, unsigned int b) { return a % b; }
-template<> inline unsigned short hmod_imp<unsigned short>(unsigned short a, unsigned short b) { return a % b; }
-template<> inline unsigned char hmod_imp<unsigned char>(unsigned char a, unsigned char b) { return a % b; }
-
-//LH
-// hdiv is division defined so that the remainder is hmod.  The division is non-standard only for signed integers.
-template<typename T> inline T hdiv_imp(T a, T b) { return a / b; }
-template<> inline unsigned char hdiv_imp<unsigned char>(unsigned char a, unsigned char b) { return a / b; }
-template<> inline unsigned short hdiv_imp<unsigned short>(unsigned short a, unsigned short b) { return a / b; }
-template<> inline unsigned int hdiv_imp<unsigned int>(unsigned int a, unsigned int b) { return a / b; }
-// Special cases for signed integers
-template<> 
-inline int hdiv_imp<int>(int a, int b) {
-    long int longa;
-    longa = ((long int) a) - hmod_imp(a, b); // Subtract the remainder to make an exact division.
-    return (int) (longa / (long int) b);
-}
-template<> 
-inline short hdiv_imp<short>(short a, short b) {
-    long longa;
-    longa = ((long) a) - hmod_imp(a, b); // Subtract the remainder to make an exact division.
-    return (short) (longa / (long) b);
-}
-template<> 
-inline char hdiv_imp<char>(char a, char b) {
-    long longa;
-    if (a == -128 && b == 127) { printf ("hmod(%d,%d) = %d\n", a, b, hmod_imp(a,b)); }
-    longa = ((long) a) - hmod_imp(a, b); // Subtract the remainder to make an exact division.
-    return (char) (longa / (long) b);
-}
-
-
-
 namespace Internal {
 
 /** Build small vectors of up to 6 elements. If we used C++11 and

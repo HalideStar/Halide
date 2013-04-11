@@ -225,24 +225,6 @@ inline Expr operator/(Expr a, Expr b) {
     return new Internal::Div(a, b);
 }
 
-//LH: Explicit division function
-/** Return the ratio of two expressions, doing any necessary type
- * coercion using \ref Internal::match_types */
-inline Expr cdiv(Expr a, Expr b) {
-    assert(a.defined() && b.defined() && "cdiv of undefined");
-    Internal::match_types(a, b);
-    return new Internal::Div(a, b);
-}
-
-//LH: Explicit division function
-/** Return the ratio of two expressions, doing any necessary type
- * coercion using \ref Internal::match_types */
-inline Expr hdiv(Expr a, Expr b) {
-    assert(a.defined() && b.defined() && "hdiv of undefined");
-    Internal::match_types(a, b);
-    return new Internal::HDiv(a, b);
-}
-
 /** Modify the first expression to be the ratio of two expressions,
  * without changing its type. This casts the second argument to match
  * the type of the first. */

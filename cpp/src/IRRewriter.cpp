@@ -83,12 +83,6 @@ void IRRewriter::visit(const Div *op) {
     expr = op;
 }
 
-//LH
-void IRRewriter::visit(const HDiv *op) {
-    rewriter_defaulted = true;
-    expr = op;
-}
-
 void IRRewriter::visit(const Mod *op) {
     rewriter_defaulted = true;
     expr = op;

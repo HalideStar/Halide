@@ -89,13 +89,6 @@ void IRVisitor::visit(const Div *op) {
     op->b.accept(this);
 }
 
-//LH
-void IRVisitor::visit(const HDiv *op) {
-    defaulted = true;
-    op->a.accept(this);
-    op->b.accept(this);
-}
-
 void IRVisitor::visit(const Mod *op) {
     defaulted = true;
     op->a.accept(this);

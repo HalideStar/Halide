@@ -284,15 +284,6 @@ void IRPrinter::visit(const Div *op) {
     stream << ')';
 }
 
-//LH
-void IRPrinter::visit(const HDiv *op) {
-    stream << "hdiv(";
-    print(op->a);
-    stream << ",";
-    print(op->b);
-    stream << ')';
-}
-            
 void IRPrinter::visit(const Mod *op) {
     stream << '(';
     print(op->a);

@@ -298,23 +298,6 @@ struct Div : public ExprNode<Div> {
     }
 };
 
-//LH
-/** The ratio of two expressions: For integers, an integer division compatible with Halide Mod
- * and more useful than native division for operations such as image zoom and
- * histogram buckets. Whereas the sign of the remainder of Div is the same as
- * the sign of the dividend, the sign of the remainder of HDiv is the same as
- * the sign of the divisor.
- */
-struct HDiv : public ExprNode<HDiv> {
-    Expr a, b;
-
-    HDiv(Expr _a, Expr _b) : ExprNode<HDiv>(_a.type()), a(_a), b(_b) {
-        assert(a.defined() && "HDiv of undefined");
-        assert(b.defined() && "HDiv of undefined");
-        assert(b.type() == type && "HDiv of mismatched types");
-    }
-};
-
 /** The remainder of a / b. Mostly equivalent to '%' in C, except that
  * the result here is always positive (//LH: actually, not quite correct.
  * It has the same sign as the modulus b). For floats, this is equivalent

@@ -25,7 +25,6 @@ template<> EXPORT IRNodeType ExprNode<Add>::_type_info = {};
 template<> EXPORT IRNodeType ExprNode<Sub>::_type_info = {};
 template<> EXPORT IRNodeType ExprNode<Mul>::_type_info = {};
 template<> EXPORT IRNodeType ExprNode<Div>::_type_info = {};
-template<> EXPORT IRNodeType ExprNode<HDiv>::_type_info = {};
 template<> EXPORT IRNodeType ExprNode<Mod>::_type_info = {};
 template<> EXPORT IRNodeType ExprNode<Min>::_type_info = {};
 template<> EXPORT IRNodeType ExprNode<Max>::_type_info = {};
