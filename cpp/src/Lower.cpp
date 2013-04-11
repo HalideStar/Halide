@@ -873,32 +873,34 @@ Stmt lower(Function f) {
     log_to_file(f.name() + "_195_interleave", s);
 
 
-# if 1
-    log(1) << "Simplifying...\n";
-    s = simplify(s);
-    s = remove_dead_lets(s);
-    log(2) << "Simplified: \n" << s << "\n\n";
-    log_to_file(f.name() + "_196_simplify", s);
+    if (global_options.loop_partition) {
+		log(1) << "Simplifying...\n";
+		s = simplify(s);
+		s = remove_dead_lets(s);
+		log(2) << "Simplified: \n" << s << "\n\n";
+		log_to_file(f.name() + "_196_simplify", s);
 
-    log(1) << "Performing loop partition optimization...\n";
-    s = loop_partition(s);
-    log(2) << "Loop partition:\n" << s << '\n';
-    log_to_file(f.name() + "_197_partition", s);
+		log(1) << "Performing loop partition optimization...\n";
+		s = loop_partition(s);
+		log(2) << "Loop partition:\n" << s << '\n';
+		log_to_file(f.name() + "_197_partition", s);
+	}
+	
+	if (global_options.interval_analysis_simplify) {
+		//log::debug_level = 1;
+		log(1) << "Performing interval analysis simplification...\n";
+		s = simplify(s);
+		s = interval_analysis_simplify(s);
+		log(2) << "IA Simplify:\n" << s << '\n';
+		log_to_file(f.name() + "_198_IA_simplify", s);
+		//log::debug_level = 0;
 
-    //log::debug_level = 1;
-    log(1) << "Performing interval analysis simplification...\n";
-    s = simplify(s);
-    s = interval_analysis_simplify(s);
-    log(2) << "IA Simplify:\n" << s << '\n';
-    log_to_file(f.name() + "_198_IA_simplify", s);
-    //log::debug_level = 0;
-
-    log(1) << "Simplifying...\n";
-    s = simplify(s);
-    s = remove_dead_lets(s);
-    log(2) << "Simplified: \n" << s << "\n\n";
-    log_to_file(f.name() + "_199_simplify", s);
-#endif
+		//log(1) << "Simplifying...\n";
+		//s = simplify(s);
+		//s = remove_dead_lets(s);
+		//log(2) << "Simplified: \n" << s << "\n\n";
+		//log_to_file(f.name() + "_199_simplify", s);
+	}
 
     log(1) << "Simplifying...\n";
     s = simplify(s);

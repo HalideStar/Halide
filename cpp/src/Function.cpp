@@ -3,7 +3,7 @@
 #include "Scope.h"
 
 //LH
-#include "log.h"
+#include "Log.h"
 
 namespace Halide {
 namespace Internal {

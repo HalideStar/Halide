@@ -6,7 +6,7 @@
 #include "IROperator.h"
 #include "IRVisitor.h"
 #include "IRPrinter.h"
-#include "log.h"
+#include "Log.h"
 #include "Simplify.h"
 
 #include <iostream>

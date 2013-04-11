@@ -1,6 +1,6 @@
 #include "IRMutator.h"
 #include "Log.h"
-#include "IRPRinter.h"
+#include "IRPrinter.h"
 
 namespace Halide {
 namespace Internal {

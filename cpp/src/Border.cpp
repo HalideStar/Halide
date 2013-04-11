@@ -3,6 +3,7 @@
 #define BORDER_EXTERN_CONSTRUCTOR(decl,args) decl args
 #include "Border.h"
 
+#include "Options.h"
 #include "IR.h"
 #include "IREquality.h"
 #include "IRPrinter.h"
@@ -59,8 +60,12 @@ static Func border_builder(vector<BorderFunc> borderfuncs, Func f) {
     // Apply the subscripts to the function f.
     expr = f(f_args);
     // Insert value expressions for each of the border functions.
-    //for (int i = 0; i < f.dimensions(); i++) {
-    for (int i = f.dimensions()-1; i >= 0; i--) {
+    for (int ii = 0; ii < f.dimensions(); ii++) {
+		int i;
+		// inner outside option: loop from f.dimensions()-1 down to and including 0 so
+		// that the innermost (i.e. 0'th) loop index is generated outside the others.
+		if (global_options.border_value_inner_outside) i = f.dimensions() - ii - 1;
+		else i = ii;
         // As above, undefined bounds are mapped to the extremes of a 32-bit integer.
         Expr min = f.valid().min(i);
         Expr max = f.valid().max(i);

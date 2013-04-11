@@ -615,7 +615,7 @@ class Simplify : public IRMutator {
             std::swap(a, b);
         }
 
-        int ia, ib;
+        int ia, ib, ib2, ib3;
         float fa, fb;
         const Ramp *ramp_a = a.as<Ramp>();
         const Ramp *ramp_b = b.as<Ramp>();
@@ -628,6 +628,8 @@ class Simplify : public IRMutator {
         const Min *min_a_a = min_a ? min_a->a.as<Min>() : NULL;
         const Min *min_a_a_a = min_a_a ? min_a_a->a.as<Min>() : NULL;
         const Min *min_a_a_a_a = min_a_a_a ? min_a_a_a->a.as<Min>() : NULL;
+		const Max *max_a = a.as<Max>();
+		const Min *min_a_max_a = max_a ? max_a->a.as<Min>() : NULL;
 
         // Sometimes we can do bounds analysis to simplify
         // things. Only worth doing for ints
@@ -685,7 +687,13 @@ class Simplify : public IRMutator {
         } else if (min_a && is_simple_const(min_a->b) && is_simple_const(b)) {
             // min(min(x, 4), 5) -> min(x, 4)
             expr = new Min(min_a->a, mutate(new Min(min_a->b, b)));
-        } else if (min_a && (equal(min_a->b, b) || equal(min_a->a, b))) {
+        } else if (global_options.simplify_nested_clamp && 
+				   add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) { //LH
+			// min(e + k1, k2) -> min(x, k2-k1) + k1   Provided there is no overflow
+			// Pushes additions down where they may combine with others.
+			// (Subtractions e - k are previously converted to e + -k).
+			expr = new Add(new Min(add_a->a, ib - ia), ia);
+		} else if (min_a && (equal(min_a->b, b) || equal(min_a->a, b))) {
             // min(min(x, y), y) -> min(x, y)
             expr = a;
         } else if (min_b && (equal(min_b->b, a) || equal(min_b->a, a))) {
@@ -700,6 +708,20 @@ class Simplify : public IRMutator {
         } else if (min_a_a_a_a && equal(min_a_a_a_a->b, b)) {
             // min(min(min(min(min(x, y), z), w), l), y) -> min(min(min(min(x, y), z), w), l)
             expr = a;            
+        } else if (global_options.simplify_nested_clamp && 
+				   max_a && const_int(max_a->b, &ib) && const_int(b, &ib2) && ib2 <= ib) { //LH
+			// min(max(x, k1), k2) -> k2 when k1 >= k2
+			expr = b;
+		} else if (global_options.simplify_nested_clamp && 
+				   min_a_max_a && const_int(b, &ib) && const_int(max_a->b, &ib2) && const_int(min_a_max_a->b, &ib3) &&
+			ib > ib2 && ib2 < ib3) { //LH
+            // min(max(min(x, k1), k2), k3)
+			// Expression arises from nested clamp expressions due to inlining
+			// k1 <= k2 --> min(k2, k3) to be simplified further.  Max rule should capture that.
+			// k2 >= k3 --> k3 according to rule above.
+			// Otherwise: min(x, k1) limits upper bound to k1 then max(..., k2) limits lower bound to k2 (where k2 < k1)
+			// then min(..., k3) limits upper bound to k3 (where k2 < k3) so overall x is limited to (k2, min(k1,k3))
+            expr = new Min(new Max(min_a_max_a->a, ib2), std::min(ib, ib3));            
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
@@ -715,7 +737,7 @@ class Simplify : public IRMutator {
             std::swap(a, b);
         }
 
-        int ia, ib;
+        int ia, ib, ib2, ib3;
         float fa, fb;
         const Ramp *ramp_a = a.as<Ramp>();
         const Ramp *ramp_b = b.as<Ramp>();
@@ -728,6 +750,8 @@ class Simplify : public IRMutator {
         const Max *max_a_a = max_a ? max_a->a.as<Max>() : NULL;
         const Max *max_a_a_a = max_a_a ? max_a_a->a.as<Max>() : NULL;
         const Max *max_a_a_a_a = max_a_a_a ? max_a_a_a->a.as<Max>() : NULL;
+        const Min *min_a = a.as<Min>();
+        const Max *max_a_min_a = min_a ? min_a->a.as<Max>() : NULL;
 
         if (equal(a, b)) {
             expr = a;
@@ -780,6 +804,12 @@ class Simplify : public IRMutator {
         } else if (max_a && is_simple_const(max_a->b) && is_simple_const(b)) {
             // max(max(x, 4), 5) -> max(x, 5)
             expr = new Max(max_a->a, mutate(new Max(max_a->b, b)));
+        } else if (global_options.simplify_nested_clamp && 
+				   add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) { //LH
+			// max(e + k1, k2) -> max(x, k2-k1) + k1   Provided there is no overflow
+			// Pushes additions down where they may combine with others.
+			// (Subtractions e - k are previously converted to e + -k).
+			expr = new Add(new Max(add_a->a, ib - ia), ia);
         } else if (max_a && (equal(max_a->b, b) || equal(max_a->a, b))) {
             // max(max(x, y), y) -> max(x, y)
             expr = a;
@@ -795,6 +825,20 @@ class Simplify : public IRMutator {
         } else if (max_a_a_a_a && equal(max_a_a_a_a->b, b)) {
             // max(max(max(max(max(x, y), z), w), l), y) -> max(max(max(max(x, y), z), w), l)
             expr = a;            
+        } else if (global_options.simplify_nested_clamp && 
+				   min_a && const_int(min_a->b, &ib) && const_int(b, &ib2) && ib2 >= ib) { //LH
+			// max(min(x, k1), k2) -> k2 when k1 <= k2
+			expr = b;
+		} else if (global_options.simplify_nested_clamp && 
+				   max_a_min_a && const_int(b, &ib) && const_int(min_a->b, &ib2) && const_int(max_a_min_a->b, &ib3) &&
+			       ib < ib2 && ib2 > ib3) { //LH
+            // max(min(max(x, k1), k2), k3)
+			// Expression arises from nested clamp expressions due to inlining
+			// k1 >= k2 --> max(k2, k3) to be simplified further.  Min rule should capture that.
+			// k2 <= k3 --> k3 according to rule above.
+			// Otherwise: max(x, k1) limits lower bound to k1 then min(..., k2) limits upper bound to k2 (where k2 > k1)
+			// then max(..., k3) limits lower bound to k3 (where k2 > k3) so overall x is limited to (max(k1,k3), k2)
+            expr = new Max(new Min(max_a_min_a->a, ib2), std::max(ib, ib3));            
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
@@ -931,6 +975,15 @@ class Simplify : public IRMutator {
             compare_lt(broadcast_a->value, 0, ramp_b->base, ramp_b->stride, ramp_b->width, op);
         } else if (ramp_a && ramp_b) { //LH
             compare_lt(ramp_a->base, ramp_a->stride, ramp_b->base, ramp_b->stride, ramp_b->width, op);
+        } else if (is_const(a) && add_b && is_const(add_b->b)) { //LH
+            // Constant on LHS and add with constant on RHS
+            expr = mutate(a - add_b->b < add_b->a);
+        } else if (is_const(a) && sub_b && is_const(sub_b->b)) { //LH
+            // Constant on LHS and subtract constant on RHS
+            expr = mutate(a + sub_b->b < sub_b->a);
+        } else if (is_const(a) && sub_b && is_const(sub_b->a)) { //LH
+            // Constant on LHS and subtract from constant on RHS
+            expr = mutate(sub_b->b < sub_b->a - a);
         } else if (add_a && add_b && equal(add_a->a, add_b->a)) {
             // Subtract a term from both sides
             expr = mutate(add_a->b < add_b->b);
@@ -1420,6 +1473,8 @@ void simplify_test() {
     check(new Min(new Min(x, y), y), new Min(x, y));
     check(new Min(x, new Min(x, y)), new Min(x, y));
     check(new Min(y, new Min(x, y)), new Min(x, y));
+	check(new Min(new Max(new Min(x, 18), 7), 21), new Min(new Max(x, 7), 18));
+	check(new Min(new Max(x, 5), 3), Expr(3));
 
     check(new Max(7, 3), 7);
     check(new Max(4.25f, 1.25f), 4.25f);
@@ -1433,6 +1488,8 @@ void simplify_test() {
     check(new Max(new Max(x, y), y), new Max(x, y));
     check(new Max(x, new Max(x, y)), new Max(x, y));
     check(new Max(y, new Max(x, y)), new Max(x, y));
+	check(new Max(new Min(new Max(x, 5), 15), 7), new Max(new Min(x, 15), 7));
+	check(new Max(new Min(x, 7), 9), Expr(9));
 
     Expr t = const_true(), f = const_false();
     check(x == x, t);
