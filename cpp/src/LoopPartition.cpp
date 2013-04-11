@@ -174,10 +174,10 @@ class LoopPartition : public IRMutator {
             Expr before_min = op->min;
             Expr before_extent = min(op->partition_begin, op->extent);
             // Greedy allocation of up to partition_end loop iterations to after.
-            Expr main_min = before_min + before_extent;
-            Expr main_extent = max(0, op->extent - before_extent - op->partition_end);
-            Expr after_min = main_min + main_extent;
-            Expr after_extent = op->extent - before_extent - main_extent;
+            Expr main_min = before_min + op->partition_begin; // May be BIG
+            Expr main_extent = op->extent - op->partition_begin - op->partition_end; // May be negative
+            Expr after_min = main_min + max(0,main_extent);
+            Expr after_extent = min(op->partition_end, op->extent - before_extent);
             // Now generate the partitioned loops.
             // Mark them by using negative numbers for the partition information.
             Stmt before = new For(op->name, before_min, before_extent, op->for_type, -2, -2, op->body);
