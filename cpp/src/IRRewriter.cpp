@@ -223,6 +223,16 @@ void IRRewriter::visit(const Block *op) {
     stmt = op;
 }
 
+void IRRewriter::visit(const Solve *op) {
+    rewriter_defaulted = true;
+    expr = op;
+}
+
+void IRRewriter::visit(const TargetVar *op) {
+    rewriter_defaulted = true;
+    expr = op;
+}
+
 }
 }
 

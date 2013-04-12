@@ -1767,6 +1767,14 @@ void CodeGen::visit(const Provide *op) {
     assert(false && "Provide encountered during codegen");
 }
 
+void CodeGen::visit(const Solve *op) {
+    assert(false && "Solve encountered during codegen");
+}
+
+void CodeGen::visit(const TargetVar *op) {
+    assert(false && "TargetVar encountered during codegen");
+}
+
 template<>
 EXPORT RefCount &ref_count<CodeGen>(const CodeGen *p) {return p->ref_count;}
 

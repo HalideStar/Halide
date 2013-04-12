@@ -268,5 +268,19 @@ void IRMutator::visit(const Block *op) {
     if (first.same_as(op->first) && rest.same_as(op->rest)) stmt = op;
     else stmt = new Block(first, rest);
 }
+
+void IRMutator::visit(const Solve *op) {
+    Expr e = mutate(op->e);
+    if (e.same_as(op->e)) expr = op;
+    else expr = new Solve(e, op->v);
+}
+
+void IRMutator::visit(const TargetVar *op) {
+    Expr e = mutate(op->e);
+    if (e.same_as(op->e)) expr = op;
+    else expr = new TargetVar(op->var, e);
+}
+
+// end namespace Internal
 }
 }

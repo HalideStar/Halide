@@ -180,7 +180,7 @@ struct Stmt : public IRHandle {
 
 /** The actual IR nodes begin here. Remember that all the Expr
  * nodes also have a public "type" property */
-
+ 
 /** Integer constants */
 struct IntImm : public ExprNode<IntImm> {
     int value;
@@ -675,7 +675,7 @@ struct Allocate : public StmtNode<Allocate> {
 struct Interval {
     Expr min, max;
     Interval(Expr min, Expr max) : min(min), max(max) {}
-    Interval();
+    Interval() {}
 };
 
 /** A single-dimensional span. Includes all numbers between min and
@@ -828,6 +828,27 @@ struct Variable : public ExprNode<Variable> {
 
     Variable(Type t, std::string n) : ExprNode<Variable>(t), name(n) {}
 };
+
+/** Special nodes that are for use by the solver.
+ * Solve represents something to be solved, or a Solve.
+ * TargetVar represents a target variable to be solved for in the enclosed scope.
+ */
+struct Solve : public ExprNode<Solve> {
+    Expr e;
+    std::vector<Interval> v;
+    
+    Solve(Expr _e, std::vector<Interval> _v) : ExprNode<Solve>(_e.type()), e(_e), v(_v) {}
+    Solve(Expr _e, Interval _i) : ExprNode<Solve>(_e.type()), e(_e), v(vec(_i)) {}
+    Solve(Expr _e, Interval _i, Interval _j) : ExprNode<Solve>(_e.type()), e(_e), v(vec(_i, _j)) {}
+};
+
+struct TargetVar : public ExprNode<TargetVar> {
+    std::string var;
+    Expr e;
+    
+    TargetVar(std::string _v, Expr _e) : ExprNode<TargetVar>(_e.type()), var(_v), e(_e) {}
+};
+
 
 }
 }

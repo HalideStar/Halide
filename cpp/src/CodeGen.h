@@ -211,6 +211,8 @@ protected:
     // @{
     virtual void visit(const Provide *);
     virtual void visit(const Realize *);
+    virtual void visit(const Solve *);
+    virtual void visit(const TargetVar *);
     // @}
 
 

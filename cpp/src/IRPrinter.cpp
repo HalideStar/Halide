@@ -557,5 +557,25 @@ void IRPrinter::visit(const Block *op) {
     if (op->rest.defined()) print(op->rest);
 }
 
+void IRPrinter::visit(const Solve *op) {
+    stream << "solve(";
+    for (size_t i=0; i < op->v.size(); i++) {
+        stream << "[";
+        print(op->v[i].min);
+        stream << ", ";
+        print(op->v[i].max);
+        stream << "]";
+        if (i < op->v.size() - 1) stream << ", ";
+    }
+    stream << ": ";
+    print(op->e);
+    stream << ") ";
+}
+
+void IRPrinter::visit(const TargetVar *op) {
+    stream << "targetvar[" << op->var << "](";
+    print(op->e);
+    stream << ")";
+}
     
 }}

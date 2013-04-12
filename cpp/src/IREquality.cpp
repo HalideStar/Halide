@@ -309,6 +309,45 @@ public:
             result = false;
         }
     }
+    
+    void visit(const Solve *op) {
+        const Solve *solve = expr.as<Solve>();
+        if (result && solve && (solve->e.defined() == op->e.defined()) && (solve->v.size() == op->v.size())) {
+            if (solve->e.defined()) {
+                expr = solve->e;
+                op->e.accept(this);
+            }
+            // Check that all the intervals match up
+            for (size_t i = 0; i < op->v.size(); i++) {
+                if (op->v[i].min.defined() != solve->v[i].min.defined()) {
+                    result = false;
+                } else if (op->v[i].min.defined()) {
+                    expr = solve->v[i].min;
+                    op->v[i].min.accept(this);
+                }
+                if (op->v[i].max.defined() != solve->v[i].max.defined()) {
+                    result = false;
+                } else if (op->v[i].max.defined()) {
+                    expr = solve->v[i].max;
+                    op->v[i].max.accept(this);
+                }
+            }
+        } else {
+            result = false;
+        }
+    }
+    
+    void visit(const TargetVar *op) {
+        const TargetVar *target = expr.as<TargetVar>();
+        if (result && target && (target->e.defined() == op->e.defined()) && (target->var == op->var)) {
+            if (target->e.defined()) {
+                expr = target->e;
+                op->e.accept(this);
+            }
+        } else {
+            result = false;
+        }
+    }
 };
 
 bool equal(Expr a, Expr b) {

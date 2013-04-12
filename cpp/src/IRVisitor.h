@@ -54,6 +54,9 @@ struct Allocate;
 struct Realize;
 struct Block;
 
+struct Solve;
+struct TargetVar;
+
 /** A base class for algorithms that need to recursively walk over the
  * IR. The default implementations just recursively walk over the
  * children. Override the ones you care about.
@@ -111,6 +114,9 @@ public:
     virtual void visit(const Allocate *);
     virtual void visit(const Realize *);
     virtual void visit(const Block *);
+    
+    virtual void visit(const Solve *);
+    virtual void visit(const TargetVar *);
 };
 
 }

@@ -50,6 +50,8 @@ std::ostream &operator<<(std::ostream &stream, Stmt);
  * which it prints.
  */
 class IRPrinter : public IRVisitor {
+    // The absence of using statement in this class means that all visit
+    // methods must be defined.
 public:
     /** Construct an IRPrinter pointed at a given output stream
      * (e.g. std::cout, or a std::ofstream) */
@@ -116,6 +118,8 @@ protected:
     void visit(const Realize *);
     void visit(const Block *);
 
+    void visit(const Solve *);
+    void visit(const TargetVar *);
 };
 }
 }

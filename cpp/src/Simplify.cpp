@@ -37,18 +37,18 @@ int do_indirect_int_cast(Type t, int x) {
 // Implementation of Halide div and mod operators
 
 class Simplify : public IRMutator {
-
+protected:
     Scope<Expr> scope;
 
     Scope<ModulusRemainder> alignment_info;
 
     using IRMutator::visit;
 
-    void visit(const IntImm *op) {
+    virtual void visit(const IntImm *op) {
         IRMutator::visit(op);
     }
 
-    void visit(const FloatImm *op) {
+    virtual void visit(const FloatImm *op) {
         IRMutator::visit(op);
     }
 
@@ -99,7 +99,7 @@ class Simplify : public IRMutator {
         }
     }
 
-    void visit(const Cast *op) {
+    virtual void visit(const Cast *op) {
         Expr value = mutate(op->value);        
         const Cast *cast = value.as<Cast>();
         float f;
@@ -128,7 +128,7 @@ class Simplify : public IRMutator {
         }
     }
 
-    void visit(const Variable *op) {
+    virtual void visit(const Variable *op) {
         if (scope.contains(op->name)) {
             Expr replacement = scope.get(op->name);
 
@@ -176,7 +176,7 @@ class Simplify : public IRMutator {
         }
     }
 
-    void visit(const Add *op) {
+    virtual void visit(const Add *op) {
         log(3) << "Simplifying " << Expr(op) << "\n";
 
         int ia, ib;
@@ -263,7 +263,7 @@ class Simplify : public IRMutator {
         }
     }
 
-    void visit(const Sub *op) {
+    virtual void visit(const Sub *op) {
         log(3) << "Simplifying " << Expr(op) << "\n";
 
         Expr a = mutate(op->a), b = mutate(op->b);
@@ -353,7 +353,7 @@ class Simplify : public IRMutator {
         }
     }
 
-    void visit(const Mul *op) {
+    virtual void visit(const Mul *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
 
         if (is_simple_const(a)) std::swap(a, b);
@@ -401,7 +401,7 @@ class Simplify : public IRMutator {
         }
     }
 
-    void visit(const Div *op) {
+    virtual void visit(const Div *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
         
         int ia, ib;
@@ -489,7 +489,7 @@ class Simplify : public IRMutator {
         }
     }
 
-    void visit(const Mod *op) {
+    virtual void visit(const Mod *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
 
         int ia, ib;
@@ -607,7 +607,7 @@ class Simplify : public IRMutator {
         return false;
     }
 
-    void visit(const Min *op) {
+    virtual void visit(const Min *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
 
         // Move constants to the right to cut down on number of cases to check
@@ -729,7 +729,7 @@ class Simplify : public IRMutator {
         }
     }
 
-    void visit(const Max *op) {
+    virtual void visit(const Max *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
 
         // Move constants to the right to cut down on number of cases to check
@@ -846,7 +846,7 @@ class Simplify : public IRMutator {
         }
     }
 
-    void visit(const EQ *op) {
+    virtual void visit(const EQ *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
         Expr delta = mutate(a - b);
 
@@ -921,11 +921,11 @@ class Simplify : public IRMutator {
         }
     }
 
-    void visit(const NE *op) {
+    virtual void visit(const NE *op) {
         expr = mutate(new Not(op->a == op->b));
     }
 
-    void visit(const LT *op) {
+    virtual void visit(const LT *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
         Expr delta = mutate(a - b);
 
@@ -1023,19 +1023,19 @@ class Simplify : public IRMutator {
         }
     }
 
-    void visit(const LE *op) {
+    virtual void visit(const LE *op) {
         expr = mutate(!(op->b < op->a));
     }
 
-    void visit(const GT *op) {
+    virtual void visit(const GT *op) {
         expr = mutate(op->b < op->a);
     }
 
-    void visit(const GE *op) {
+    virtual void visit(const GE *op) {
         expr = mutate(!(op->a < op->b));
     }
 
-    void visit(const And *op) {
+    virtual void visit(const And *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
 
         if (is_one(a)) {
@@ -1053,7 +1053,7 @@ class Simplify : public IRMutator {
         }
     }
 
-    void visit(const Or *op) {
+    virtual void visit(const Or *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
 
         if (is_one(a)) {
@@ -1071,7 +1071,7 @@ class Simplify : public IRMutator {
         }
     }
 
-    void visit(const Not *op) {
+    virtual void visit(const Not *op) {
         Expr a = mutate(op->a);
         
         if (is_one(a)) {
@@ -1102,7 +1102,7 @@ class Simplify : public IRMutator {
         }
     }
 
-    void visit(const Select *op) {
+    virtual void visit(const Select *op) {
         Expr condition = mutate(op->condition);
         Expr true_value = mutate(op->true_value);
         Expr false_value = mutate(op->false_value);
@@ -1128,19 +1128,19 @@ class Simplify : public IRMutator {
         }
     }
 
-    void visit(const Load *op) {
+    virtual void visit(const Load *op) {
         IRMutator::visit(op);
     }
 
-    void visit(const Ramp *op) {
+    virtual void visit(const Ramp *op) {
         IRMutator::visit(op);
     }
 
-    void visit(const Broadcast *op) {
+    virtual void visit(const Broadcast *op) {
         IRMutator::visit(op);
     }
 
-    void visit(const Call *op) {
+    virtual void visit(const Call *op) {
         IRMutator::visit(op);
     }
 
@@ -1236,47 +1236,47 @@ class Simplify : public IRMutator {
     }
 
 
-    void visit(const Let *op) {
+    virtual void visit(const Let *op) {
         expr = simplify_let<Let, Expr>(op, scope, this);
     }
 
-    void visit(const LetStmt *op) {
+    virtual void visit(const LetStmt *op) {
         stmt = simplify_let<LetStmt, Stmt>(op, scope, this);
     }
 
-    void visit(const PrintStmt *op) {
+    virtual void visit(const PrintStmt *op) {
         IRMutator::visit(op);
     }
 
-    void visit(const AssertStmt *op) {
+    virtual void visit(const AssertStmt *op) {
         IRMutator::visit(op);
     }
 
-    void visit(const Pipeline *op) {
+    virtual void visit(const Pipeline *op) {
         IRMutator::visit(op);
     }
 
-    void visit(const For *op) {
+    virtual void visit(const For *op) {
         IRMutator::visit(op);
     }
 
-    void visit(const Store *op) {
+    virtual void visit(const Store *op) {
         IRMutator::visit(op);
     }
 
-    void visit(const Provide *op) {
+    virtual void visit(const Provide *op) {
         IRMutator::visit(op);
     }
 
-    void visit(const Allocate *op) {
+    virtual void visit(const Allocate *op) {
         IRMutator::visit(op);
     }
 
-    void visit(const Realize *op) {
+    virtual void visit(const Realize *op) {
         IRMutator::visit(op);
     }
 
-    void visit(const Block *op) {        
+    virtual void visit(const Block *op) {        
         IRMutator::visit(op);
     }    
 };
@@ -1596,3 +1596,6 @@ void simplify_test() {
 }
 }
 }
+
+
+# include "SolverCpp.h"

@@ -10,7 +10,7 @@ IRVisitor::IRVisitor() {
 
 IRVisitor::~IRVisitor() {
 }
-    
+
 void IRVisitor::visit(const IntImm *) {
     defaulted = true;
 }
@@ -262,6 +262,18 @@ void IRVisitor::visit(const Block *op) {
     op->first.accept(this);
     if (op->rest.defined()) op->rest.accept(this);
 }
+
+void IRVisitor::visit(const Solve *op) {
+    defaulted = true;
+    op->e.accept(this);
+    // Does not visit the Solve data, the intervals.
+}
+    
+void IRVisitor::visit(const TargetVar *op) {
+    defaulted = true;
+    op->e.accept(this);
+}
+    
 
 }
 }

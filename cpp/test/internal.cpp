@@ -14,6 +14,7 @@
 #include "LowerClamp.h"
 #include "Border.h"
 #include "IntervalAnalysis.h"
+#include "Solver.h"
 
 using namespace Halide;
 using namespace Halide::Internal;
@@ -38,5 +39,6 @@ int main(int argc, const char **argv) {
     lower_clamp_test();
     border_test();
     interval_analysis_test();
+    solver_test();
     return 0;
 }

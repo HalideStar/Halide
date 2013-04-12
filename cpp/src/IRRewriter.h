@@ -72,6 +72,9 @@ public:
     virtual void visit(const Allocate *);
     virtual void visit(const Realize *);
     virtual void visit(const Block *);
+    
+    virtual void visit(const Solve *);
+    virtual void visit(const TargetVar *);
 };
 
 }
