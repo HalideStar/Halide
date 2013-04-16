@@ -265,6 +265,10 @@ protected:
             // Broadcast + Broadcast
             expr = new Broadcast(mutate(broadcast_a->value + broadcast_b->value),
                                  broadcast_a->width);
+        } else if (equal(a, b)) { //LH
+            // Adding an expression to itself - multiply by 2 instead
+            // (which ends up being a bit shift operation for efficiency)
+            expr = mutate(a * 2);
         } else if (add_a && is_simple_const(add_a->b)) {
             // In ternary expressions, pull constants outside
             if (is_simple_const(b)) expr = mutate(add_a->a + (add_a->b + b));
@@ -289,6 +293,14 @@ protected:
             expr = mutate(mul_a->b * (mul_a->a + mul_b->a));
         } else if (mul_a && mul_b && equal(mul_a->a, mul_b->b)) {
             expr = mutate(mul_a->a * (mul_a->b + mul_b->a));
+        } else if (mul_a && equal(mul_a->a, b) && ! is_const(b)) { //LH
+            expr = mutate(b * (mul_a->b + 1));
+        } else if (mul_a && equal(mul_a->b, b) && ! is_const(b)) { //LH
+            expr = mutate(b * (mul_a->a + 1));
+        } else if (mul_b && equal(mul_b->a, a) && ! is_const(a)) { //LH
+            expr = mutate(a * (mul_b->b + 1));
+        } else if (mul_b && equal(mul_b->b, a) && ! is_const(a)) { //LH
+            expr = mutate(a * (mul_b->a + 1));
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             // If we've made no changes, and can't find a rule to apply, return the operator unchanged.
             expr = op;
@@ -402,6 +414,14 @@ protected:
             expr = mutate(mul_a->b * (mul_a->a - mul_b->a));
         } else if (mul_a && mul_b && equal(mul_a->a, mul_b->b)) {
             expr = mutate(mul_a->a * (mul_a->b - mul_b->a));
+        } else if (mul_a && equal(mul_a->a, b) && ! is_const(b)) { //LH
+            expr = mutate(b * (mul_a->b - 1));
+        } else if (mul_a && equal(mul_a->b, b) && ! is_const(b)) { //LH
+            expr = mutate(b * (mul_a->a - 1));
+        } else if (mul_b && equal(mul_b->a, a) && ! is_const(a)) { //LH
+            expr = mutate(a * (1 - mul_b->b));
+        } else if (mul_b && equal(mul_b->b, a) && ! is_const(a)) { //LH
+            expr = mutate(a * (1 - mul_b->a));
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {

@@ -1200,6 +1200,13 @@ void solver_test() {
     checkSolver(solve(x + 4, Interval(0,new Infinity(+1))), solve(x, Interval(-4,new Infinity(+1))) + 4);
     checkSolver(solve(x + 4, Interval(new Infinity(-1),10)), solve(x, Interval(new Infinity(-1),6)) + 4);
     
+    // A few complex expressions
+    checkSolver(solve(x + c + 2 * y + d, Interval(0,10)), solve(x + y * 2, Interval(0 - d - c, 10 - d - c)) + c + d);
+    // Solve 0 <= x + 10 + x + 15 <= 10
+    // -25 <= x * 2 <= -15
+    // -12 <= x <= -8
+    checkSolver(solve(x + 10 + x + 15, Interval(0,10)), solve(x, Interval(-12, -8)) * 2 + 25);
+    
     std::cout << "Solve test passed" << std::endl;
 }
 
