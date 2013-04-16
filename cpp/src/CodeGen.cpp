@@ -1775,6 +1775,10 @@ void CodeGen::visit(const TargetVar *op) {
     assert(false && "TargetVar encountered during codegen");
 }
 
+void CodeGen::visit(const Infinity *op) {
+    assert(false && "Infinity encountered during codegen");
+}
+
 template<>
 EXPORT RefCount &ref_count<CodeGen>(const CodeGen *p) {return p->ref_count;}
 

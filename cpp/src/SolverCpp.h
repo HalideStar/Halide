@@ -70,45 +70,8 @@ bool is_constant_expr(std::vector<std::string> varlist, Expr e) {
     return ! hasvar.result;
 }
 
-#if 0
-// Evaluator: This class object visits a node and updates the intervals in the current solution.
-class Evaluator : public IRNodeVisitor {
-public:
-    using IRNodeVisitor::visit;
-    
-    void visit(const Add *op) {
-        if (is_constant_expr(op->b)) {
-            // e + k on (u,v) --> e on (u-k,v-k)
-            for (size_t i = 0; i < intervals.size(); i++) {
-                current.intervals[i].min = current.intervals[i].min - op->b;
-                current.intervals[i].max = current.intervals[i].max - op->b;
-            }
-            current.e = op->a;
-        }
-        else {
-            // The solution cannot be improved upon.
-            final = true;
-        }
-    }
-    
-    void visit(const Sub *op) {
-        if (is_constant_expr(op->b)) {
-            // e - k on (u,v) --> e on (u+k,v+k)
-            current.e = op->a;
-        } else if (is_constant_expr(op->a)) {
-            // k - e on (u,v) --> e on (k-v,k-u)
-            // Because k - e = x ==> x = k - e.
-            for (size_t i = 0; i < intervals.size(); i++) {
-                current.intervals[i].min = op->a - current.intervals[i].max;
-                current.intervals[i].max = op->a - current.intervals[i].min;
-            }
-            current.e = op->b;
-        }
-    }
-};
-#endif
-
 namespace {
+// Convenience methods for building solve nodes.
 Expr solve(Expr e, Interval i) {
     return new Solve(e, i);
 }
@@ -117,13 +80,20 @@ Expr solve(Expr e, std::vector<Interval> i) {
     return new Solve(e, i);
 }
 
-std::vector<Interval> v_sub(std::vector<Interval> v, Expr b) {
+// Apply unary operator to a vector of Interval by applying it to each Interval
+inline std::vector<Interval> v_apply(Interval (*f)(Interval), std::vector<Interval> v) {
     std::vector<Interval> result;
     for (size_t i = 0; i < v.size(); i++) {
-        Interval r = v[i];
-        r.min = simplify(r.min - b);
-        r.max = simplify(r.max - b);
-        result.push_back(r);
+        result.push_back((*f)(v[i]));
+    }
+    return result;
+}
+
+// Apply binary operator to a vector of Interval by applying it to each Interval
+inline std::vector<Interval> v_apply(Interval (*f)(Interval, Expr), std::vector<Interval> v, Expr b) {
+    std::vector<Interval> result;
+    for (size_t i = 0; i < v.size(); i++) {
+        result.push_back((*f)(v[i], b));
     }
     return result;
 }
@@ -147,15 +117,31 @@ public:
     
     
     void visit(const Solve *op) {
+        log(0) << depth << " Solve simplify " << Expr(op) << "\n";
         Expr e = mutate(op->e);
         
         const Add *add_e = e.as<Add>();
+        const Sub *sub_e = e.as<Sub>();
+        const Mul *mul_e = e.as<Mul>();
+        const Div *div_e = e.as<Div>();
         
         if (add_e && is_constant_expr(add_e->b)) {
-            expr = solve(add_e->a, v_sub(op->v, add_e->b)) + add_e->b;
+            expr = mutate(solve(add_e->a, v_apply(operator-, op->v, add_e->b)) + add_e->b);
+        } else if (sub_e && is_constant_expr(sub_e->b)) {
+            expr = mutate(solve(sub_e->a, v_apply(operator+, op->v, sub_e->b)) - sub_e->b);
+        } else if (sub_e && is_constant_expr(sub_e->a)) {
+            // solve(k - v) --> -solve(v - k) with interval negated
+            expr = mutate(-solve(sub_e->b - sub_e->a, v_apply(operator-, op->v)));
+        } else if (mul_e && is_constant_expr(mul_e->b)) {
+            // solve(v * k) on (a,b) --> solve(v) * k with interval (ceil(a/k), floor(b/k))
+            expr = mutate(solve(mul_e->a, v_apply(operator/, op->v, mul_e->b)) * mul_e->b);
+        } else if (div_e && is_constant_expr(div_e->b)) {
+            // solve(v / k) on (a,b) --> solve(v) / k with interval a * k, b * k + (k +/- 1)
+            expr = mutate(solve(div_e->a, v_apply(operator*, op->v, div_e->b)) / div_e->b);
         } else {
             expr = op; // Nothing more to do.
         }
+        log(0) << depth << " Solve simplified to " << expr << "\n";
     }
     
     
@@ -165,9 +151,10 @@ public:
     //void visit(const Variable *op) {
     
     void visit(const Add *op) {
+        log(0) << depth << " XAdd simplify " << Expr(op) << "\n";
         Expr a = mutate(op->a), b = mutate(op->b);
         
-        // Override default behavior: any constant expression is pushed to RHS.
+        // Override default behavior: any constant expression is pushed outside of variable expressions.
         if (is_constant_expr(a) && ! is_constant_expr(b)) {
             std::swap(a, b);
         }
@@ -179,19 +166,16 @@ public:
 
         // The default behavior of simplify pushes constant values towards the RHS.
         // We want to preserve that behavior because it results in constants being
-        // simplified.  On top of that, however, we want to separate other variables
-        // from the targets.  So we can think of constant variables as being constants.
+        // simplified.  On top of that, however, we want to push constant variables
+        // and expressions consisting only of constant variables outside of expressions
+        // consisting of/containing target variables.
         
-        // In the following comments, k... denotes constant, v... denotes variable.
-        if (add_a && is_constant_expr(add_a->b)) {
-            // (aa + kab) + b
-            if (is_constant_expr(b)) {
-                // (aa + kab) + kb --> aa + (kab + kb)
-                expr = mutate(add_a->a + (add_a->b + b));
-            } else {
-                // (aa + kab) + vb --> (aa + vb) + kab
-                expr = mutate((add_a->a + b) + add_a->b);
-            }
+        // In the following comments, k... denotes constant expression, v... denotes target variable.
+        if (is_constant_expr(a) && is_constant_expr(b)) {
+            Simplify::visit(op); // Pure constant expressions get simplified in the normal way
+        } else if (add_a && is_constant_expr(add_a->b) && ! is_constant_expr(b)) {
+            // (aa + kab) + vb --> (aa + vb) + kab
+            expr = mutate((add_a->a + b) + add_a->b);
         } else if (add_b && is_constant_expr(add_b->b) && !is_constant_expr(add_b->a)) {
             // a + (vba + kbb) --> (a + vba) + kbb
             expr = mutate((a + add_b->a) + add_b->b);
@@ -200,140 +184,86 @@ public:
             expr = mutate((sub_a->a + b) - sub_a->b);
         } else {
             // Adopt default behavior
+            // Take care in the above rules to ensure that they do not produce changes that
+            // are reversed by Simplify::visit(Add)
             Simplify::visit(op);
         }
+        log(0) << depth << " XAdd simplified to " << expr << "\n";
     }
 
-# if 0
     void visit(const Sub *op) {
+        log(0) << depth << " XSub simplify " << Expr(op) << "\n";
         Expr a = mutate(op->a), b = mutate(op->b);
-
+        
+        // Override default behavior.
+        // Push constant expressions outside of variable expressions.
+        
         const Add *add_a = a.as<Add>();
         const Add *add_b = b.as<Add>();
         const Sub *sub_a = a.as<Sub>();
         const Sub *sub_b = b.as<Sub>();
-        const Mul *mul_a = a.as<Mul>();
-        const Mul *mul_b = b.as<Mul>();
-
-        if (is_zero(b)) {
-            expr = a;
-        } else if (equal(a, b)) {
-            expr = make_zero(op->type);
-        } else if (const_int(a, &ia) && const_int(b, &ib)) {
-            expr = ia - ib;
-        } else if (const_float(a, &fa) && const_float(b, &fb)) {
-            expr = fa - fb;
-        } else if (const_int(b, &ib)) {
-            expr = mutate(a + (-ib));
-        } else if (const_float(b, &fb)) {
-            expr = mutate(a + (-fb));
-        } else if (const_castint(a, &ia) && const_castint(b, &ib)) {
-            if (op->type.is_uint()) {
-                expr = make_const(op->type, ((unsigned int) ia) - ((unsigned int) ib));
-            } else {
-                expr = make_const(op->type, ia - ib);
-            }
-        } else if (ramp_a && ramp_b) {
-            // Ramp - Ramp
-            expr = mutate(new Ramp(ramp_a->base - ramp_b->base,
-                                   ramp_a->stride - ramp_b->stride, ramp_a->width));
-        } else if (ramp_a && broadcast_b) {
-            // Ramp - Broadcast
-            expr = mutate(new Ramp(ramp_a->base - broadcast_b->value, 
-                                   ramp_a->stride, ramp_a->width));
-        } else if (broadcast_a && ramp_b) {
-            // Broadcast - Ramp
-            expr = mutate(new Ramp(broadcast_a->value - ramp_b->base, 
-                                   make_zero(ramp_b->stride.type())- ramp_b->stride,
-                                   ramp_b->width));
-        } else if (broadcast_a && broadcast_b) {
-            // Broadcast + Broadcast
-            expr = new Broadcast(mutate(broadcast_a->value - broadcast_b->value),
-                                 broadcast_a->width);
-        } else if (add_a && equal(add_a->b, b)) {
-            // Ternary expressions where a term cancels
-            expr = add_a->a;
-        } else if (add_a && equal(add_a->a, b)) {
-            expr = add_a->b;
-        } else if (add_b && equal(add_b->b, a)) {
-            expr = mutate(make_zero(add_b->a.type()) - add_b->a);
-        } else if (add_b && equal(add_b->a, a)) {
-            expr = mutate(make_zero(add_b->a.type()) - add_b->b);
-        } else if (add_a && is_simple_const(add_a->b)) {
-            // In ternary expressions, pull constants outside
-            if (is_simple_const(b)) expr = mutate(add_a->a + (add_a->b - b));
-            else expr = mutate((add_a->a - b) + add_a->b);
-        } else if (add_b && is_simple_const(add_b->b)) {
+        
+        // In the following comments, k... denotes constant expression, v... denotes target variable.
+        if (is_constant_expr(a) && is_constant_expr(b)) {
+            Simplify::visit(op); // Pure constant expressions get simplified in the normal way
+        } else if (add_a && is_constant_expr(add_a->b) && ! is_constant_expr(b) & !is_constant_expr(add_a->a)) {
+            // (vaa + kab) - kb --> unchanged (because other simplify rules would reverse)
+            // (vaa + kab) - vb --> (vaa - vb) + kab
+            expr = mutate((add_a->a - b) + add_a->b);
+        } else if (add_b && is_constant_expr(add_b->b) && !is_constant_expr(add_b->a)) {
+            // a - (vba + kbb) --> (a - vba) - kbb
             expr = mutate((a - add_b->a) - add_b->b);
-        } else if (sub_a && is_simple_const(sub_a->a) && is_simple_const(b)) {
+        } else if (sub_a && is_constant_expr(sub_a->a) && is_constant_expr(b)) {
+            // (kaa - ab) - kb --> (kaa - kb) - ab
             expr = mutate((sub_a->a - b) - sub_a->b);
-        } else if (sub_b && is_simple_const(sub_b->b)) {
-            if (is_simple_const(a)) expr = mutate((a + sub_b->b) - sub_b->a);
-            expr = mutate((a - sub_b->a) + sub_b->b);
-        } else if (mul_a && mul_b && equal(mul_a->a, mul_b->a)) {
-            // Pull out common factors a*x + b*x
-            expr = mutate(mul_a->a * (mul_a->b - mul_b->b));
-        } else if (mul_a && mul_b && equal(mul_a->b, mul_b->a)) {
-            expr = mutate(mul_a->b * (mul_a->a - mul_b->b));
-        } else if (mul_a && mul_b && equal(mul_a->b, mul_b->b)) {
-            expr = mutate(mul_a->b * (mul_a->a - mul_b->a));
-        } else if (mul_a && mul_b && equal(mul_a->a, mul_b->b)) {
-            expr = mutate(mul_a->a * (mul_a->b - mul_b->a));
-        } else if (a.same_as(op->a) && b.same_as(op->b)) {
-            expr = op;
+        } else if (sub_b && is_constant_expr(sub_b->b)) {
+            // Unused: ka - (ba - kbb) --> (ka + kbb) - ba: Such a rule is reversed by simplify
+            if (is_constant_expr(a)) expr = mutate((a + sub_b->b) - sub_b->a);
+            // a - (ba - kbb) --> (a - ba) + kbb;
+            else expr = mutate((a - sub_b->a) + sub_b->b);
+        } else if (sub_b && is_constant_expr(sub_b->a) && is_constant_expr(a)) {
+            // ka - (kba - bb) --> (bb + ka) - kba
+            if (is_constant_expr(a)) expr = mutate((sub_b->b + a) - sub_b->a);
+            // a - (kba - bb) --> (a + bb) - kba
+            else expr = mutate((a + sub_b->b) - sub_b->a);
         } else {
-            expr = new Sub(a, b);
+            // Adopt default behavior
+            // Take care in the above rules to ensure that they do not produce changes that
+            // are reversed by Simplify::visit(Add)
+            Simplify::visit(op);
         }
+        log(0) << depth << " XSub simplified to " << expr << "\n";
     }
 
     void visit(const Mul *op) {
+        log(0) << depth << " XMul simplify " << Expr(op) << "\n";
         Expr a = mutate(op->a), b = mutate(op->b);
 
-        if (is_simple_const(a)) std::swap(a, b);
-
-        int ia, ib; 
-        float fa, fb;
-
-        const Ramp *ramp_a = a.as<Ramp>();
-        const Ramp *ramp_b = b.as<Ramp>();
-        const Broadcast *broadcast_a = a.as<Broadcast>();
-        const Broadcast *broadcast_b = b.as<Broadcast>();
-        const Add *add_a = a.as<Add>();
-        const Mul *mul_a = a.as<Mul>();
-
-        if (is_zero(b)) {
-            expr = b;
-        } else if (is_one(b)) {
-            expr = a;
-        } else if (const_int(a, &ia) && const_int(b, &ib)) {
-            expr = ia*ib;
-        } else if (const_float(a, &fa) && const_float(b, &fb)) {
-            expr = fa*fb;
-        } else if (const_castint(a, &ia) && const_castint(b, &ib)) {
-            if (op->type.is_uint()) {
-                expr = make_const(op->type, ((unsigned int) ia) * ((unsigned int) ib));
-            } else {
-                expr = make_const(op->type, ia * ib);
-            }
-        } else if (broadcast_a && broadcast_b) {
-            expr = new Broadcast(mutate(broadcast_a->value * broadcast_b->value), broadcast_a->width);
-        } else if (ramp_a && broadcast_b) {
-            Expr m = broadcast_b->value;
-            expr = mutate(new Ramp(ramp_a->base * m, ramp_a->stride * m, ramp_a->width));
-        } else if (broadcast_a && ramp_b) {
-            Expr m = broadcast_a->value;
-            expr = mutate(new Ramp(m * ramp_b->base, m * ramp_b->stride, ramp_b->width));
-        } else if (add_a && is_simple_const(add_a->b) && is_simple_const(b)) {
-            expr = mutate(add_a->a * b + add_a->b * b);
-        } else if (mul_a && is_simple_const(mul_a->b) && is_simple_const(b)) {
-            expr = mutate(mul_a->a * (mul_a->b * b));
-        } else if (a.same_as(op->a) && b.same_as(op->b)) {
-            expr = op;
-        } else {
-            expr = new Mul(a, b);
+        // Override default behavior: any constant expression is pushed outside of variable expressions.
+        if (is_constant_expr(a) && ! is_constant_expr(b)) {
+            std::swap(a, b);
         }
+        
+        //const Add *add_a = a.as<Add>();
+        const Mul *mul_a = a.as<Mul>();
+        
+        //if (add_a && is_constant_expr(add_a->b) && is_constant_expr(b)) {
+            // (aa + kab) * kb --> (aa * kb) + (kab + kb)
+            //expr = mutate(add_a->a * b + add_a->b * b);
+        //} else 
+        if (mul_a && is_constant_expr(mul_a->b) && is_constant_expr(b)) {
+            // (aa * kab) * kb --> aa * (kab * kb)
+            expr = mutate(mul_a->a * (mul_a->b * b));
+        //} else if (mul_b && is_constant_expr(b)) {
+            // aa * kb: Keep unchanged.
+            //expr = op;
+        } else {
+            Simplify::visit(op);
+        }
+        log(0) << depth << " XMul simplified to " << expr << "\n";
     }
 
+# if 0
     void visit(const Div *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
         
@@ -1209,10 +1139,10 @@ void checkSolver(Expr a, Expr b) {
     Solver s;
     s.targets.push_back("x");
     s.targets.push_back("y");
+    std::cout << "checkSolver: " << a << "\n";
+    std::cout << "  expect: " << b << "\n";
     Expr r = s.mutate(a);
-    std::cout << a << "\n";
-    std::cout << b << "\n";
-    std::cout << r << "\n";
+    std::cout << "  result: " << r << "\n";
     if (!equal(b, r)) {
         std::cout << std::endl << "Simplification failure: " << std::endl;
         std::cout << "Input: " << a << std::endl;
@@ -1224,17 +1154,52 @@ void checkSolver(Expr a, Expr b) {
 }
 
 void solver_test() {
-    Var x("x"), y("y"), d("d");
+    Var x("x"), y("y"), c("c"), d("d");
     
-    std::cout << "1\n";
     checkSolver(solve(x, Interval(0,10)), solve(x, Interval(0,10)));
-    std::cout << "2\n";
-    checkSolver(solve(x + 5, Interval(0,10)), solve(x, Interval(-5,5)) + 5);
-    checkSolver(solve(5 + x, Interval(0,10)), solve(x, Interval(-5,5)) + 5);
-    std::cout << "3\n";
-    checkSolver(solve(x + 5 + d, Interval(0,10)), solve(x, Interval(-5-d, 5-d)) + d + 5);
-    std::cout << "4\n";
-
+    checkSolver(solve(x + 4, Interval(0,10)), solve(x, Interval(-4,6)) + 4);
+    checkSolver(solve(4 + x, Interval(0,10)), solve(x, Interval(-4,6)) + 4);
+    checkSolver(solve(x + 4 + d, Interval(0,10)), solve(x, Interval(-4-d, 6-d)) + d + 4);
+    checkSolver(solve(x - d, Interval(0,10)), solve(x, Interval(d, d+10)) - d);
+    checkSolver(solve(x - (4 - d), Interval(0,10)), solve(x, Interval(4-d, 14-d)) + d + -4);
+    checkSolver(solve(x - 4 - d, Interval(0,10)), solve(x, Interval(d+4, d+14)) - d + -4);
+    // Solve 4-x on the interval (0,10).
+    // 0 <= 4-x <= 10.
+    // -4 <= -x <= 6.  solve(-x) + 4
+    // 4 >= x >= -6.   -solve(x) + 4  i.e.  4 - solve(x)
+    checkSolver(solve(4 - x, Interval(0,10)), 4 - solve(x, Interval(-6,4)));
+    checkSolver(solve(4 - d - x, Interval(0,10)), 4 - d - solve(x, Interval(-6 - d, 4 - d)));
+    checkSolver(solve(4 - d - x, Interval(0,10)) + 1, 5 - d - solve(x, Interval(-6 - d, 4 - d)));
+    // Solve c - (x + d) on (0,10).
+    // 0 <= c - (x + d) <= 10.
+    // -c <= -(x+d) <= 10-c.
+    // c >= x+d >= c-10.
+    // c-d >= d >= c-d-10.
+    checkSolver(solve(c - (x + d), Interval(0,10)), c - d - solve(x, Interval(c-d+-10, c-d)));
+    
+    checkSolver(solve(x * 2, Interval(0,10)), solve(x, Interval(0,5)) * 2);
+    checkSolver(solve(x * 3, Interval(1,17)), solve(x, Interval(1,5)) * 3);
+    checkSolver(solve(x * -3, Interval(1,17)), solve(x, Interval(-5,-1)) * -3);
+    checkSolver(solve((x + 3) * 2, Interval(0,10)), solve(x, Interval(-3, 2)) * 2 + 6);
+    // Solve 0 <= (x + 4) * 3 <= 10
+    // 0 <= (x + 4) <= 3
+    // -4 <= x <= -1
+    checkSolver(solve((x + 4) * 3, Interval(0,10)), solve(x, Interval(-4, -1)) * 3 + 12);
+    // Solve 0 <= (x + c) * -3 <= 10
+    // 0 >= (x + c) >= -3
+    // -c >= x >= -3 - c
+    checkSolver(solve((x + c) * -3, Interval(0,10)), (solve(x, Interval(-3 - c, 0 - c)) + c) * -3);
+    
+    checkSolver(solve(x / 3, Interval(0,10)), solve(x, Interval(0, 32)) / 3);
+    checkSolver(solve(x / -3, Interval(0,10)), solve(x, Interval(-30,2)) / -3);
+    // Solve 1 <= (x + c) / 3 <= 17
+    // 3 <= (x + c) <= 53
+    // 3 - c <= x <= 53 - c
+    checkSolver(solve((x + c) / 3, Interval(1,17)), (solve(x, Interval(3 - c, 53 - c)) + c) / 3);
+    
+    checkSolver(solve(x + 4, Interval(0,new Infinity(+1))), solve(x, Interval(-4,new Infinity(+1))) + 4);
+    checkSolver(solve(x + 4, Interval(new Infinity(-1),10)), solve(x, Interval(new Infinity(-1),6)) + 4);
+    
     std::cout << "Solve test passed" << std::endl;
 }
 

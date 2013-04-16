@@ -98,8 +98,8 @@ Expr EXPORT const_false(int width = 1);
 
 /** Check that operands are defined and report if not.  Print the
  * expression as best we can. */
-void check_defined(Expr &a, std::string op, Expr &b);
-void check_defined(std::string op, Expr &a, Expr &b);
+void EXPORT check_defined(Expr a, std::string op, Expr b);
+void EXPORT check_defined(std::string op, Expr a, Expr b);
 
 /** Coerce the two expressions to have the same type, using C-style
  * casting rules. For the purposes of casting, a boolean type is
@@ -133,6 +133,10 @@ void check_defined(std::string op, Expr &a, Expr &b);
  * 
  */
 void EXPORT match_types(Expr &a, Expr &b);
+
+/** Recognise Infinity node (including inside Cast and/or Broadcast) and return 
+ * infinity count.  If not infinity, return zero. */
+int EXPORT infinity_count(const Expr e);
 }
 
 /** Cast an expression to the halide type corresponding to the C++ type T */

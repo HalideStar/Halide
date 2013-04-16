@@ -34,8 +34,14 @@ public:
      */
     Expr mutate(Expr expr);
     Stmt mutate(Stmt stmt);
+    
+    IRMutator();
 
 protected:
+
+    int depth; // Depth counter in case of unbounded recursion due to rule conflicts
+    int maxdepth;
+    bool failing;
 
     /** visit methods that take Exprs assign to this to return their
      * new value */
@@ -89,6 +95,7 @@ protected:
     
     virtual void visit(const Solve *);
     virtual void visit(const TargetVar *);
+    virtual void visit(const Infinity *);
 
 };    
 

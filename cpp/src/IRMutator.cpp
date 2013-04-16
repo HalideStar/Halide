@@ -7,7 +7,21 @@ namespace Internal {
 
 using std::vector;
 
+IRMutator::IRMutator() : depth(0), maxdepth(100000), failing(false) {
+}
+
 Expr IRMutator::mutate(Expr e) {
+    depth++;
+    if (depth > maxdepth) {
+        log(0) << "Warning: Mutator exceeded recursion depth of " << maxdepth << "\n";
+        log(0) << "  in expression: " << e << "\n";
+        maxdepth = maxdepth * 10;
+        failing = true;
+        return e;
+    } 
+    if (failing) {
+        return e;
+    }
     if (e.defined()) {
         e.accept(this);
     } else {
@@ -15,19 +29,33 @@ Expr IRMutator::mutate(Expr e) {
     }
     stmt = Stmt();
     if (defaulted) {
-        log(0) << "Mutator executed default visitor on " << e << "\n";
+        // Debugging: Warn user if the default implementation was used in mutate().
+        log(0) << "Warning: Mutator executed default visitor on " << e << "\n";
         assert(0 && "IRMutator executed default IRVisitor");
     }
+    depth--;
+    if (failing) log(0) << "  in expression: " << e << "\n";
     return expr;
 }
 
 Stmt IRMutator::mutate(Stmt s) {
+    depth++;
+    if (depth > maxdepth) {
+        log(0) << "Warning: Mutator exceeded recursion depth of " << maxdepth << "\n";
+        log(0) << "  in statement: " << s << "\n";
+        maxdepth = maxdepth * 10;
+        failing = true;
+    } else {
+        failing = false;
+    }
     if (s.defined()) {
         s.accept(this);
     } else {
         stmt = Stmt();
     }
     expr = Expr();
+    depth--;
+    if (failing) log(0) << "  in statement: " << s << "\n";
     return stmt;
 }
 
@@ -279,6 +307,10 @@ void IRMutator::visit(const TargetVar *op) {
     Expr e = mutate(op->e);
     if (e.same_as(op->e)) expr = op;
     else expr = new TargetVar(op->var, e);
+}
+
+void IRMutator::visit(const Infinity *op) {
+    expr = op;  // There are no children to mutate
 }
 
 // end namespace Internal

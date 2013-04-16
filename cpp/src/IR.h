@@ -671,12 +671,14 @@ struct Allocate : public StmtNode<Allocate> {
     }
 };
 
-/** An interval.  Includes all numbers from min to max inclusive. */
-struct Interval {
-    Expr min, max;
-    Interval(Expr min, Expr max) : min(min), max(max) {}
-    Interval() {}
-};
+// end namespace Internal
+}
+}
+
+#include "Interval.h"
+
+namespace Halide {
+namespace Internal {
 
 /** A single-dimensional span. Includes all numbers between min and
  * (min + extent - 1) */
@@ -837,8 +839,11 @@ struct Solve : public ExprNode<Solve> {
     Expr e;
     std::vector<Interval> v;
     
+    // Solve over a vector of Interval.
     Solve(Expr _e, std::vector<Interval> _v) : ExprNode<Solve>(_e.type()), e(_e), v(_v) {}
+    // Solve over one Interval
     Solve(Expr _e, Interval _i) : ExprNode<Solve>(_e.type()), e(_e), v(vec(_i)) {}
+    // Solve over two Intervals
     Solve(Expr _e, Interval _i, Interval _j) : ExprNode<Solve>(_e.type()), e(_e), v(vec(_i, _j)) {}
 };
 
@@ -849,6 +854,17 @@ struct TargetVar : public ExprNode<TargetVar> {
     TargetVar(std::string _v, Expr _e) : ExprNode<TargetVar>(_e.type()), var(_v), e(_e) {}
 };
 
+/** Infinity node is useful for interval analysis and solver.  It represents an undefined
+ * minimum of an interval as negative infinity, and an undefined maximum as positive infinity.
+ * Simplify is made able to simplify expressions involving infinity nodes.
+ * The type of Infinity is Int(32) but it is a weak type - when combined with other types, it
+ * should always defer to the other type.
+ */
+struct Infinity : public ExprNode<Infinity> {
+    int count; // Count of infinity. >0 means +ve infinity, <0 means negative infinity.
+    
+    Infinity(int _c) : ExprNode<Infinity>(Int(32)), count(_c) {}
+};
 
 }
 }

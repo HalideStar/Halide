@@ -98,6 +98,30 @@ protected:
             return false;
         }
     }
+    
+    /* Recognise Infinity node on one or both sides of a binary operator and
+     * return a code. Codes are #define constants where 
+     * F represents a finite value, P represents positive infinity and N represents
+     * negative infinity. */
+#define NN 1
+#define NF 2
+#define NP 4
+#define FN 8
+#define FF 16
+#define FP 32
+#define PN 64
+#define PF 128
+#define PP 256
+    int infinity_code(Expr a, Expr b) {
+        int count_a = infinity_count(a);
+        int count_b = infinity_count(b);
+        int bit = 0;
+        if (count_a > 0) bit += 6; // PN, PF, PP
+        else if (count_a == 0) bit += 3; // FN, FF, FP
+        if (count_b > 0) bit += 2; // xP
+        else if (count_b == 0) bit++; // xF
+        return (1 << bit);
+    }
 
     virtual void visit(const Cast *op) {
         Expr value = mutate(op->value);        
@@ -177,7 +201,7 @@ protected:
     }
 
     virtual void visit(const Add *op) {
-        log(3) << "Simplifying " << Expr(op) << "\n";
+        log(0) << depth << " Add simplify " << Expr(op) << "\n";
 
         int ia, ib;
         float fa, fb;
@@ -198,8 +222,16 @@ protected:
         const Sub *sub_b = b.as<Sub>();
         const Mul *mul_a = a.as<Mul>();
         const Mul *mul_b = b.as<Mul>();
-
-        if (const_int(a, &ia) &&
+        
+        // Check for infinity cases
+        int inf = infinity_code(a, b);
+        if (inf & (PP | PF | NN | NF)) {
+            expr = a; // Left infinity dominates
+        } else if (inf & (FN | FP)) {
+            expr = b; // Right infinity dominates
+        } else if (inf & (PN | NP)) {
+            assert(0 && "Conflicting infinity"); // Addition of conflicting infinities
+        } else if (const_int(a, &ia) &&
             const_int(b, &ib)) {
             expr = ia + ib;
             // const int + const int
@@ -239,7 +271,9 @@ protected:
             else expr = mutate((add_a->a + b) + add_a->b);
         } else if (add_b && is_simple_const(add_b->b)) {
             expr = mutate((a + add_b->a) + add_b->b);
-        } else if (sub_a && is_simple_const(sub_a->a) && is_simple_const(b)) {
+        } else if (sub_a && is_simple_const(sub_a->a)) { //LH
+            // (kaa - ab) + kb --> (kaa + kb) - ab
+            // (kaa - ab) + b --> (kaa + b) - ab
             expr = mutate((sub_a->a + b) - sub_a->b);
         } else if (sub_a && equal(b, sub_a->b)) {
             // Additions that cancel an inner term
@@ -261,10 +295,11 @@ protected:
         } else {
             expr = new Add(a, b);
         }
+        log(0) << depth << " Add simplified to " << expr << "\n";
     }
 
     virtual void visit(const Sub *op) {
-        log(3) << "Simplifying " << Expr(op) << "\n";
+        log(0) << depth << " Sub simplify " << Expr(op) << "\n";
 
         Expr a = mutate(op->a), b = mutate(op->b);
 
@@ -282,7 +317,17 @@ protected:
         const Mul *mul_a = a.as<Mul>();
         const Mul *mul_b = b.as<Mul>();
 
-        if (is_zero(b)) {
+        // Check for infinity cases
+        int inf = infinity_code(a, b);
+        if (inf & (PN | PF | NP | NF)) {
+            expr = a; // Left infinity dominates
+        } else if (inf & (FN | FP)) {
+            // Right infinity dominates but has to be negated
+            const Infinity *inf_b = b.as<Infinity>();
+            expr = new Infinity(-inf_b->count);
+        } else if (inf & (PP | NN)) {
+            assert(0 && "Conflicting infinity"); // subtraction of conflicting infinities
+        } else if (is_zero(b)) {
             expr = a;
         } else if (equal(a, b)) {
             expr = make_zero(op->type);
@@ -331,12 +376,23 @@ protected:
             if (is_simple_const(b)) expr = mutate(add_a->a + (add_a->b - b));
             else expr = mutate((add_a->a - b) + add_a->b);
         } else if (add_b && is_simple_const(add_b->b)) {
-            expr = mutate((a - add_b->a) - add_b->b);
+            log(0) << "Fire rule\n";
+            // ka - (ba + kbb) --> (ka - kbb) - ba
+            if (is_simple_const(a)) expr = mutate((a - add_b->b) - add_b->a); //LH
+            // a - (ba + kbb) --> (a - ba) - kbb
+            else expr = mutate((a - add_b->a) - add_b->b);
         } else if (sub_a && is_simple_const(sub_a->a) && is_simple_const(b)) {
             expr = mutate((sub_a->a - b) - sub_a->b);
         } else if (sub_b && is_simple_const(sub_b->b)) {
+            // ka - (ba - kbb) --> (ka + kbb) - ba
             if (is_simple_const(a)) expr = mutate((a + sub_b->b) - sub_b->a);
-            expr = mutate((a - sub_b->a) + sub_b->b);
+            // a - (ba - kbb) --> (a - ba) + kbb
+            else expr = mutate((a - sub_b->a) + sub_b->b); //LH
+        } else if (sub_b && is_simple_const(sub_b->a)) { //LH
+            // ka - (kba - bb) --> bb + (ka - kba)
+            if (is_simple_const(a)) expr = mutate(sub_b->b + (a - sub_b->a));
+            // a - (kba - bb) --> (a + bb) - kba
+            else expr = mutate((a + sub_b->b) - sub_b->a);
         } else if (mul_a && mul_b && equal(mul_a->a, mul_b->a)) {
             // Pull out common factors a*x + b*x
             expr = mutate(mul_a->a * (mul_a->b - mul_b->b));
@@ -351,6 +407,7 @@ protected:
         } else {
             expr = new Sub(a, b);
         }
+        log(0) << depth << " Sub simplified to " << expr << "\n";
     }
 
     virtual void visit(const Mul *op) {
@@ -368,7 +425,21 @@ protected:
         const Add *add_a = a.as<Add>();
         const Mul *mul_a = a.as<Mul>();
 
-        if (is_zero(b)) {
+        // Check for infinity cases
+        int inf = infinity_code(a, b);
+        if (inf & (PP | NP)) {
+            expr = a; // Left infinity dominates
+        } else if (inf & (PN)) {
+            // Right infinity dominates
+            expr = b;
+        } else if ((inf & (PF | NF)) && is_positive_const(b)) {
+            // infinity multiplied by positive finite.
+            expr = a;
+        } else if ((inf & (PF | NF)) && is_negative_const(b)) {
+            // infinity multiplied by negative finite.
+            const Infinity *inf_a = a.as<Infinity>();
+            expr = new Infinity(-inf_a->count);
+        } else if (is_zero(b)) {
             expr = b;
         } else if (is_one(b)) {
             expr = a;
@@ -425,7 +496,21 @@ protected:
             mul_a_b = sub_a->b.as<Mul>();
         }
 
-        if (is_zero(a)) {
+        // Check for infinity cases
+        int inf = infinity_code(a, b);
+        if (inf & (PP | NP | PN | NN)) {
+            assert (0 && "Conflicting infinity in division");
+        } else if (inf & (FP | FN)) {
+            // Division by infinity yields zero.
+            expr = make_zero(a.type());
+        } else if ((inf & (PF | NF)) && is_positive_const(b)) {
+            // infinity divided by positive finite.
+            expr = a;
+        } else if ((inf & (PF | NF)) && is_negative_const(b)) {
+            // infinity divided by negative finite: negate the infinity.
+            const Infinity *inf_a = a.as<Infinity>();
+            expr = new Infinity(-inf_a->count);
+        } else if (is_zero(a)) {
             expr = a;
         } else if (is_one(b)) {
             expr = a;
@@ -492,6 +577,26 @@ protected:
     virtual void visit(const Mod *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
 
+        // Check for infinity cases
+        int inf = infinity_code(a, b);
+        if ((inf & FP) && (is_positive_const(a) || is_zero(a))) {
+            // a mod positive infinity returns a if a >= 0.
+            expr = a;
+            return;
+        } else if ((inf & FN) && (is_negative_const(a) || is_zero(a))) {
+            // a mod negative infinity returns a if a <= 0.
+            expr = a;
+            return;
+        } else if (inf & (PP | NN)) {
+            // Infinity mod infinity returns infinity
+            expr = a;
+            return;
+        } else if (inf & (NP | PN | NF | PF)) {
+            // infinity mod finite or mod opposite infinity is error
+            assert(0 && "Infinity conflict in modulus");
+            return;
+        }
+        
         int ia, ib;
         float fa, fb;
         const Broadcast *broadcast_a = a.as<Broadcast>();
@@ -501,7 +606,7 @@ protected:
         const Mul *mul_a_a = add_a ? add_a->a.as<Mul>() : NULL;
         const Mul *mul_a_b = add_a ? add_a->b.as<Mul>() : NULL;
         const Ramp *ramp_a = a.as<Ramp>();
-
+        
         // If the RHS is a constant, do modulus remainder analysis on the LHS
         ModulusRemainder mod_rem(0, 1);
         if (const_int(b, &ib) && a.type() == Int(32)) {
@@ -615,6 +720,26 @@ protected:
             std::swap(a, b);
         }
 
+        // Check for infinity cases
+        int inf = infinity_code(a, b);
+        if ((inf & FP) && (is_positive_const(a) || is_zero(a))) {
+            // a mod positive infinity returns a if a >= 0.
+            expr = a;
+            return;
+        } else if ((inf & FN) && (is_negative_const(a) || is_zero(a))) {
+            // a mod negative infinity returns a if a <= 0.
+            expr = a;
+            return;
+        } else if (inf & (PP | NN)) {
+            // Infinity mod infinity returns infinity
+            expr = a;
+            return;
+        } else if (inf & (NP | PN | NF | PF)) {
+            // infinity mod finite or mod opposite infinity is error
+            assert(0 && "Infinity conflict in modulus");
+            return;
+        }
+        
         int ia, ib, ib2, ib3;
         float fa, fb;
         const Ramp *ramp_a = a.as<Ramp>();
@@ -1390,6 +1515,9 @@ void simplify_test() {
     check(y + (x + 3), (y + x) + 3);
     check((3 - x) + x, 3);
     check(x + (3 - x), 3);
+    check(1 - (x + 2), -1 - x); //LH
+    check(1 - (x - 2), 3 - x); //LH
+    check(0 - (x + -4), 4 - x); //LH
     check(x*y + x*z, x*(y+z));
     check(x*y + z*x, x*(y+z));
     check(y*x + x*z, x*(y+z));

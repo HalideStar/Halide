@@ -274,6 +274,10 @@ void IRVisitor::visit(const TargetVar *op) {
     op->e.accept(this);
 }
     
+void IRVisitor::visit(const Infinity *op) {
+    defaulted = true;
+}
+    
 
 }
 }

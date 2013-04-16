@@ -173,6 +173,7 @@ bool is_two(Expr e) {
     return false;
 }
 
+
 int int_cast_constant(Type t, int val) {
     // Unsigned of less than 32 bits is masked to select the appropriate bits
     if (t.is_uint()) {
@@ -230,13 +231,13 @@ Expr const_false(int w) {
 }
 
 
-void check_defined(Expr &a, std::string op, Expr &b) {
+void check_defined(Expr a, std::string op, Expr b) {
     if (a.defined() && b.defined()) return;
     std::cerr << "Undefined operand: " << a << " " << op << " " << b << std::endl;
     assert(false && "Undefined operand");
 }
 
-void check_defined(std::string op, Expr &a, Expr &b) {
+void check_defined(std::string op, Expr a, Expr b) {
     if (a.defined() && b.defined()) return;
     std::cerr << "Undefined argument: " << op << "(" << a << ", " << b << ")" << std::endl;
     assert(false && "Undefined argument");
@@ -244,7 +245,7 @@ void check_defined(std::string op, Expr &a, Expr &b) {
 
 void match_types(Expr &a, Expr &b) {
     if (a.type() == b.type()) return;
-
+    
     // First widen to match
     if (a.type().is_scalar() && b.type().is_vector()) {
         a = new Broadcast(a, b.type().width);
@@ -256,7 +257,14 @@ void match_types(Expr &a, Expr &b) {
 
     Type ta = a.type(), tb = b.type();
 
-    if (!ta.is_float() && tb.is_float()) {
+    const Infinity *inf_a = a.as<Infinity>();
+    const Infinity *inf_b = b.as<Infinity>();
+    if (inf_a) {
+        // Type of Infinity is weak and gives way to other type.
+        a = cast(b.type(),a);
+    } else if (inf_b) {
+        b = cast(a.type(),b);
+    } else if (!ta.is_float() && tb.is_float()) {
         // int(a) * float(b) -> float(b)
         // uint(a) * float(b) -> float(b)        
         a = cast(tb, a);
@@ -286,6 +294,19 @@ void match_types(Expr &a, Expr &b) {
     }
 }
 
+/* Recognise Infinity node and return count.  If not infinity, return zero.
+ * Handles Cast and Broadcast of Infinity nodes. */
+int infinity_count(Expr e) {
+    const Infinity *inf = e.as<Infinity>();
+    const Cast *cast = e.as<Cast>();
+    const Broadcast *broadcast = e.as<Broadcast>();
     
+    if (broadcast) return infinity_count(broadcast->value);
+    if (cast) return infinity_count(cast->value);
+    if (inf) return inf->count;
+    return 0;
+}
+
+
 }
 }

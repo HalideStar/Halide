@@ -569,13 +569,19 @@ void IRPrinter::visit(const Solve *op) {
     }
     stream << ": ";
     print(op->e);
-    stream << ") ";
+    stream << ")";
 }
 
 void IRPrinter::visit(const TargetVar *op) {
     stream << "targetvar[" << op->var << "](";
     print(op->e);
     stream << ")";
+}
+ void IRPrinter::visit(const Infinity *op) {
+    if (op->count < 0) stream << "-";
+    stream << "infinity";
+    if (op->count > 1) stream << "(" << op->count << ")";
+    else if (op->count < -1) stream << "(" << -op->count << ")";
 }
     
 }}

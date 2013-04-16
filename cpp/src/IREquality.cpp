@@ -348,6 +348,15 @@ public:
             result = false;
         }
     }
+    
+    void visit(const Infinity *op) {
+        const Infinity *inf = expr.as<Infinity>();
+        if (result && inf && inf->count == op->count) {
+            result = true; // These are the same.
+        } else {
+            result = false;
+        }
+    }
 };
 
 bool equal(Expr a, Expr b) {

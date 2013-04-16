@@ -233,6 +233,11 @@ void IRRewriter::visit(const TargetVar *op) {
     expr = op;
 }
 
+void IRRewriter::visit(const Infinity *op) {
+    rewriter_defaulted = true;
+    expr = op;
+}
+
 }
 }
 

@@ -120,6 +120,7 @@ protected:
 
     void visit(const Solve *);
     void visit(const TargetVar *);
+    void visit(const Infinity *);
 };
 }
 }

@@ -56,6 +56,7 @@ template<> EXPORT IRNodeType StmtNode<Block>::_type_info = {};
 
 template<> EXPORT IRNodeType ExprNode<Solve>::_type_info = {};
 template<> EXPORT IRNodeType ExprNode<TargetVar>::_type_info = {};
+template<> EXPORT IRNodeType ExprNode<Infinity>::_type_info = {};
 
 template<>
 EXPORT RefCount &ref_count<IRNode>(const IRNode *n) {return n->ref_count;}
