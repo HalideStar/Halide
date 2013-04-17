@@ -854,6 +854,13 @@ struct TargetVar : public ExprNode<TargetVar> {
     TargetVar(std::string _v, Expr _e) : ExprNode<TargetVar>(_e.type()), var(_v), e(_e) {}
 };
 
+struct StmtTargetVar : public StmtNode<StmtTargetVar> {
+    std::string var;
+    Stmt s;
+    
+    StmtTargetVar(std::string _v, Stmt _s) : var(_v), s(_s) {}
+};
+
 /** Infinity node is useful for interval analysis and solver.  It represents an undefined
  * minimum of an interval as negative infinity, and an undefined maximum as positive infinity.
  * Simplify is made able to simplify expressions involving infinity nodes.

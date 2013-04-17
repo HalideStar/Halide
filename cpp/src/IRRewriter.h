@@ -75,6 +75,7 @@ public:
     
     virtual void visit(const Solve *);
     virtual void visit(const TargetVar *);
+    virtual void visit(const StmtTargetVar *);
     virtual void visit(const Infinity *);
 };
 

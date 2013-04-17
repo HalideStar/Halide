@@ -56,6 +56,7 @@ template<> EXPORT IRNodeType StmtNode<Block>::_type_info = {};
 
 template<> EXPORT IRNodeType ExprNode<Solve>::_type_info = {};
 template<> EXPORT IRNodeType ExprNode<TargetVar>::_type_info = {};
+template<> EXPORT IRNodeType StmtNode<StmtTargetVar>::_type_info = {};
 template<> EXPORT IRNodeType ExprNode<Infinity>::_type_info = {};
 
 template<>

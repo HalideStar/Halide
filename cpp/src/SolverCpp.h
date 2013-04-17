@@ -144,6 +144,23 @@ public:
         return Halide::Internal::is_constant_expr(targets, e);
     }
     
+    virtual void visit(const TargetVar *op) {
+        // Target variable named in the node is added to the targets.
+        targets.push_back(op->var);
+        Expr e = mutate(op->e);
+        if (! e.same_as(op->e)) expr = new TargetVar(op->var, e);
+        else expr = op;
+        targets.pop_back(); // Remove the target for processing above
+    }
+    
+    virtual void visit(const StmtTargetVar *op) {
+        // Target variable named in the node is added to the targets.
+        targets.push_back(op->var);
+        Stmt s = mutate(op->s);
+        if (! s.same_as(op->s)) stmt = new StmtTargetVar(op->var, s);
+        else stmt = op;
+        targets.pop_back(); // Remove the target for processing above
+    }
     
     virtual void visit(const Solve *op) {
         log(3) << depth << " Solve simplify " << Expr(op) << "\n";
@@ -168,7 +185,7 @@ public:
         } else if (div_e && is_constant_expr(div_e->b)) {
             // solve(v / k) on (a,b) --> solve(v) / k with interval a * k, b * k + (k +/- 1)
             expr = mutate(solve(div_e->a, v_apply(operator*, op->v, div_e->b)) / div_e->b);
-        } else if (equal(e, op->e)) {
+        } else if (e.same_as(op->e)) {
             expr = op; // Nothing more to do.
         } else {
             expr = solve(e, op->v);
@@ -462,6 +479,14 @@ public:
     // void visit(const Realize *op) {
     // void visit(const Block *op) {        
 };
+
+Stmt solver(Stmt s) {
+    return Solver().mutate(s);
+}
+
+Expr solver(Expr e) {
+    return Solver().mutate(e);
+}
 
 namespace {
 // Method to check the operation of the Solver class.

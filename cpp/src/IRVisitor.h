@@ -56,6 +56,7 @@ struct Block;
 
 struct Solve;
 struct TargetVar;
+struct StmtTargetVar;
 struct Infinity;
 
 /** A base class for algorithms that need to recursively walk over the
@@ -118,6 +119,7 @@ public:
     
     virtual void visit(const Solve *);
     virtual void visit(const TargetVar *);
+    virtual void visit(const StmtTargetVar *);
     virtual void visit(const Infinity *);
 };
 

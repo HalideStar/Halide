@@ -309,6 +309,12 @@ void IRMutator::visit(const TargetVar *op) {
     else expr = new TargetVar(op->var, e);
 }
 
+void IRMutator::visit(const StmtTargetVar *op) {
+    Stmt s = mutate(op->s);
+    if (s.same_as(op->s)) stmt = op;
+    else stmt = new StmtTargetVar(op->var, s);
+}
+
 void IRMutator::visit(const Infinity *op) {
     expr = op;  // There are no children to mutate
 }

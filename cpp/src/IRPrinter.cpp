@@ -577,7 +577,18 @@ void IRPrinter::visit(const TargetVar *op) {
     print(op->e);
     stream << ")";
 }
- void IRPrinter::visit(const Infinity *op) {
+
+void IRPrinter::visit(const StmtTargetVar *op) {
+    stream << "stmttargetvar[" << op->var << "] {" << endl;
+    indent += 2;
+    print(op->s);
+    indent -= 2;
+    
+    do_indent();
+    stream << "}" << endl;
+}
+
+void IRPrinter::visit(const Infinity *op) {
     if (op->count < 0) stream << "-";
     stream << "infinity";
     if (op->count > 1) stream << "(" << op->count << ")";
