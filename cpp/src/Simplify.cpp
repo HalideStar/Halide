@@ -741,21 +741,13 @@ protected:
 
         // Check for infinity cases
         int inf = infinity_code(a, b);
-        if ((inf & FP) && (is_positive_const(a) || is_zero(a))) {
-            // a mod positive infinity returns a if a >= 0.
+        if (inf & (PP | FP | NP | NF | NN)) {
+            // The first parameter is the minimum
             expr = a;
             return;
-        } else if ((inf & FN) && (is_negative_const(a) || is_zero(a))) {
-            // a mod negative infinity returns a if a <= 0.
-            expr = a;
-            return;
-        } else if (inf & (PP | NN)) {
-            // Infinity mod infinity returns infinity
-            expr = a;
-            return;
-        } else if (inf & (NP | PN | NF | PF)) {
-            // infinity mod finite or mod opposite infinity is error
-            assert(0 && "Infinity conflict in modulus");
+        } else if (inf & (PF | PN | FN)) {
+            // The second parameter is the minimum
+            expr = b;
             return;
         }
         
@@ -876,6 +868,18 @@ protected:
     virtual void visit(const Max *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
 
+        // Check for infinity cases
+        int inf = infinity_code(a, b);
+        if (inf & (PP | FP | NP | NF | NN)) {
+            // The second parameter is the maximum
+            expr = b;
+            return;
+        } else if (inf & (PF | PN | FN)) {
+            // The first parameter is the maximum
+            expr = a;
+            return;
+        }
+        
         // Move constants to the right to cut down on number of cases to check
         if (is_simple_const(a) && !is_simple_const(b)) {
             std::swap(a, b);
@@ -1071,6 +1075,22 @@ protected:
 
     virtual void visit(const LT *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
+
+        // Check for infinity cases
+        int inf = infinity_code(a, b);
+        if (inf & (FP | NP | NF)) {
+            // f < P; N < P; N < f: return true
+            expr = const_true(op->type.width);
+            return;
+        } else if (inf & (PF | PN | FN)) {
+            // P < f; P < N; f < N: return false
+            expr = const_false(op->type.width);
+            return;
+        } else if (inf & (PP | NN)) {
+            assert(0 && "Infinity conflict in LT");
+            return;
+        }
+
         Expr delta = mutate(a - b);
 
         const Ramp *ramp_a = a.as<Ramp>();

@@ -68,10 +68,13 @@ private:
     // then the variable inside the Let is not the same variable.
     void visit(const Let *op) {
         if (result) return; // Do not continue checking once one variable is found.
+        
+        // If the value expression of the Let contains the variable, then
+        // we have found the variable.
         op->value.accept(this);
+        
         // The name might be hidden within the body of the let, in
         // which case drop it from the list.
-        
         if (find(op->name)) {
             // Make a new vector of name strings, copy excluding the match,
             // and use it in the body.
@@ -126,6 +129,34 @@ inline std::vector<Interval> v_apply(Interval (*f)(Interval, Expr), std::vector<
     }
     return result;
 }
+
+// Apply binary operator to a vector of Interval by applying it to each Interval
+inline std::vector<Interval> v_apply(Interval (*f)(Interval, Interval), std::vector<Interval> u, std::vector<Interval> v) {
+    std::vector<Interval> result;
+    assert(u.size() == v.size() && "Vectors of intervals of different sizes");
+    for (size_t i = 0; i < v.size(); i++) {
+        result.push_back((*f)(u[i], v[i]));
+    }
+    return result;
+}
+
+Interval inverseMin(Interval v, Expr k) {
+    // inverse of min on an interval against constant expression k.
+    // If v.max >= k then the Min ensures that the upper bound is in
+    // the target interval, so the new max is +infinity; otherwise
+    // the new max is v.max.
+    return Interval(v.min, simplify(select(v.max >= k, new Infinity(+1), v.max)));
+}
+
+Interval inverseMax(Interval v, Expr k) {
+    // inverse of max on an interval against constant expression k.
+    // If v.min <= k then the Max ensures that the lower bound is in
+    // the target interval, so the new min is -infinity; otherwise
+    // the new min is v.min.
+    return Interval(simplify(select(v.min <= k, new Infinity(-1), v.min)), v.max);
+}
+
+// end anonymous namespace
 }
 
 class Solver : public Simplify {
@@ -167,12 +198,20 @@ public:
         Expr e = mutate(op->e);
         
         log(3) << depth << " Solve using " << e << "\n";
+        const Solve *solve_e = e.as<Solve>();
         const Add *add_e = e.as<Add>();
         const Sub *sub_e = e.as<Sub>();
         const Mul *mul_e = e.as<Mul>();
         const Div *div_e = e.as<Div>();
+        const Min *min_e = e.as<Min>();
+        const Max *max_e = e.as<Max>();
         
-        if (add_e && is_constant_expr(add_e->b)) {
+        if (solve_e) {
+            // solve(solve(e)) --> solve(e) on intersection of intervals.
+            // This is one approach to combining solutions, and makes it easier
+            // to match them and pick them out.
+            expr = mutate(solve(solve_e->e, v_apply(intersection, op->v, solve_e->v)));
+        } else if (add_e && is_constant_expr(add_e->b)) {
             expr = mutate(solve(add_e->a, v_apply(operator-, op->v, add_e->b)) + add_e->b);
         } else if (sub_e && is_constant_expr(sub_e->b)) {
             expr = mutate(solve(sub_e->a, v_apply(operator+, op->v, sub_e->b)) - sub_e->b);
@@ -185,6 +224,19 @@ public:
         } else if (div_e && is_constant_expr(div_e->b)) {
             // solve(v / k) on (a,b) --> solve(v) / k with interval a * k, b * k + (k +/- 1)
             expr = mutate(solve(div_e->a, v_apply(operator*, op->v, div_e->b)) / div_e->b);
+        } else if (min_e && is_constant_expr(min_e->a)) {
+            // Min, Max: push outside of Solve nodes.
+            // solve(min(k,v)) on (a,b) --> min(k,solve(v)). 
+            expr = mutate(new Min(min_e->a, solve(min_e->b, v_apply(inverseMin, op->v, min_e->a))));
+        } else if (min_e && is_constant_expr(min_e->b)) {
+            // solve(min(v,k)) on (a,b) --> min(solve(v),k). 
+            expr = mutate(new Min(solve(min_e->a, v_apply(inverseMin, op->v, min_e->b)), min_e->b));
+        } else if (max_e && is_constant_expr(max_e->a)) {
+            // solve(max(k,v)) on (a,b) --> max(k,solve(v)). 
+            expr = mutate(new Max(max_e->a, solve(max_e->b, v_apply(inverseMax, op->v, max_e->a))));
+        } else if (max_e && is_constant_expr(max_e->b)) {
+            // solve(max(v,k)) on (a,b) --> max(solve(v),k). 
+            expr = mutate(new Max(solve(max_e->a, v_apply(inverseMax, op->v, max_e->b)), max_e->b));
         } else if (e.same_as(op->e)) {
             expr = op; // Nothing more to do.
         } else {

@@ -26,6 +26,8 @@ namespace Internal {
 EXPORT Stmt solver(Stmt s);
 EXPORT Expr solver(Expr e);
 
+EXPORT bool is_constant_expr(std::vector<std::string> varlist, Expr e);
+
 EXPORT void solver_test();
 
 }

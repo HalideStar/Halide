@@ -573,13 +573,14 @@ void IRPrinter::visit(const Solve *op) {
 }
 
 void IRPrinter::visit(const TargetVar *op) {
-    stream << "targetvar[" << op->var << "](";
+    stream << "targetvar(" << op->var << ", ";
     print(op->e);
     stream << ")";
 }
 
 void IRPrinter::visit(const StmtTargetVar *op) {
-    stream << "stmttargetvar[" << op->var << "] {" << endl;
+    do_indent();
+    stream << "stmtTargetVar(" << op->var << ") {" << endl;
     indent += 2;
     print(op->s);
     indent -= 2;

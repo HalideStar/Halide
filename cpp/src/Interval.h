@@ -25,7 +25,7 @@ EXPORT Interval operator-(Interval v, Expr b);
 EXPORT Interval operator*(Interval v, Expr b);
 EXPORT Interval operator/(Interval v, Expr b);
 EXPORT Interval operator%(Interval v, Expr b);
-
+EXPORT Interval intersection(Interval u, Interval v);
 
 }
 }
