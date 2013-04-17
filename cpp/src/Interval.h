@@ -19,12 +19,12 @@ struct Interval {
 
 
 /** C++ functions to manipulate an Interval object, returning a new Interval as the result */
-Interval operator+(Interval v, Expr b);
-Interval operator-(Interval v); // Unary negation
-Interval operator-(Interval v, Expr b);
-Interval operator*(Interval v, Expr b);
-Interval operator/(Interval v, Expr b);
-Interval operator%(Interval v, Expr b);
+EXPORT Interval operator+(Interval v, Expr b);
+EXPORT Interval operator-(Interval v); // Unary negation
+EXPORT Interval operator-(Interval v, Expr b);
+EXPORT Interval operator*(Interval v, Expr b);
+EXPORT Interval operator/(Interval v, Expr b);
+EXPORT Interval operator%(Interval v, Expr b);
 
 
 }

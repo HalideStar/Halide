@@ -11,12 +11,7 @@
 namespace Halide { 
 namespace Internal {
 
-// @{
-//Stmt simplify(Stmt);
-//Expr simplify(Expr);
-// @}  
-
-void solver_test();
+EXPORT void solver_test();
 
 }
 }

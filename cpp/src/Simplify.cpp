@@ -201,7 +201,7 @@ protected:
     }
 
     virtual void visit(const Add *op) {
-        log(0) << depth << " Add simplify " << Expr(op) << "\n";
+        log(3) << depth << " Add simplify " << Expr(op) << "\n";
 
         int ia, ib;
         float fa, fb;
@@ -307,11 +307,11 @@ protected:
         } else {
             expr = new Add(a, b);
         }
-        log(0) << depth << " Add simplified to " << expr << "\n";
+        log(3) << depth << " Add simplified to " << expr << "\n";
     }
 
     virtual void visit(const Sub *op) {
-        log(0) << depth << " Sub simplify " << Expr(op) << "\n";
+        log(3) << depth << " Sub simplify " << Expr(op) << "\n";
 
         Expr a = mutate(op->a), b = mutate(op->b);
 
@@ -388,7 +388,6 @@ protected:
             if (is_simple_const(b)) expr = mutate(add_a->a + (add_a->b - b));
             else expr = mutate((add_a->a - b) + add_a->b);
         } else if (add_b && is_simple_const(add_b->b)) {
-            log(0) << "Fire rule\n";
             // ka - (ba + kbb) --> (ka - kbb) - ba
             if (is_simple_const(a)) expr = mutate((a - add_b->b) - add_b->a); //LH
             // a - (ba + kbb) --> (a - ba) - kbb
@@ -427,7 +426,7 @@ protected:
         } else {
             expr = new Sub(a, b);
         }
-        log(0) << depth << " Sub simplified to " << expr << "\n";
+        log(3) << depth << " Sub simplified to " << expr << "\n";
     }
 
     virtual void visit(const Mul *op) {
