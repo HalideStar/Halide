@@ -48,15 +48,44 @@ public:
     
 private:
     using IRVisitor::visit;
+    
+    bool find(const std::string &name) {
+        for (size_t i = 0; i < varlist.size(); i++) {
+            if (varlist[i] == name) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     void visit(const Variable *op) {
         if (result) return; // Once one is found, no need to find more.
-        // Check whether variable name is in the list of known names
-        for (size_t i = 0; i < varlist.size(); i++) {
-            if (varlist[i] == op->name) {
-                result = true;
-                break;
+        // Check whether variable name is in the list of known names.
+        result = find(op->name);
+    }
+
+    // If a Let node redefines one of the variables that we are solving for,
+    // then the variable inside the Let is not the same variable.
+    void visit(const Let *op) {
+        if (result) return; // Do not continue checking once one variable is found.
+        op->value.accept(this);
+        // The name might be hidden within the body of the let, in
+        // which case drop it from the list.
+        
+        if (find(op->name)) {
+            // Make a new vector of name strings, copy excluding the match,
+            // and use it in the body.
+            std::vector<std::string> newlist;
+            for (size_t i = 0; i < varlist.size(); i++) {
+                if (varlist[i] != op->name) {
+                    newlist.push_back(varlist[i]);
+                }
             }
+            HasVariable newsearcher(newlist);
+            op->body.accept(&newsearcher);
+            result = newsearcher.result;
+        } else {
+            op->body.accept(this);
         }
     }
 };
