@@ -1,6 +1,7 @@
 #include "LoopPartition.h"
 #include "IntervalAnalysis.h"
-#include "IRMutator.h"
+#include "IR.h"
+#include "InlineLet.h"
 #include "IROperator.h"
 #include "IRPrinter.h"
 #include "IRRewriter.h"
@@ -20,9 +21,7 @@ using std::map;
 // For loops define target variables.
 // Comparisons, min, max, mod are all targets for loop partition optimisation.
 // Let statements are aggressively inlined.
-class LoopPreSolver : public IRMutator {
-    Scope<Expr> scope;
-    
+class LoopPreSolver : public InlineLet {
     std::vector<std::string> varlist;
 
     using IRMutator::visit;
@@ -30,13 +29,31 @@ class LoopPreSolver : public IRMutator {
     bool is_constant_expr(Expr a) { return Halide::Internal::is_constant_expr(varlist, a); }
     
     virtual void visit(const For *op) {
-        // Insert the StmtTargetVar inside the loop wrapping the body.
-        scope.push(op->name, Expr()); // This is defined, but cannot be substituted
-        varlist.push_back(op->name); // This is a variable for deciding on constant exprs
-        Stmt body = new StmtTargetVar(op->name, mutate(op->body));
-        stmt = new For(*op, op->min, op->extent, body);
+        // Indicate that the For variable is not a constant variable
+        varlist.push_back(op->name);
+        
+        // Mutate the children including inlining of Let expressions.
+        InlineLet::visit(op); 
+        
+        // Use the mutated for loop returned by InlineLet::visit(op)
+        // Tricky pointer management issue arises here:
+        // If we write:
+        //    const For *forloop = stmt.as<For>() 
+        // this does not retain an intrusive pointer to the underlying For
+        // loop node once stmt is reused.  The outcome is that
+        //    stmt = new For(forloop, ...)
+        // crashes because stmt is reinitialised and the For loop node is destroyed;
+        // it turns out that the node is destroyed before the new node is constructed.
+        // Assign stmt to result so that this does not happen.
+        Stmt result = stmt;
+        const For *forloop = result.as<For>();
+        assert(forloop && "InlineLet did not return a For loop");
+        
+        // Construct a new body that wraps the loop body as a target variable for solver.
+        // The source node is the original op.
+        Stmt body = new StmtTargetVar(op->name, forloop->body, op);
         varlist.pop_back();
-        scope.pop(op->name);
+        stmt = new For(forloop, forloop->min, forloop->extent, body);
     }
     
     // Min can be eliminated in a loop body if the target expression is always either
@@ -153,125 +170,109 @@ class LoopPreSolver : public IRMutator {
             expr = new Clamp(op->clamptype, a, min, max, p1);
         }
     }
-
-    // Copied direct from Simplify.
-    virtual void visit(const Variable *op) {
-        if (scope.contains(op->name)) {
-            Expr replacement = scope.get(op->name);
-
-            //std::cout << "Pondering replacing " << op->name << " with " << replacement << std::endl;
-
-            // if expr is defined, we should substitute it in (unless
-            // it's a var that has been hidden by a nested scope).
-            if (replacement.defined()) {
-                //std::cout << "Replacing " << op->name << " of type " << op->type << " with " << replacement << std::endl;
-                assert(replacement.type() == op->type);
-                // If it's a naked var, and the var it refers to
-                // hasn't gone out of scope, just replace it with that
-                // var
-                if (const Variable *v = replacement.as<Variable>()) {
-                    if (scope.contains(v->name)) {
-                        if (scope.depth(v->name) < scope.depth(op->name)) {
-                            expr = replacement;
-                        } else {
-                            // Uh oh, the variable we were going to
-                            // subs in has been hidden by another
-                            // variable of the same name, better not
-                            // do anything.
-                            expr = op;
-                        }
-                    } else {
-                        // It is a variable, but the variable this
-                        // refers to hasn't been encountered. It must
-                        // be a uniform, so it's safe to substitute it
-                        // in.
-                        expr = replacement;
-                    }
-                } else {
-                    // It's not a variable, and a replacement is defined
-                    expr = replacement;
-                }
-            } else {
-                // This expression was not something deemed
-                // substitutable - no replacement is defined.
-                expr = op;
-            }
-        } else {
-            // We never encountered a let that defines this var. Must
-            // be a uniform. Don't touch it.
-            expr = op;
-        }
-    }
-    
-    template<typename T, typename Body> 
-    Body simplify_let(const T *op, Scope<Expr> &scope, IRMutator *mutator) {
-        // Aggressively inline Let.
-        Expr value = mutator->mutate(op->value);
-        Body body = op->body;
-        assert(value.defined());
-        assert(body.defined());
-        // Substitute the value wherever we see it.
-        // If the value is a variable, it will already have been expanded except
-        // for a global variable or a For loop index variable.
-        scope.push(op->name, value);
-        
-        body = mutator->mutate(body);
-
-        scope.pop(op->name);
-
-        if (body.same_as(op->body) && value.same_as(op->value)) {
-            return op;
-        } else {
-            return new T(op->name, value, body);
-        }        
-    }
-
-
-    virtual void visit(const Let *op) {
-        expr = simplify_let<Let, Expr>(op, scope, this);
-    }
-
-    virtual void visit(const LetStmt *op) {
-        stmt = simplify_let<LetStmt, Stmt>(op, scope, this);
-    }
 };
 
 
 // Perform loop partition optimisation for all For loops
 class LoopPartition : public IRMutator {
     using IRMutator::visit;
+public:
+    Stmt solved;
 
+protected:
+    std::vector<int> partition_points(std::vector<Solution> sol, Expr endpoint, bool negate) {
+        std::vector<int> results;
+        
+        for (size_t i = 0; i < sol.size(); i++) {
+            for (size_t j = 0; j < sol[i].intervals.size(); j++) {
+                // min means decision is < min vs >= min
+                // partition value of p means take first p elements out, and that
+                // corresponds to < p vs >= p
+                Expr diff = simplify(sol[i].intervals[j].min - endpoint);
+                std::cout << diff << "\n";
+                int ival;
+                if (get_const_int(diff, ival)) {
+                    if (negate) ival = -ival;
+                    if (ival > 0) results.push_back(ival);
+                }
+                // max means decision is <= max vs > max
+                diff = simplify(sol[i].intervals[j].max - endpoint + 1);
+                std::cout << diff << "\n";
+                if (get_const_int(diff, ival)) {
+                    if (negate) ival = -ival;
+                    if (ival > 0) results.push_back(ival);
+                }
+            }
+        }
+        return results;
+    }
+    
     void visit(const For *op) {
+        bool done = false;
+        
         // Only apply optimisation to serial For loops.
         // Parallel loops may also be eligible for optimisation, but not yet handled.
         // Vectorised loops are not eligible, and unrolled loops should be fully
         // optimised for each iteration due to the unrolling.
         Stmt new_body = mutate(op->body);
-        if ((op->for_type == For::Serial || op->for_type == For::Parallel) && 
-            (op->partition_begin > 0 || op->partition_end > 0)) {
-            //log(0) << "Found serial for loop \n" << Stmt(op) << "\n";
-            // Greedy allocation of up to partition_begin loop iterations to before.
-            Expr before_min = op->min;
-            Expr before_extent = min(op->partition_begin, op->extent);
-            // Greedy allocation of up to partition_end loop iterations to after.
-            Expr main_min = before_min + op->partition_begin; // May be BIG
-            Expr main_extent = op->extent - op->partition_begin - op->partition_end; // May be negative
-            Expr after_min = main_min + max(0,main_extent);
-            Expr after_extent = min(op->partition_end, op->extent - before_extent);
-            // Now generate the partitioned loops.
-            // Mark them by using negative numbers for the partition information.
-            Stmt before = new For(op->name, before_min, before_extent, op->for_type, -2, -2, op->body);
-            Stmt main = new For(op->name, main_min, main_extent, op->for_type, -3, -3, new_body);
-            Stmt after = new For(op->name, after_min, after_extent, op->for_type, -4, -4, op->body);
-            stmt = new Block(new Block(before,main),after);
-            if (stmt.same_as(op)) {
-                stmt = op;
+        if (op->for_type == For::Serial || op->for_type == For::Parallel) {
+            // Manually specified loop partitioning.
+            if (op->partition_begin > 0 || op->partition_end > 0) {
+                //log(0) << "Found serial for loop \n" << Stmt(op) << "\n";
+                // Greedy allocation of up to partition_begin loop iterations to before.
+                Expr before_min = op->min;
+                Expr before_extent = min(op->partition_begin, op->extent);
+                // Greedy allocation of up to partition_end loop iterations to after.
+                Expr main_min = before_min + op->partition_begin; // May be BIG
+                Expr main_extent = op->extent - op->partition_begin - op->partition_end; // May be negative
+                Expr after_min = main_min + max(0,main_extent);
+                Expr after_extent = min(op->partition_end, op->extent - before_extent);
+                // Now generate the partitioned loops.
+                // Mark them by using negative numbers for the partition information.
+                Stmt before = new For(op->name, before_min, before_extent, op->for_type, -2, -2, op->body);
+                Stmt main = new For(op->name, main_min, main_extent, op->for_type, -3, -3, new_body);
+                Stmt after = new For(op->name, after_min, after_extent, op->for_type, -4, -4, op->body);
+                stmt = new Block(new Block(before,main),after);
+                if (stmt.same_as(op)) {
+                    stmt = op;
+                }
+                done = true;
+            } else {
+                // Automatic loop partitioning.
+                // Search for solutions related to this particular for loop.
+                std::vector<Solution> solutions = extract_solutions(op->name, op, solved);
+                std::cout << "For loop: \n" << Stmt(op);
+                std::cout << "Solutions: \n";
+                for (size_t i = 0; i < solutions.size(); i++) {
+                    std::cout << solutions[i].var << " " << solutions[i].intervals << "\n";
+                }
+                // Compute the partition points relative to each end of the loop
+                // and simplify them.  The meaning of a partition point value is to
+                // partition the loop at that number of elements from the start or end.
+                // Negative values and zero are discarded as useless.
+                // Decision points represent < limit vs >= limit, so min + extent is used
+                // as the loop end value.
+                std::vector<int> begin = partition_points(solutions, op->min, false);
+                std::vector<int> end = partition_points(solutions, op->min + op->extent, true);
+                std::cout << "Partition begin: ";
+                for (size_t i = 0; i < begin.size(); i++) {
+                    std::cout << begin[i] << " ";
+                }
+                std::cout << std::endl << "Partition end: ";
+                for (size_t i = 0; i < end.size(); i++) {
+                    std::cout << end[i] << " ";
+                }
+                std::cout << std::endl;
+                
+                // Now, it gets tricky.
+                // If the loop bounds are constants
             }
-        } else {
+        }
+        if (! done) {
             if (new_body.same_as(op->body)) {
                 stmt = op;
             } else {
-                stmt = new For(*op, op->min, op->extent, new_body);
+                stmt = new For(op, op->min, op->extent, new_body);
             }
         }
     }
@@ -298,12 +299,12 @@ void test_loop_partition_1() {
     Expr select = new Select(x > 3, new Select(x < 87, input, new Cast(Int(16), -17)),
                              new Cast(Int(16), -17));
     Stmt store = new Store("buf", select, x - 1);
-    Stmt for_loop = new For("x", -2, y + 2, For::Parallel, 0, 0, store);
+    Stmt for_loop = new For("x", 0, 100, For::Parallel, 0, 0, store);
     Expr call = new Call(i32, "buf", vec(max(min(x,100),0)));
     Expr call2 = new Call(i32, "buf", vec(max(min(x-1,100),0)));
     Expr call3 = new Call(i32, "buf", vec(Expr(new Clamp(Clamp::Reflect, x+1, 0, 100))));
     Stmt store2 = new Store("out", call + call2 + call3 + 1, x);
-    Stmt for_loop2 = new For("x", 0, y, For::Vectorized , 0, 0, store2);
+    Stmt for_loop2 = new For("x", 0, 100, For::Serial , 0, 0, store2);
     Stmt pipeline = new Pipeline("buf", for_loop, Stmt(), for_loop2);
     
     std::cout << "Raw:\n" << pipeline << "\n";
@@ -313,6 +314,15 @@ void test_loop_partition_1() {
     std::cout << "LoopPreSolver:\n" << pre << "\n";
     Stmt solved = solver(pre);
     std::cout << "Solved:\n" << solved << "\n";
+    std::vector<Solution> solutions = extract_solutions("x", Stmt(), solved);
+    for (size_t i = 0; i < solutions.size(); i++) {
+        std::cout << solutions[i].var << " " << solutions[i].intervals << "\n";
+    }
+    
+    LoopPartition loop_part;
+    loop_part.solved = solved;
+    Stmt part = loop_part.mutate(simp);
+    std::cout << "Partitioned:\n" << part << "\n";
 }
 # endif
 

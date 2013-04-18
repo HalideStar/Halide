@@ -8,6 +8,7 @@
 #include "IRPrinter.h"
 #include "Log.h"
 #include "Simplify.h"
+#include "InlineLet.h"
 
 #include <iostream>
 
@@ -236,32 +237,6 @@ static bool is_constant_expr(std::vector<std::string> varlist, Expr e) {
     HasVariable hasvar(varlist);
     e.accept(&hasvar);
     return ! hasvar.result;
-}
-
-
-// ListVariables walks an argument expression and returns a list of
-// all the variables found in it.  The list may contain repeat elements.
-
-class ListRepeatVariables : public IRVisitor {
-public:
-    std::vector<std::string> varlist;
-    ListRepeatVariables() {}
-    
-private:
-    using IRVisitor::visit;
-
-    void visit(const Variable *op) {
-        varlist.push_back(op->name);
-    }
-};
-
-// list_repeat_variables returns a list of the variables found in an expression.
-// Variables that are referenced more than once will be listed more than once.
-
-std::vector<std::string> list_repeat_variables(Expr e) {
-    ListRepeatVariables lister;
-    e.accept(&lister);
-    return lister.varlist;
 }
 
 // BackwardIntervalInference walks an argument expression and

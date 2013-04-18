@@ -864,7 +864,7 @@ public:
         if (begin.same_as(op->min) && extent.same_as(op->extent) && body.same_as(op->body)) {
             rewriter->visit(op);
         } else {
-            rewriter->visit(new For(*op, begin, extent, body));
+            rewriter->visit(new For(op, begin, extent, body));
         }
         
         log::debug_level = oldlevel;

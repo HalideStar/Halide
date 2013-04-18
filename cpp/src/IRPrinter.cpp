@@ -7,13 +7,28 @@
 #include <iostream>
 #include <sstream>
 
-namespace Halide {
-
 using std::ostream;
 using std::endl;
 using std::vector;
 using std::string;
 using std::ostringstream;
+
+namespace std {
+using Halide::operator<<;
+
+// To print a std::vector, the method must be defined in namespace std.
+ostream &operator<<(ostream &stream, const vector<Halide::Internal::Interval> &v) {
+    for (size_t i = 0; i < v.size(); i++) {
+        stream << v[i];
+        if (i+1 < v.size()) {
+            stream << " ";
+        }
+    }
+    return stream;
+}
+}
+
+namespace Halide {
 
 ostream &operator<<(ostream &out, Type type) {
     switch (type.t) {
@@ -45,13 +60,31 @@ ostream &operator<<(ostream &stream, Expr ir) {
 }
 
 ostream &operator<<(ostream &stream, Func f) {
+    // Should also print the variables list
     stream << f.name() << " = ";
     if (!f.value().defined()) {
         stream << "(undefined)";
     } else {
         stream << f.value();
     }
+    // Should also print the definition of the reduction function.
     return stream;
+}
+
+
+ostream &operator<<(ostream &stream, Internal::Interval v) {
+    stream << "[" << v.min << ", " << v.max << "]";
+    return stream;
+}
+
+void tester() {
+    Internal::Interval v1;
+    std::vector<Internal::Interval> v2;
+    Internal::Solve *solve = new Internal::Solve(Expr(), v2);
+    
+    std::cout << v1;
+    std::cout << v2;
+    std::cout << solve->v;
 }
 
 ostream &operator<<(ostream &stream, Domain d) {
@@ -559,14 +592,7 @@ void IRPrinter::visit(const Block *op) {
 
 void IRPrinter::visit(const Solve *op) {
     stream << "solve(";
-    for (size_t i=0; i < op->v.size(); i++) {
-        stream << "[";
-        print(op->v[i].min);
-        stream << ", ";
-        print(op->v[i].max);
-        stream << "]";
-        if (i < op->v.size() - 1) stream << ", ";
-    }
+    stream << op->v;
     stream << ": ";
     print(op->e);
     stream << ")";

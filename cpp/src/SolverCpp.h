@@ -24,15 +24,6 @@ using std::string;
 // Unfortunately, Simplify is not a public class, so Solve ends up being included
 // in Simplify.cpp.
 
-class Solution {
-    // The expression that we have solved for.  Will contain target variable(s).
-    // A good solution is one where the solved expression is a single variable.
-    Expr e;
-    
-    // Intervals that define the individual solutions.
-    std::vector<Interval> intervals;
-};
-    
 
 
 // HasVariable walks an argument expression and determines
@@ -159,7 +150,63 @@ Interval inverseMax(Interval v, Expr k) {
 // end anonymous namespace
 }
 
-class Solver : public Simplify {
+/** A base class that adds tracking of target variables to a mutator.
+ * You need to call track() methods from corresponding visit() methods. */
+class TargetTracker {
+public:
+    
+    // The target variables for solving. (A scope-like thing)
+    std::vector<std::string> targets;
+    // The source nodes corresponding to the target variables.
+    std::vector<Expr> expr_sources;
+    std::vector<Stmt> stmt_sources;
+    
+    bool is_constant_expr(Expr e) {
+        return Halide::Internal::is_constant_expr(targets, e);
+    }
+    
+    int find_target(std::string var) {
+        for (int i = ((int)(targets.size()))-1; i >= 0; i--) {
+            if (targets[i] == var) {
+                return i;
+            }
+        }
+        return -1; // Not found.
+    }
+    
+    Expr track(IRMutator *mutator, const TargetVar *op) {
+        // Target variable named in the node is added to the targets.
+        targets.push_back(op->var);
+        expr_sources.push_back(op->source);
+        stmt_sources.push_back(Stmt());
+        Expr e = mutator->mutate(op->e);
+        Expr expr;
+        if (! e.same_as(op->e)) expr = new TargetVar(op, e);
+        else expr = op;
+        stmt_sources.pop_back();
+        expr_sources.pop_back();
+        targets.pop_back(); // Remove the target for processing above
+        return expr;
+    }
+    
+    Stmt track(IRMutator *mutator, const StmtTargetVar *op) {
+        // Target variable named in the node is added to the targets.
+        targets.push_back(op->var);
+        expr_sources.push_back(Expr());
+        stmt_sources.push_back(op->source);
+        Stmt s = mutator->mutate(op->s);
+        Stmt stmt;
+        if (! s.same_as(op->s)) stmt = new StmtTargetVar(op, s);
+        else stmt = op;
+        stmt_sources.pop_back();
+        expr_sources.pop_back();
+        targets.pop_back(); // Remove the target for processing above
+        return stmt;
+    }
+    
+};
+
+class Solver : public Simplify, public TargetTracker {
 
     // using parent::visit indicates that
     // methods of the base class with different parameters
@@ -168,37 +215,20 @@ class Solver : public Simplify {
     
 public:
     
-    // The target variables for solving. (A scope-like thing)
-    std::vector<std::string> targets;
-    
-    bool is_constant_expr(Expr e) {
-        return Halide::Internal::is_constant_expr(targets, e);
-    }
-    
     virtual void visit(const TargetVar *op) {
-        // Target variable named in the node is added to the targets.
-        targets.push_back(op->var);
-        Expr e = mutate(op->e);
-        if (! e.same_as(op->e)) expr = new TargetVar(op->var, e);
-        else expr = op;
-        targets.pop_back(); // Remove the target for processing above
+        expr = track(this, op);
     }
     
     virtual void visit(const StmtTargetVar *op) {
-        // Target variable named in the node is added to the targets.
-        targets.push_back(op->var);
-        Stmt s = mutate(op->s);
-        if (! s.same_as(op->s)) stmt = new StmtTargetVar(op->var, s);
-        else stmt = op;
-        targets.pop_back(); // Remove the target for processing above
+        stmt = track(this, op);
     }
-    
+
     virtual void visit(const Solve *op) {
         log(3) << depth << " Solve simplify " << Expr(op) << "\n";
         Expr e = mutate(op->e);
         
         log(3) << depth << " Solve using " << e << "\n";
-        const Solve *solve_e = e.as<Solve>();
+        //const Solve *solve_e = e.as<Solve>();
         const Add *add_e = e.as<Add>();
         const Sub *sub_e = e.as<Sub>();
         const Mul *mul_e = e.as<Mul>();
@@ -206,12 +236,13 @@ public:
         const Min *min_e = e.as<Min>();
         const Max *max_e = e.as<Max>();
         
-        if (solve_e) {
+        //if (solve_e) {
             // solve(solve(e)) --> solve(e) on intersection of intervals.
             // This is one approach to combining solutions, and makes it easier
             // to match them and pick them out.
-            expr = mutate(solve(solve_e->e, v_apply(intersection, op->v, solve_e->v)));
-        } else if (add_e && is_constant_expr(add_e->b)) {
+            //expr = mutate(solve(solve_e->e, v_apply(intersection, op->v, solve_e->v)));
+        //} else 
+        if (add_e && is_constant_expr(add_e->b)) {
             expr = mutate(solve(add_e->a, v_apply(operator-, op->v, add_e->b)) + add_e->b);
         } else if (sub_e && is_constant_expr(sub_e->b)) {
             expr = mutate(solve(sub_e->a, v_apply(operator+, op->v, sub_e->b)) - sub_e->b);
@@ -417,108 +448,10 @@ public:
     //virtual void visit(const Broadcast *op) {
     //virtual void visit(const Call *op) {
     
-# if 0
-    // We could be more aggressive about inserting let expressions for Solve
-    template<typename T, typename Body> 
-    Body simplify_let(const T *op, Scope<Expr> &scope, IRMutator *mutator) {
-        // If the value is trivial, make a note of it in the scope so
-        // we can subs it in later
-        Expr value = mutator->mutate(op->value);
-        Body body = op->body;
-        assert(value.defined());
-        assert(body.defined());
-        const Ramp *ramp = value.as<Ramp>();
-        const Broadcast *broadcast = value.as<Broadcast>();        
-        const Variable *var = value.as<Variable>();
-        string wrapper_name;
-        Expr wrapper_value;
-        if (is_simple_const(value)) {
-            // Substitute the value wherever we see it
-            scope.push(op->name, value);
-        } else if (ramp && is_simple_const(ramp->stride)) {
-            wrapper_name = op->name + ".base" + unique_name('.');
-
-            // Make a new name to refer to the base instead, and push the ramp inside
-            Expr val = new Variable(ramp->base.type(), wrapper_name);
-            Expr base = ramp->base;
-
-            // If it's a multiply, move the multiply part inwards
-            const Mul *mul = base.as<Mul>();
-            const IntImm *mul_b = mul ? mul->b.as<IntImm>() : NULL;
-            if (mul_b) {
-                base = mul->a;
-                val = new Ramp(val * mul->b, ramp->stride, ramp->width);
-            } else {
-                val = new Ramp(val, ramp->stride, ramp->width);
-            }
-
-            scope.push(op->name, val);
-
-            wrapper_value = base;
-        } else if (broadcast) {
-            wrapper_name = op->name + ".value" + unique_name('.');
-
-            // Make a new name refer to the scalar version, and push the broadcast inside            
-            scope.push(op->name, 
-                       new Broadcast(new Variable(broadcast->value.type(), 
-                                                  wrapper_name), 
-                                     broadcast->width));
-            wrapper_value = broadcast->value;
-        } else if (var) {
-            // This var is just equal to another var. We should subs
-            // it in only if the second var is still in scope at the
-            // usage site (this is checked in the visit(Variable*) method.
-            scope.push(op->name, var);
-        } else {
-            // Push a empty expr on, to make sure we hide anything
-            // else with the same name until this goes out of scope
-            scope.push(op->name, Expr());
-        }
-
-        // Before we enter the body, track the alignment info 
-        bool wrapper_tracked = false;
-        if (wrapper_value.defined() && wrapper_value.type() == Int(32)) {
-            ModulusRemainder mod_rem = modulus_remainder(wrapper_value, alignment_info);
-            alignment_info.push(wrapper_name, mod_rem);
-            wrapper_tracked = true;
-        }
-
-        bool value_tracked = false;
-        if (value.type() == Int(32)) {
-            ModulusRemainder mod_rem = modulus_remainder(value, alignment_info);
-            alignment_info.push(op->name, mod_rem);
-            value_tracked = true;
-        }
-
-        body = mutator->mutate(body);
-
-        if (value_tracked) {
-            alignment_info.pop(op->name);
-        }
-        if (wrapper_tracked) {
-            alignment_info.pop(wrapper_name);
-        }
-
-        scope.pop(op->name);
-
-        if (wrapper_value.defined()) {
-            return new T(wrapper_name, wrapper_value, new T(op->name, value, body));
-        } else if (body.same_as(op->body) && value.same_as(op->value)) {
-            return op;
-        } else {
-            return new T(op->name, value, body);
-        }        
-    }
-
-
-    void visit(const Let *op) {
-        expr = simplify_let<Let, Expr>(op, scope, this);
-    }
-
-    void visit(const LetStmt *op) {
-        stmt = simplify_let<LetStmt, Stmt>(op, scope, this);
-    }
-#endif
+    // Let and LetStmt should be aggressively inlined in the pre-solver
+    // pass where the Solve, TargetVar and StmtTargetVar nodes are created.
+    //void visit(const Let *op) {
+    //void visit(const LetStmt *op) {
 
     // Operations that simply defer to the parent
     // void visit(const PrintStmt *op) {
@@ -538,6 +471,74 @@ Stmt solver(Stmt s) {
 
 Expr solver(Expr e) {
     return Solver().mutate(e);
+}
+
+
+
+class ExtractSolutions : public IRMutator, public TargetTracker {
+    using IRMutator::visit;
+public:
+
+    std::vector<Solution> solutions;
+    std::string var;
+    Expr expr_source;
+    Stmt stmt_source;
+    
+    // Extract all solutions, each with their own variable and source information
+    ExtractSolutions() : var("") {}
+    // Extract solutions only for a particular variable and source node
+    ExtractSolutions(std::string _var, Expr expr_s, Stmt stmt_s) : 
+        var(_var), expr_source(expr_s), stmt_source(stmt_s) {}
+
+protected:
+    virtual void visit(const TargetVar *op) {
+        expr = track(this, op);
+    }
+    
+    virtual void visit(const StmtTargetVar *op) {
+        stmt = track(this, op);
+    }
+
+    // Extract solution from a Solve node.
+    virtual void visit(const Solve *op) {
+        Expr e = mutate(op->e);
+        
+        // In case of nested Solve nodes, walk through them.
+        while (const Solve *solve = e.as<Solve>()) {
+            e = solve->e;
+        }
+        
+        // We extract a solution only if the expression is a simple variable.
+        const Variable *variable = e.as<Variable>();
+        if (variable) {
+            // Find the variable among the list of target variables.
+            int found = find_target(variable->name);
+            if (found >= 0) {
+                // Found the variable as a target. Does it match the solutions
+                // that we are looking for?
+                if ((! expr_source.defined() || expr_source.same_as(expr_sources[found])) &&
+                    (! stmt_source.defined() || stmt_source.same_as(stmt_sources[found])) &&
+                    (var == "" || var == variable->name)) {
+                    solutions.push_back(Solution(targets[found], expr_sources[found], stmt_sources[found], op->v));
+                }
+            }
+        }
+        
+        expr = op; // Actually does not do any mutation.
+    }
+};
+
+// Extract solutions where the variable name matches var and the source node is source.
+std::vector<Solution> extract_solutions(std::string var, Stmt source, Stmt solved) {
+    ExtractSolutions extract(var, Expr(), source);
+    extract.mutate(solved);
+    return extract.solutions;
+}
+
+std::vector<Solution> extract_solutions(std::string var, Expr source, Expr solved) {
+    ExtractSolutions extract(var, source, Stmt());
+    extract.mutate(solved);
+    return extract.solutions;
 }
 
 namespace {

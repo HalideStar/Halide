@@ -30,6 +30,29 @@ EXPORT bool is_constant_expr(std::vector<std::string> varlist, Expr e);
 
 EXPORT void solver_test();
 
+class Solution {
+public:
+    // var: The variable that we have solved for.
+    // Note that Solve nodes in which the embedded solution is not a single variable
+    // cannot be extracted as Solution.
+    std::string var;
+    
+    // expr_source, stmt_source: The source node that was recorded in the TargetVar or StmtTargetVar
+    // the identifies the variable in var, above.  One of these will be undefined.
+    Expr expr_source;
+    Stmt stmt_source;
+    
+    // Intervals that define the individual solutions.
+    std::vector<Interval> intervals;
+    
+    Solution() {}
+    Solution(std::string _var, Expr expr_s, Stmt stmt_s, std::vector<Interval> _intervals) : 
+        var(_var), expr_source(expr_s), stmt_source(stmt_s), intervals(_intervals) {}
+};
+    
+std::vector<Solution> extract_solutions(std::string var, Stmt source, Stmt solved);
+
+std::vector<Solution> extract_solutions(std::string var, Expr source, Expr solved);
 }
 }
 

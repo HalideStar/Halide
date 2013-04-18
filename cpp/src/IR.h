@@ -612,9 +612,13 @@ struct For : public StmtNode<For> {
     
     /** Convenience constructor that inherits information from an existing For structure.
      * name, for_type and partitioning are inherited. */
-    For(For oldloop, Expr m, Expr e, Stmt b) :
-        name(oldloop.name), min(m), extent(e), for_type(oldloop.for_type), 
-        partition_begin(oldloop.partition_begin), partition_end(oldloop.partition_end), body(b) {
+    For(const For *oldloop, Expr m, Expr e, Stmt b) :
+        min(m), extent(e), body(b) {
+        assert(oldloop && "Null pointer passed to For");
+        name = oldloop->name;
+        for_type = oldloop->for_type;
+        partition_begin = oldloop->partition_begin;
+        partition_end = oldloop->partition_end;
         assert(min.defined() && "For of undefined");
         assert(extent.defined() && "For of undefined");
         assert(min.type().is_scalar() && "For with vector min");
@@ -850,15 +854,20 @@ struct Solve : public ExprNode<Solve> {
 struct TargetVar : public ExprNode<TargetVar> {
     std::string var;
     Expr e;
+    Expr source; // Not a child node - records the source expression
     
-    TargetVar(std::string _v, Expr _e) : ExprNode<TargetVar>(_e.type()), var(_v), e(_e) {}
+    TargetVar(std::string _v, Expr _e, Expr _source) : ExprNode<TargetVar>(_e.type()), var(_v), e(_e), source(_source) {}
+    TargetVar(const TargetVar *op, Expr _e) : ExprNode<TargetVar>(_e.type()), var(op->var), e(_e), source(op->source) {}
 };
 
 struct StmtTargetVar : public StmtNode<StmtTargetVar> {
     std::string var;
     Stmt s;
+    Stmt source; // Not a child node - records the source statement
     
-    StmtTargetVar(std::string _v, Stmt _s) : var(_v), s(_s) {}
+    StmtTargetVar(std::string _v, Stmt _s, Stmt _source) : var(_v), s(_s), source(_source) {}
+    // Constructor for use by mutators that want to mutate the Stmt s.
+    StmtTargetVar(const StmtTargetVar *op, Stmt _s) : var(op->var), s(_s), source(op->source) {}
 };
 
 /** Infinity node is useful for interval analysis and solver.  It represents an undefined

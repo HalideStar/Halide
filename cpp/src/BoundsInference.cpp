@@ -52,7 +52,7 @@ public:
         if (body.same_as(for_loop->body)) {
             stmt = for_loop;
         } else {
-            stmt = new For(*for_loop, for_loop->min, for_loop->extent, body);
+            stmt = new For(for_loop, for_loop->min, for_loop->extent, body);
         }
     }    
 

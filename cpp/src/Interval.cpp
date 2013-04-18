@@ -57,7 +57,6 @@ Interval operator%(Interval v, Expr b) {
 Interval intersection(Interval u, Interval v) {
     return Interval(simplify(max(u.min, v.min)), simplify(min(u.max, v.max)));
 }
-
 // end namespace Internal
 }
 }

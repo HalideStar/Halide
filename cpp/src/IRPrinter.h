@@ -4,10 +4,9 @@
 #include "IRVisitor.h"
 #include "Type.h"
 #include "IR.h"
+#include "Interval.h"
 #include "DomainInference.h"
 #include <ostream>
-
-namespace Halide { 
 
 /** \file 
  * This header file defines operators that let you dump a Halide
@@ -21,6 +20,14 @@ namespace Halide {
  * 
  * These operators are implemented using \ref Halide::Internal::IRPrinter
  */
+
+/** Emit a vector of Interval in human readable form.  Must be defined in namespace std because
+ * C++ looks for a definition associated with std::vector in namespace std. */ 
+namespace std {
+std::ostream &operator<<(std::ostream &stream, const std::vector<Halide::Internal::Interval> &v);
+}
+
+namespace Halide { 
 
 /** Emit an expression on an output stream (such as std::cout) in a
  * human-readable form */
@@ -38,6 +45,9 @@ std::ostream &operator<<(std::ostream &stream, Type);
 
 /** Emit a halide Domain in a human readable form */
 std::ostream &operator<<(std::ostream &stream, Domain);
+
+/** Emit an Interval in human readable form */
+std::ostream &operator<<(std::ostream &stream, Internal::Interval v);
 
 namespace Internal {
 

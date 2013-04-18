@@ -233,7 +233,7 @@ void IRMutator::visit(const For *op) {
         body.same_as(op->body)) {
         stmt = op;
     } else {
-        stmt = new For(*op, min, extent, body);
+        stmt = new For(op, min, extent, body);
     }
 }
 
@@ -306,13 +306,13 @@ void IRMutator::visit(const Solve *op) {
 void IRMutator::visit(const TargetVar *op) {
     Expr e = mutate(op->e);
     if (e.same_as(op->e)) expr = op;
-    else expr = new TargetVar(op->var, e);
+    else expr = new TargetVar(op, e);
 }
 
 void IRMutator::visit(const StmtTargetVar *op) {
     Stmt s = mutate(op->s);
     if (s.same_as(op->s)) stmt = op;
-    else stmt = new StmtTargetVar(op->var, s);
+    else stmt = new StmtTargetVar(op, s);
 }
 
 void IRMutator::visit(const Infinity *op) {

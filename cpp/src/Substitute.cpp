@@ -55,7 +55,7 @@ protected:
             if (new_min.same_as(op->min) && new_extent.same_as(op->extent)) {
                 stmt = op;
             } else {
-                stmt = new For(*op, new_min, new_extent, op->body);
+                stmt = new For(op, new_min, new_extent, op->body);
             }
         } else {
             IRMutator::visit(op);

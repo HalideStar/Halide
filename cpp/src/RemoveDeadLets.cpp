@@ -24,7 +24,7 @@ class RemoveDeadLets : public IRMutator {
         if (min.same_as(op->min) && extent.same_as(op->extent) && body.same_as(op->body)) {
             stmt = op;
         } else {
-            stmt = new For(*op, min, extent, body);
+            stmt = new For(op, min, extent, body);
         }
     }
 
