@@ -69,7 +69,7 @@ class LoopPreSolver : public InlineLet {
         Expr b = mutate(op->b);
         if (is_constant_expr(a) && ! is_constant_expr(b)) std::swap(a,b);
         if (is_constant_expr(b)) {
-            expr = new Min(new Solve(a, Interval(new Infinity(-1), b)), b);
+            expr = new Min(new Solve(a, Interval(make_infinity(b.type(), -1), b)), b);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
@@ -88,7 +88,7 @@ class LoopPreSolver : public InlineLet {
         Expr b = mutate(op->b);
         if (is_constant_expr(a) && ! is_constant_expr(b)) std::swap(a,b);
         if (is_constant_expr(b)) {
-            expr = new Max(new Solve(a, Interval(b, new Infinity(+1))), b);
+            expr = new Max(new Solve(a, Interval(b, make_infinity(b.type(), +1))), b);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
@@ -107,14 +107,14 @@ class LoopPreSolver : public InlineLet {
             if (b.type().is_int() || b.type().is_uint()) {
                 limit = simplify(limit + make_one(b.type()));
             }
-            expr = new LT(a, new Solve(b, Interval(limit, new Infinity(+1))));
+            expr = new LT(a, new Solve(b, Interval(limit, make_infinity(b.type(), +1))));
         } else if (is_constant_expr(b)) {
             // a < kb: Solve for a on (-infinity, kb-1) or (-infinity,kb)
             Expr limit = b;
             if (a.type().is_int() || a.type().is_uint()) {
                 limit = simplify(limit - make_one(a.type()));
             }
-            expr = new LT(new Solve(a, Interval(new Infinity(-1), limit)), b);
+            expr = new LT(new Solve(a, Interval(make_infinity(a.type(), -1), limit)), b);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
@@ -491,12 +491,15 @@ public:
 
 Stmt loop_partition(Stmt s) {
     //return LoopPartition().mutate(s);
-    Stmt simp = simplify(s); // Must be fully simplified first
-    Stmt pre = LoopPreSolver().mutate(simp);
-    Stmt solved = solver(pre);
     LoopPartition loop_part;
-    loop_part.solved = solved;
-    return loop_part.mutate(simp);
+    //if (global_options.loop_partition_all) { // Disable while we fix recursion problem.
+        // Dont do the preprocessing if not doing automatic partitioning.
+        s = simplify(s); // Must be fully simplified first
+        Stmt pre = LoopPreSolver().mutate(s);
+        Stmt solved = solver(pre);
+        loop_part.solved = solved;
+    //}
+    return loop_part.mutate(s);
 }
 
 // Test loop partition routines.

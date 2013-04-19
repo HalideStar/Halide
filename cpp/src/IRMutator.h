@@ -10,6 +10,7 @@
 
 #include <vector>
 #include <utility>
+//#include <map>
 
 namespace Halide { 
 namespace Internal {
@@ -42,6 +43,8 @@ protected:
     int depth; // Depth counter in case of unbounded recursion due to rule conflicts
     int maxdepth;
     bool failing;
+    
+    //std::map<IRNode *, Expr> cache; // Cache records source IRNode and its mutated result.
 
     /** visit methods that take Exprs assign to this to return their
      * new value */

@@ -879,7 +879,7 @@ struct StmtTargetVar : public StmtNode<StmtTargetVar> {
 struct Infinity : public ExprNode<Infinity> {
     int count; // Count of infinity. >0 means +ve infinity, <0 means negative infinity.
     
-    Infinity(int _c) : ExprNode<Infinity>(Int(32)), count(_c) {}
+    Infinity(Type t, int _c) : ExprNode<Infinity>(t), count(_c) {}
 };
 
 }

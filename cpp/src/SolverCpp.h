@@ -136,7 +136,7 @@ Interval inverseMin(Interval v, Expr k) {
     // If v.max >= k then the Min ensures that the upper bound is in
     // the target interval, so the new max is +infinity; otherwise
     // the new max is v.max.
-    return Interval(v.min, simplify(select(v.max >= k, new Infinity(+1), v.max)));
+    return Interval(v.min, simplify(select(v.max >= k, make_infinity(v.max.type(), +1), v.max)));
 }
 
 Interval inverseMax(Interval v, Expr k) {
@@ -144,7 +144,7 @@ Interval inverseMax(Interval v, Expr k) {
     // If v.min <= k then the Max ensures that the lower bound is in
     // the target interval, so the new min is -infinity; otherwise
     // the new min is v.min.
-    return Interval(simplify(select(v.min <= k, new Infinity(-1), v.min)), v.max);
+    return Interval(simplify(select(v.min <= k, make_infinity(v.min.type(), -1), v.min)), v.max);
 }
 
 // end anonymous namespace
@@ -621,8 +621,8 @@ void solver_test() {
     checkSolver(solve((x * d + d) / d, Interval(1,17)), solve(x, Interval(0,16)) + 1);
     checkSolver(solve((x * d - d) / d, Interval(1,17)), solve(x, Interval(2,18)) + -1);
     
-    checkSolver(solve(x + 4, Interval(0,new Infinity(+1))), solve(x, Interval(-4,new Infinity(+1))) + 4);
-    checkSolver(solve(x + 4, Interval(new Infinity(-1),10)), solve(x, Interval(new Infinity(-1),6)) + 4);
+    checkSolver(solve(x + 4, Interval(0,new Infinity(Int(32), +1))), solve(x, Interval(-4,new Infinity(Int(32), +1))) + 4);
+    checkSolver(solve(x + 4, Interval(new Infinity(Int(32), -1),10)), solve(x, Interval(new Infinity(Int(32), -1),6)) + 4);
     
     // A few complex expressions
     checkSolver(solve(x + c + 2 * y + d, Interval(0,10)), solve(x + y * 2, Interval(0 - d - c, 10 - d - c)) + c + d);

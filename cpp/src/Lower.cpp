@@ -742,7 +742,7 @@ static Stmt s_prev;
 // local method to write stmt to a named log file but only if it has changed compared to
 // the previous log file that was written.
 void log_to_file(std::string base, Stmt s) {
-    if (! s.same_as(s_prev)) {
+    if (! s.same_as(s_prev) || log::debug_level > 2) {
         log(base, 2) << s << "\n"; 
         s_prev = s; 
     }

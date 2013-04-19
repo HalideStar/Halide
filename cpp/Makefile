@@ -4,7 +4,7 @@
 # 'make test_apps' checks some of the apps build and run (but does not check their output)
 
 # Set RUNDEBUG to select debugging options for running test programs
-RUNDEBUG = HL_DEBUG_LOGFILE=1 HL_NUMTHREADS=4
+RUNDEBUG = HL_DEBUG_LOGFILE=2 HL_NUMTHREADS=4
 
 CXX ?= g++
 LLVM_CONFIG ?= llvm-config

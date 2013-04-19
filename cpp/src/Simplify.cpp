@@ -342,7 +342,7 @@ protected:
         } else if (inf & (FN | FP)) {
             // Right infinity dominates but has to be negated
             const Infinity *inf_b = b.as<Infinity>();
-            expr = new Infinity(-inf_b->count);
+            expr = make_infinity(b.type(), -inf_b->count);
         } else if (inf & (PP | NN)) {
             assert(0 && "Conflicting infinity"); // subtraction of conflicting infinities
         } else if (is_zero(b)) {
@@ -466,7 +466,7 @@ protected:
         } else if ((inf & (PF | NF)) && is_negative_const(b)) {
             // infinity multiplied by negative finite.
             const Infinity *inf_a = a.as<Infinity>();
-            expr = new Infinity(-inf_a->count);
+            expr = make_infinity(a.type(), -inf_a->count);
         } else if (is_zero(b)) {
             expr = b;
         } else if (is_one(b)) {
@@ -537,7 +537,7 @@ protected:
         } else if ((inf & (PF | NF)) && is_negative_const(b)) {
             // infinity divided by negative finite: negate the infinity.
             const Infinity *inf_a = a.as<Infinity>();
-            expr = new Infinity(-inf_a->count);
+            expr = make_infinity(a.type(), -inf_a->count);
         } else if (is_zero(a)) {
             expr = a;
         } else if (is_one(b)) {

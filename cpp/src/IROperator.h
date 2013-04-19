@@ -66,6 +66,9 @@ int EXPORT int_cast_constant(Type t, int val);
 /** Construct a const of the given type */
 Expr EXPORT make_const(Type t, int val);
 
+/** Construct an infinity of the given type */
+Expr make_infinity(Type t, int count); //LH
+
 /** Fetch the value of an integer constant, if it is an integer constant. */
 bool get_int_const(Expr e, int &ival);
 
