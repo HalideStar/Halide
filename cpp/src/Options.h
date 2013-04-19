@@ -33,6 +33,15 @@ public:
 	
 	// loop_partition: If true, enables code for loop partitioning.
 	bool loop_partition;
+    
+    // loop_partition_all: If true, automatic loop partitioning is enabled by default for all code.
+    bool loop_partition_all;
+    
+    // loop_partition_letbind: If true, fully let bind the loop bounds.  For speed comparisons.
+    bool loop_partition_letbind;
+    
+    // lift_let: If true, lift Let outside of For as much as possible.
+    bool lift_let;
 	
 	// interval_analysis_simplify: If true, simplify loop contents using interval analysis.
 	bool interval_analysis_simplify;

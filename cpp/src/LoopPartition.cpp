@@ -11,6 +11,7 @@
 #include "Substitute.h"
 #include "Solver.h"
 #include "Simplify.h"
+#include "Options.h"
 
 namespace Halide {
 namespace Internal {
@@ -359,7 +360,7 @@ protected:
                     stmt = op;
                 }
                 done = true;
-            } else {
+            } else if (global_options.loop_partition_all) {
                 // Automatic loop partitioning.
                 // Search for solutions related to this particular for loop.
                 std::vector<Solution> solutions = extract_solutions(op->name, op, solved);
@@ -437,6 +438,17 @@ protected:
                     if (start.defined()) main_extent = op->min + op->extent - max(start, op->min);
                     else main_extent = op->extent;
                 }
+                // Use Let binding for the main loop bounds, so no expressions there.
+                Expr main_min_let, main_extent_let;
+                string main_min_name, main_extent_name;
+                if (global_options.loop_partition_letbind) {
+                    main_min_let = main_min;
+                    main_extent_let = main_extent;
+                    main_min_name = op->name + ".mainmin";
+                    main_extent_name = op->name + ".mainextent"; // LH: Dont use .extent. in name in case IA uses it.  Disabled, however.
+                    main_min = new Variable(op->min.type(), main_min_name);
+                    main_extent = new Variable(op->min.type(), main_extent_name);
+                }
                 // Build the code.
                 Stmt block; // An undefined block of code.
                 // The before loop is not further partitioned.
@@ -447,6 +459,10 @@ protected:
                 if (end.defined()) {
                     append_stmt(block, new For(op->name, after_min, after_extent, op->for_type, -4, -4, op->body));
                 }
+                if (global_options.loop_partition_letbind) {
+                    block = new LetStmt(main_extent_name, main_extent_let, block);
+                    block = new LetStmt(main_min_name, main_min_let, block);
+                }
                 if (end.defined()) {
                     block = new LetStmt(endName, endValue, block);
                 }
@@ -454,7 +470,7 @@ protected:
                     block = new LetStmt(startName, startValue, block);
                 }
                 stmt = block;
-                if (equal(block, op)) { // Equality test required because new For loop always constructed.
+                if (equal(block, op)) { // Equality test required because new For loop is always constructed.
                     stmt = op;
                 }
                 done = true;

@@ -18,6 +18,9 @@ Options::Options() {
 	clamp_as_node = false; // Default is to use Halide clamp implementation immediately.
 	simplify_nested_clamp = true; // Default is to simplify nested clamp because the code is auto-tested.
 	loop_partition = true; // Default is to do loop partitioning.
+    loop_partition_all = false; // Default is not to partition loop automatically - some code fails.
+    loop_partition_letbind = true;
+    lift_let = true;
 	interval_analysis_simplify = true;
 }
 
@@ -27,6 +30,9 @@ std::ostream &operator<<(std::ostream &stream, Options opt) {
 	       << "    clamp_as_node=" << opt.clamp_as_node
 		   << "    simplify_nested_clamp=" << opt.simplify_nested_clamp << "\n";
     stream << "loop_partition=" << opt.loop_partition
+           << "    loop_partition_all=" << opt.loop_partition_all
+           << "    loop_partition_letbind=" << opt.loop_partition_letbind << "\n";
+    stream << "lift_let=" << opt.lift_let
 	       << "    interval_analysis_simplify=" << opt.interval_analysis_simplify << "\n";
     return stream;
 }

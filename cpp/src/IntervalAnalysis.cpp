@@ -99,10 +99,12 @@ public:
             min = bounds.min;
             max = bounds.max;
             log(2) << "Variable " << op->name << ": " << bounds << "\n";
+# if 0
         } else if (op->name.find(".extent.") != std::string::npos) {
             // extent variables are assumed to be non-negative
             min = new Max(make_zero(op->type), Expr(op));
             max = min;
+# endif
         } else {
             //log(0) << "Not found in scope\n";
             min = op;

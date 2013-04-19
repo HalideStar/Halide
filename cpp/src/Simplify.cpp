@@ -1465,6 +1465,17 @@ protected:
     }
 
     virtual void visit(const For *op) {
+        if (global_options.lift_let) {
+            // If there is a Let immediately inside the For, lift it out unless
+            // it redefines the For variable name.  This change is made before processing
+            // the For node and the enclosed LetStmt.
+            const LetStmt *letstmt = op->body.as<LetStmt>();
+            if (letstmt && letstmt->name != op->name) {
+                Stmt s = new LetStmt(letstmt->name, letstmt->value, new For(op, op->min, op->extent, letstmt->body));
+                stmt = mutate(s);
+                return;
+            }
+        }
         IRMutator::visit(op);
     }
 
