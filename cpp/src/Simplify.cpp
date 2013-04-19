@@ -7,6 +7,8 @@
 #include "Var.h"
 #include "Log.h"
 #include "ModulusRemainder.h"
+// Gain access to depends_on_var().
+#include "SlidingWindow.h"
 #include <iostream>
 
 namespace Halide { 
@@ -277,8 +279,9 @@ protected:
             expr = mutate((a + add_b->a) + add_b->b);
         } else if (sub_a && is_simple_const(sub_a->a)) { //LH
             // (kaa - ab) + kb --> (kaa + kb) - ab
-            // (kaa - ab) + b --> (kaa + b) - ab
-            expr = mutate((sub_a->a + b) - sub_a->b);
+            // (kaa - ab) + b --> kaa + (b - ab)
+            if (is_simple_const(b)) expr = mutate((sub_a->a + b) - sub_a->b);
+            else expr = mutate(sub_a->a + (b - sub_a->b));
         } else if (sub_a && equal(b, sub_a->b)) {
             // Additions that cancel an inner term
             expr = sub_a->a;
@@ -344,6 +347,9 @@ protected:
             assert(0 && "Conflicting infinity"); // subtraction of conflicting infinities
         } else if (is_zero(b)) {
             expr = a;
+        } else if (is_zero(a) && sub_b) { //LH
+            // 0 - ba - bb --> bb - ba
+            expr = mutate(sub_b->b - sub_b->a);
         } else if (equal(a, b)) {
             expr = make_zero(op->type);
         } else if (const_int(a, &ia) && const_int(b, &ib)) {
@@ -1467,10 +1473,13 @@ protected:
     virtual void visit(const For *op) {
         if (global_options.lift_let) {
             // If there is a Let immediately inside the For, lift it out unless
-            // it redefines the For variable name.  This change is made before processing
+            // it redefines the For variable name or uses it in its own definition,
+            // or redefines a variable name uses in the For min or extent.
+            // This change is made before processing
             // the For node and the enclosed LetStmt.
             const LetStmt *letstmt = op->body.as<LetStmt>();
-            if (letstmt && letstmt->name != op->name) {
+            if (letstmt && letstmt->name != op->name && ! depends_on_var(letstmt->value, op->name) &&
+                ! depends_on_var(op->min, letstmt->name) && ! depends_on_var(op->extent, letstmt->name)) {
                 Stmt s = new LetStmt(letstmt->name, letstmt->value, new For(op, op->min, op->extent, letstmt->body));
                 stmt = mutate(s);
                 return;
@@ -1651,6 +1660,7 @@ void simplify_test() {
     check((x - 3) - y, (x - y) + (-3));
     check(x - (y - 2), (x - y) + 2);
     check(3 - (y - 2), 5 - y);
+    check(4 - x - y, 4 - x- y);
     check(x*y - x*z, x*(y-z));
     check(x*y - z*x, x*(y-z));
     check(y*x - x*z, x*(y-z));

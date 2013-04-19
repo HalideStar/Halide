@@ -295,6 +295,9 @@ public:
         const Add *add_a = a.as<Add>();
         const Add *add_b = b.as<Add>();
         const Sub *sub_a = a.as<Sub>();
+        const Sub *sub_b = b.as<Sub>();
+        bool const_a = is_constant_expr(a);
+        bool const_b = is_constant_expr(b);
 
         // The default behavior of simplify pushes constant values towards the RHS.
         // We want to preserve that behavior because it results in constants being
@@ -303,17 +306,26 @@ public:
         // consisting of/containing target variables.
         
         // In the following comments, k... denotes constant expression, v... denotes target variable.
-        if (is_constant_expr(a) && is_constant_expr(b)) {
+        if (const_a && const_b) {
             Simplify::visit(op); // Pure constant expressions get simplified in the normal way
-        } else if (add_a && is_constant_expr(add_a->b) && ! is_constant_expr(b)) {
-            // (aa + kab) + vb --> (aa + vb) + kab
+        } else if (add_a && !const_b && !const_a && is_constant_expr(add_a->b)) {
+            // (vaa + kab) + vb --> (vaa + vb) + kab
             expr = mutate((add_a->a + b) + add_a->b);
-        } else if (add_b && is_constant_expr(add_b->b) && !is_constant_expr(add_b->a)) {
-            // a + (vba + kbb) --> (a + vba) + kbb
+        } else if (add_b && !const_a && !const_b && is_constant_expr(add_b->b)) {
+            // va + (vba + kbb) --> (va + vba) + kbb
             expr = mutate((a + add_b->a) + add_b->b);
-        } else if (sub_a && is_constant_expr(sub_a->a) && is_constant_expr(b)) {
-            // (kaa - ab) + kb --> (kaa + kb) - ab
-            expr = mutate((sub_a->a + b) - sub_a->b);
+        } else if (sub_a && !const_b && !const_a && is_constant_expr(sub_a->a)) {
+            // (kaa - vab) + vb --> (vb - vab) + kaa
+            expr = mutate((b - sub_a->b) + sub_a->a);
+        } else if (sub_a && !const_b && !const_a  && is_constant_expr(sub_a->b)) {
+            // (vaa - kab) + vb --> (vaa + vb) - kab
+            expr = mutate((sub_a->a - b) + sub_a->b);
+        } else if (sub_b && !const_b && !const_a && is_constant_expr(sub_b->a)) {
+            // va + (kba - vbb) --> (va - vbb) + kba
+            expr = mutate((a - sub_b->b) + sub_b->a);
+        } else if (sub_b && !const_b && !const_a && is_constant_expr(sub_b->b)) {
+            // va + (vba - kbb) --> (va + vba) - kbb
+            expr = mutate((a + sub_b->a) - sub_b->b);
         } else {
             // Adopt default behavior
             // Take care in the above rules to ensure that they do not produce changes that
@@ -334,30 +346,33 @@ public:
         const Add *add_b = b.as<Add>();
         const Sub *sub_a = a.as<Sub>();
         const Sub *sub_b = b.as<Sub>();
+        bool const_a = is_constant_expr(a);
+        bool const_b = is_constant_expr(b);
         
         // In the following comments, k... denotes constant expression, v... denotes target variable.
-        if (is_constant_expr(a) && is_constant_expr(b)) {
+        if (const_a && const_b) {
             Simplify::visit(op); // Pure constant expressions get simplified in the normal way
-        } else if (add_a && is_constant_expr(add_a->b) && ! is_constant_expr(b) & !is_constant_expr(add_a->a)) {
-            // (vaa + kab) - kb --> unchanged (because other simplify rules would reverse)
+        //} else if (const_a || const_b) {
+            // One side is constant and the other is not.  Do not rearrange this node.
+        //    expr = op;
+        } else if (add_a && !const_b && !const_a && is_constant_expr(add_a->b)) {
             // (vaa + kab) - vb --> (vaa - vb) + kab
             expr = mutate((add_a->a - b) + add_a->b);
-        } else if (add_b && is_constant_expr(add_b->b) && !is_constant_expr(add_b->a)) {
-            // a - (vba + kbb) --> (a - vba) - kbb
+        } else if (add_b && !const_b && !const_a && is_constant_expr(add_b->b)) {
+            // va - (vba + kbb) --> (va - vba) - kbb
             expr = mutate((a - add_b->a) - add_b->b);
-        } else if (sub_a && is_constant_expr(sub_a->a) && is_constant_expr(b)) {
-            // (kaa - ab) - kb --> (kaa - kb) - ab
+        } else if (sub_a && !const_b && !const_a && is_constant_expr(sub_a->a)) {
+            // (kaa - vab) - vb --> kaa - (vab + vb)
+            expr = mutate(sub_a->a - (b + sub_a->b));
+        } else if (sub_a && !const_b && !const_a && is_constant_expr(sub_a->b)) {
+            // (vaa - kab) - vb --> (vaa - vb) - kab
             expr = mutate((sub_a->a - b) - sub_a->b);
-        } else if (sub_b && is_constant_expr(sub_b->b)) {
-            // Unused: ka - (ba - kbb) --> (ka + kbb) - ba: Such a rule is reversed by simplify
-            if (is_constant_expr(a)) expr = mutate((a + sub_b->b) - sub_b->a);
-            // a - (ba - kbb) --> (a - ba) + kbb;
-            else expr = mutate((a - sub_b->a) + sub_b->b);
-        } else if (sub_b && is_constant_expr(sub_b->a) && is_constant_expr(a)) {
-            // ka - (kba - bb) --> (bb + ka) - kba
-            if (is_constant_expr(a)) expr = mutate((sub_b->b + a) - sub_b->a);
-            // a - (kba - bb) --> (a + bb) - kba
-            else expr = mutate((a + sub_b->b) - sub_b->a);
+        } else if (sub_b && !const_b && !const_a && is_constant_expr(sub_b->a)) {
+            // va - (kba - vbb) --> (va + vbb) - kba
+            expr = mutate((a + sub_b->b) - sub_b->a);
+        } else if (sub_b && !const_b && !const_a && is_constant_expr(sub_b->b)) {
+            // va - (vba - kbb) --> (va - vba) + kbb;
+            expr = mutate((a - sub_b->a) + sub_b->b);
         } else {
             // Adopt default behavior
             // Take care in the above rules to ensure that they do not produce changes that
@@ -574,14 +589,14 @@ void solver_test() {
     // -4 <= -x <= 6.  solve(-x) + 4
     // 4 >= x >= -6.   -solve(x) + 4  i.e.  4 - solve(x)
     checkSolver(solve(4 - x, Interval(0,10)), 4 - solve(x, Interval(-6,4)));
-    checkSolver(solve(4 - d - x, Interval(0,10)), 4 - d - solve(x, Interval(-6 - d, 4 - d)));
-    checkSolver(solve(4 - d - x, Interval(0,10)) + 1, 5 - d - solve(x, Interval(-6 - d, 4 - d)));
+    checkSolver(solve(4 - d - x, Interval(0,10)), 4 - (solve(x, Interval(-6 - d, 4 - d)) + d));
+    checkSolver(solve(4 - d - x, Interval(0,10)) + 1, 5 - (solve(x, Interval(-6 - d, 4 - d)) + d));
     // Solve c - (x + d) on (0,10).
     // 0 <= c - (x + d) <= 10.
     // -c <= -(x+d) <= 10-c.
     // c >= x+d >= c-10.
     // c-d >= d >= c-d-10.
-    checkSolver(solve(c - (x + d), Interval(0,10)), c - d - solve(x, Interval(c-d+-10, c-d)));
+    checkSolver(solve(c - (x + d), Interval(0,10)), c - (solve(x, Interval(c-d+-10, c-d)) + d));
     
     checkSolver(solve(x * 2, Interval(0,10)), solve(x, Interval(0,5)) * 2);
     checkSolver(solve(x * 3, Interval(1,17)), solve(x, Interval(1,5)) * 3);

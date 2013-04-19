@@ -17,11 +17,11 @@ Options::Options() {
 	border_value_inner_outside = true; // Inner outside is faster on X86, LLVM 3.2.
 	clamp_as_node = false; // Default is to use Halide clamp implementation immediately.
 	simplify_nested_clamp = true; // Default is to simplify nested clamp because the code is auto-tested.
-	loop_partition = true; // Default is to do loop partitioning.
+	loop_partition = false; // Default is to do loop partitioning.
     loop_partition_all = false; // Default is not to partition loop automatically - some code fails.
     loop_partition_letbind = true;
     lift_let = true;
-	interval_analysis_simplify = true;
+	interval_analysis_simplify = false;
 }
 
 

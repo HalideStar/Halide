@@ -27,6 +27,15 @@ class ExprDependsOnVar : public IRVisitor {
             op->body.accept(this);
         }
     }
+    
+    void visit(const LetStmt *op) {
+        op->value.accept(this);
+        // The name might be hidden within the body of the let, in
+        // which case there's no point descending.
+        if (op->name != var) {
+            op->body.accept(this);
+        }
+    }
 public:
 
     bool result;
@@ -35,7 +44,21 @@ public:
     ExprDependsOnVar(Expr e, string v) : result(false), var(v) {        
         if (e.defined()) e.accept(this);
     }
+    
+    ExprDependsOnVar(Stmt s, string v) : result(false), var(v) {
+        if (s.defined()) s.accept(this);
+    }
 };
+
+bool depends_on_var(Expr e, string var) {
+    ExprDependsOnVar depend(e, var);
+    return depend.result;
+}
+
+bool depends_on_var(Stmt s, string var) {
+    ExprDependsOnVar depend(s, var);
+    return depend.result;
+}
 
 // Perform sliding window optimization for a function over a
 // particular serial for loop
