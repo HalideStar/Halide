@@ -768,7 +768,7 @@ private:
                 else if (func_call->param.defined()) {
                     log(2,"DOMINF") << "Domain Inference on Image parameter " << func_call->param.name() << "\n";
                     result = backwards_interval(varlist, domains, func_call->args[i],
-                                            0, func_call->param.extent(i) - 1);
+                                            func_call->param.min(i), func_call->param.min(i) + func_call->param.extent(i) - 1);
                 }
                 else
                     assert(0 && "Call to Image is neither image nor imageparam\n");

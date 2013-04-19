@@ -77,10 +77,15 @@ public:
         return contents.ptr->is_buffer;
     }
 
-
+    //LH
     /** Get an expression representing the extent of this image
      * parameter in the given dimension */
     Expr extent(int x) const;
+
+    //LH
+    /** Get an expression representing the min of this image
+     * parameter in the given dimension */
+    Expr min(int x) const;
 
     /** If the parameter is a scalar parameter, get its currently
      * bound value. Only relevant when jitting */

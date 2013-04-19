@@ -231,13 +231,13 @@ Expr const_false(int w) {
 }
 
 
-void check_defined(Expr a, std::string op, Expr b) {
+void check_defined(const Expr &a, const std::string &op, const Expr &b) {
     if (a.defined() && b.defined()) return;
     std::cerr << "Undefined operand: " << a << " " << op << " " << b << std::endl;
     assert(false && "Undefined operand");
 }
 
-void check_defined(std::string op, Expr a, Expr b) {
+void check_defined(const std::string &op, const Expr &a, const Expr &b) {
     if (a.defined() && b.defined()) return;
     std::cerr << "Undefined argument: " << op << "(" << a << ", " << b << ")" << std::endl;
     assert(false && "Undefined argument");

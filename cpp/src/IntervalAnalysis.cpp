@@ -98,6 +98,11 @@ public:
             Interval bounds = scope.get(op->name);
             min = bounds.min;
             max = bounds.max;
+            log(2) << "Variable " << op->name << ": " << bounds << "\n";
+        } else if (op->name.find(".extent.") != std::string::npos) {
+            // extent variables are assumed to be non-negative
+            min = new Max(make_zero(op->type), Expr(op));
+            max = min;
         } else {
             //log(0) << "Not found in scope\n";
             min = op;
@@ -356,18 +361,27 @@ public:
         
         if (do_simplify) {
         int oldlevel = log::debug_level;
-        log::debug_level = oldlevel > 0 ? 4 : 0;
+        //log::debug_level = oldlevel > 0 ? 4 : 0;
         log(4) << "IA_Simplify Min(" << a << ", " << b << ")  on (" 
             << min_a << "," << max_a << ") ("
             << min_b << "," << max_b << ")\n";
         if (do_simplify && max_a.defined() && min_b.defined() && proved(max_a <= min_b)) {
             // Intervals do not overlap (except at one point). a is always the minimum
             expr = a;
+            // Adopt the interval of a.  This makes a difference because that interval
+            // is simpler, possibly.  More importantly, if that interval has a min that
+            // is potentially greater than its max, then that information is retained.
+            // This is the situation that arises with For loops where the main loop
+            // may have a negative or zero extent.
+            min = min_a;
+            max = max_a;
             log::debug_level = oldlevel;
             return;
         }
         if (do_simplify && max_b.defined() && min_a.defined() && proved(max_b <= min_a)) {
             expr = b;
+            min = min_b;
+            max = max_b;
             log::debug_level = oldlevel;
             return;
         }
@@ -409,24 +423,36 @@ public:
 
         if (do_simplify) {
         int oldlevel = log::debug_level;
-        log::debug_level = oldlevel > 0 ? 4 : 0;
+        //log::debug_level = oldlevel > 0 ? 4 : 0;
         log(4) << "IA_Simplify Max(" << a << ", " << b << ")  on (" 
             << min_a << "," << max_a << ") ("
             << min_b << "," << max_b << ")\n";
         if (do_simplify && max_a.defined() && min_b.defined() && proved(min_b >= max_a)) {
             // Intervals do not overlap (except at one point). b is always the maximum
             expr = b;
+            min = min_b;
+            max = max_b;
             log::debug_level = oldlevel;
             return;
         }
         if (do_simplify && max_b.defined() && min_a.defined() && proved(min_a >= max_b)) {
             expr = a;
+            min = min_a;
+            max = max_a;
             log::debug_level = oldlevel;
             return;
         }
         log::debug_level = oldlevel;
-        log(1) << "Could not simplify " << Expr(op) << "\n    on ("
+        log(1) << "Could not simplify " << "Max(" << a << ", " << b << ")\n    on ("
             << min_a << ", " << max_a << ")  (" << min_b << ", " << max_b << ")\n";
+        // Repeat the simplification from above, but with logging lifted to level 2.
+        log::debug_level = oldlevel > 0 ? 2 : 0;
+        if (do_simplify && max_a.defined() && min_b.defined() && proved(min_b >= max_a)) {
+            // Intervals do not overlap (except at one point). b is always the maximum
+        }
+        if (do_simplify && max_b.defined() && min_a.defined() && proved(min_a >= max_b)) {
+        }
+        log::debug_level = oldlevel;
         }
 
         //log(3) << min << ", " << max << "\n";
@@ -835,18 +861,20 @@ public:
     }
 
     void visit(const For *op) {
+        int oldlevel = log::debug_level;
+        //log::debug_level = op->partition_begin == -3 ? 1 : 0; // Debug the main For loop only
+       
         // Compute interval for minimum of loop
         Expr begin = mutate(op->min);
+        log(1) << "Begin: " << begin << " on (" << min << ", " << max << ")" << "\n";
         Expr begin_min = min; 
         Expr begin_max = max;
         // Compute interval for extent of loop
         Expr extent = mutate(op->extent);
+        log(1) << "Extent: " << extent << " on (" << min << ", " << max << ")" << "\n";
         Expr extent_min = min;
         Expr extent_max = max;
         
-        int oldlevel = log::debug_level;
-        //log::debug_level = op->partition_begin == -3 ? 1 : 0;
-       
         Expr end_max;
         if (extent_max.defined() && begin_max.defined()) {
             end_max = begin_max + extent_max - 1;
@@ -855,7 +883,9 @@ public:
             end_max = Expr();
         }
         scope.push(op->name, Interval(begin_min, simplify_undef(end_max)));
+        log(1) << "Push " << op->name << " on " << Interval(begin_min, simplify_undef(end_max)) << "\n-----------------------------------------------------\n";
         Stmt body = mutate(op->body);
+        log(1) << "Pop " << op->name << "\n-----------------------------------------------------------\n";
         scope.pop(op->name);
         
         // Range of statement is undefined

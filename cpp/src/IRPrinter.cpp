@@ -17,6 +17,15 @@ namespace std {
 using Halide::operator<<;
 
 // To print a std::vector, the method must be defined in namespace std.
+ostream &operator<<(ostream &stream, const vector<Halide::Expr> &v) {
+    for (size_t i = 0; i < v.size(); i++) {
+        stream << v[i];
+        if (i+1 < v.size()) {
+            stream << ", ";
+        }
+    }
+    return stream;
+}
 ostream &operator<<(ostream &stream, const vector<Halide::Internal::Interval> &v) {
     for (size_t i = 0; i < v.size(); i++) {
         stream << v[i];
@@ -72,21 +81,6 @@ ostream &operator<<(ostream &stream, Func f) {
 }
 
 
-ostream &operator<<(ostream &stream, Internal::Interval v) {
-    stream << "[" << v.min << ", " << v.max << "]";
-    return stream;
-}
-
-void tester() {
-    Internal::Interval v1;
-    std::vector<Internal::Interval> v2;
-    Internal::Solve *solve = new Internal::Solve(Expr(), v2);
-    
-    std::cout << v1;
-    std::cout << v2;
-    std::cout << solve->v;
-}
-
 ostream &operator<<(ostream &stream, Domain d) {
     for (int i = 0; i < d.dimensions(); i++) {
         stream << d.intervals[i];
@@ -96,6 +90,11 @@ ostream &operator<<(ostream &stream, Domain d) {
 }
 
 namespace Internal {
+
+ostream &operator<<(ostream &stream, Internal::Interval v) {
+    stream << "[" << v.min << ", " << v.max << "]";
+    return stream;
+}
 
 void IRPrinter::test() {
     Type i32 = Int(32);

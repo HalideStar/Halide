@@ -2,6 +2,7 @@
 #include "IntervalAnalysis.h"
 #include "IR.h"
 #include "InlineLet.h"
+#include "IREquality.h"
 #include "IROperator.h"
 #include "IRPrinter.h"
 #include "IRRewriter.h"
@@ -173,6 +174,56 @@ class LoopPreSolver : public InlineLet {
 };
 
 
+// HasVariableMatch walks an argument expression and determines
+// whether the expression contains any variable that matches the pattern.
+// The pattern is a string that should be found in the variable - that is all
+// there is to it.
+
+class HasVariableMatch : public IRVisitor {
+private:
+    const std::string &pattern;
+
+public:
+    bool result;
+    HasVariableMatch(const std::string &_pattern) : pattern(_pattern), result(false) {}
+    
+private:
+    using IRVisitor::visit;
+    
+    void visit(const Variable *op) {
+        if (result) return; // Once one is found, no need to find more.
+        // Check whether variable name is in the list of known names.
+        result = op->name.find(pattern) != std::string::npos;
+    }
+
+    // If a Let node defines one of the variables that we are looking for,
+    // then the variable inside the Let is not the same variable.
+    void visit(const Let *op) {
+        if (result) return; // Do not continue checking once one variable is found.
+        
+        // If the value expression of the Let contains a matching, then
+        // we have found the variable.
+        op->value.accept(this);
+        
+        // To do this properly, we would have to track Let bindings, but our
+        // application is unlikely to encounter any actual Let.  So, if the
+        // Let binding name is a match then refuse to visit the body.
+        // This means that we may say "no" when we should say "yes" but never
+        // "yes" when we should say "no".
+        if (op->name.find(pattern) != std::string::npos) {
+            // Skip it.  Otherwise, we would have to track exclusions.
+        } else {
+            op->body.accept(this);
+        }
+    }
+};
+
+bool has_variable_match(std::string pattern, Expr e) {
+    HasVariableMatch matcher(pattern);
+    e.accept(&matcher);
+    return matcher.result;
+}
+
 // Perform loop partition optimisation for all For loops
 class LoopPartition : public IRMutator {
     using IRMutator::visit;
@@ -180,31 +231,101 @@ public:
     Stmt solved;
 
 protected:
-    std::vector<int> partition_points(std::vector<Solution> sol, Expr endpoint, bool negate) {
-        std::vector<int> results;
+    // Insert a partition point into a list.  Search to find a compatible expression and update that expression.
+    // An expression is compatible if we can either prove that the new point is <= or > than the existing point.
+    // For end points list (is_end true) replace expression with new point if new point <= expression.
+    // For start points list (is_end false) replace expresison with new point if new point > expression.
+    void insert_partition_point(Expr point, std::vector<Expr> &points, bool is_end) {
+        bool disproved;
+        size_t i;
+        for (i = 0; i < points.size(); i++) {
+            if (proved(point >  points[i], disproved)) {
+                if (! is_end) points[i] = point;
+                break; // Compatible expression found
+            } else if (disproved /* proved(point <= points[i]) */) {
+                if (is_end) points[i] = point;
+                break; // Compatible expression found
+            }
+        }
+        if (i >= points.size()) {
+            // Not found
+            points.push_back(point); // Add a new point expression
+        }
+        return;
+    }
+    
+    // Insert a partition point into the appropriate list; but if numeric update num_start or num_end instead.
+    void insert_partition_point(Expr point, int ithresh, int &num_start, int &num_end, std::vector<Expr> &starts, std::vector<Expr> &ends) {
+        int ival;
+        if (get_const_int(point, ival)) {
+            // A numeric value.  
+            if (ival < ithresh && ival > num_start) num_start = ival;
+            else if (ival >= ithresh && ival < num_end) num_end = ival;
+        } else if (has_variable_match(".min.", point)) {
+            // Symbolic expression.
+            if (has_variable_match(".extent.", point)) {
+                // End point.
+                insert_partition_point(point, ends, true);
+            } else {
+                // Start point.
+                insert_partition_point(point, starts, false);
+            }
+        }
+    }
+    
+    void partition_points(std::vector<Solution> sol, std::vector<Expr> &starts, std::vector<Expr> &ends) {
+        starts.clear();
+        ends.clear();
         
+        // First pass, find the min and max values of any numerics that occur.
+        int ival;
+        int imin, imax;
+        imin = Int(32).imax();
+        imax = Int(32).imin();
         for (size_t i = 0; i < sol.size(); i++) {
             for (size_t j = 0; j < sol[i].intervals.size(); j++) {
                 // min means decision is < min vs >= min
-                // partition value of p means take first p elements out, and that
-                // corresponds to < p vs >= p
-                Expr diff = simplify(sol[i].intervals[j].min - endpoint);
-                std::cout << diff << "\n";
-                int ival;
-                if (get_const_int(diff, ival)) {
-                    if (negate) ival = -ival;
-                    if (ival > 0) results.push_back(ival);
+                Expr start = sol[i].intervals[j].min;
+                // max means decision is <= max vs > max, so adjust for consistency
+                Expr end = simplify(sol[i].intervals[j].max + 1);
+                // Classify the points as numeric or not.
+                if (get_const_int(start, ival)) {
+                    // A numeric value.  
+                    if (ival < imin) imin = ival;
+                    if (ival > imax) imax = ival;
                 }
-                // max means decision is <= max vs > max
-                diff = simplify(sol[i].intervals[j].max - endpoint + 1);
-                std::cout << diff << "\n";
-                if (get_const_int(diff, ival)) {
-                    if (negate) ival = -ival;
-                    if (ival > 0) results.push_back(ival);
+                if (get_const_int(end, ival)) {
+                    // A numeric value.  
+                    if (ival < imin) imin = ival;
+                    if (ival > imax) imax = ival;
                 }
             }
         }
-        return results;
+        int ithresh = (imin + imax) / 2;
+        
+        // Second pass: put the partition points into appropriate places.
+        // The numeric start is the max of all numerics classified as start
+        int num_start = Int(32).imin();
+        int num_end = Int(32).imax();
+        for (size_t i = 0; i < sol.size(); i++) {
+            for (size_t j = 0; j < sol[i].intervals.size(); j++) {
+                // min means decision is < min vs >= min
+                Expr start = sol[i].intervals[j].min;
+                // max means decision is <= max vs > max, so adjust for consistency
+                Expr end = simplify(sol[i].intervals[j].max + 1);
+                insert_partition_point(start, ithresh, num_start, num_end, starts, ends);
+                insert_partition_point(end, ithresh, num_start, num_end, starts, ends);
+            }
+        }
+        if (num_start > Int(32).imin()) starts.push_back(Expr(num_start));
+        if (num_end < Int(32).imax()) ends.push_back(Expr(num_end));
+        
+        return;
+    }
+    
+    void append_stmt(Stmt &block, Stmt s) {
+        if (! block.defined()) block = s;
+        else block = new Block(block, s);
     }
     
     void visit(const For *op) {
@@ -217,6 +338,7 @@ protected:
         Stmt new_body = mutate(op->body);
         if (op->for_type == For::Serial || op->for_type == For::Parallel) {
             // Manually specified loop partitioning.
+            // NOTE: A better approach would be to specify the start and extent (or Interval) of the central For loop.
             if (op->partition_begin > 0 || op->partition_end > 0) {
                 //log(0) << "Found serial for loop \n" << Stmt(op) << "\n";
                 // Greedy allocation of up to partition_begin loop iterations to before.
@@ -241,31 +363,101 @@ protected:
                 // Automatic loop partitioning.
                 // Search for solutions related to this particular for loop.
                 std::vector<Solution> solutions = extract_solutions(op->name, op, solved);
-                std::cout << "For loop: \n" << Stmt(op);
-                std::cout << "Solutions: \n";
-                for (size_t i = 0; i < solutions.size(); i++) {
-                    std::cout << solutions[i].var << " " << solutions[i].intervals << "\n";
-                }
-                // Compute the partition points relative to each end of the loop
-                // and simplify them.  The meaning of a partition point value is to
-                // partition the loop at that number of elements from the start or end.
-                // Negative values and zero are discarded as useless.
-                // Decision points represent < limit vs >= limit, so min + extent is used
-                // as the loop end value.
-                std::vector<int> begin = partition_points(solutions, op->min, false);
-                std::vector<int> end = partition_points(solutions, op->min + op->extent, true);
-                std::cout << "Partition begin: ";
-                for (size_t i = 0; i < begin.size(); i++) {
-                    std::cout << begin[i] << " ";
-                }
-                std::cout << std::endl << "Partition end: ";
-                for (size_t i = 0; i < end.size(); i++) {
-                    std::cout << end[i] << " ";
-                }
-                std::cout << std::endl;
+                //std::cout << "For loop: \n" << Stmt(op);
+                //std::cout << "Solutions: \n";
+                //for (size_t i = 0; i < solutions.size(); i++) {
+                //    std::cout << solutions[i].var << " " << solutions[i].intervals << "\n";
+                //}
                 
-                // Now, it gets tricky.
-                // If the loop bounds are constants
+                // Compute loop partition points for each end of the loop.
+                // If the information that we get is purely numeric, then we need to
+                // guess what is the beginning and what is the end.
+                // A reasonable guess is to take the average of the min and max,
+                // and use that as a threshold.  An even better guess may be to find the
+                // greatest jump in the sequence.
+                // If the information is symbolic, then expressions involving .extent. variables
+                // are end, and those involving .min. but not .extent. are beginning.
+                
+                std::vector<Expr> starts, ends;
+                partition_points(solutions, starts, ends);
+                log(3) << "Partition start: ";
+                for (size_t i = 0; i < starts.size(); i++) {
+                    log(3) << starts[i] << " ";
+                }
+                log(3) << "\n" << "Partition end: ";
+                for (size_t i = 0; i < ends.size(); i++) {
+                    log(3) << ends[i] << " ";
+                }
+                log(3) << "\n";
+                
+                // The partitioned loops are as follows:
+                // for (x, .min, Min(start - .min, .extent))
+                //     This loop starts at .min and never reaches start.  It also never exceeds .extent.
+                // for (x, Max(start,.min), Min(end,.min+.extent)-Max(start,.min))
+                //     This loop starts at start or .min, whichever is greater.
+                //     It never reaches end.
+                // for (x, end, .min+.extent - end)
+                //     This loop starts at end.  It never reaches .min + .extent.
+                // This may produce negative extent for one or more loops; a negative extent is not executed.
+                //
+                // The loop bounds being strange may produce out of bounds errors if this optimisation is
+                // performed before bounds analysis, but why would anyone do that?
+                //
+                // For optimisation to be effective, it must be possible to determine from the loop bounds
+                // that certain expressions are true or false.  This applies particularly to the main loop
+                // and that is why we would rather have a negative extent then force it to be zero extent.
+                string startName = op->name + ".start";
+                string endName = op->name + ".end";
+                Expr start, startValue, before_min, before_extent;
+                if (starts.size() > 0) {
+                    start = new Variable(op->min.type(), startName);
+                    startValue = starts[0]; // For now, only use one of them.
+                    before_min = op->min;
+                    before_extent = min(start - op->min, op->extent);
+                }
+                Expr end, endValue, after_min, after_extent;
+                if (ends.size() > 0) {
+                    end = new Variable(op->min.type(), endName);
+                    endValue = ends[0]; // For now, only use one of them.
+                    after_min = end;
+                    after_extent = op->min + op->extent - end;
+                }
+                Expr main_min, main_extent;
+                if (start.defined()) {
+                    main_min = max(start, op->min);
+                } else {
+                    main_min = op->min;
+                }
+                if (end.defined()) {
+                    if (start.defined()) main_extent = min(end, op->min + op->extent) - max(start, op->min);
+                    else main_extent = min(end, op->min + op->extent) - op->min;
+                    //if (start.defined()) main_extent = min(max(end, start), op->min + op->extent) - max(start, op->min);
+                    //else main_extent = min(max(end, op->min), op->min + op->extent) - op->min;
+                } else {
+                    if (start.defined()) main_extent = op->min + op->extent - max(start, op->min);
+                    else main_extent = op->extent;
+                }
+                // Build the code.
+                Stmt block; // An undefined block of code.
+                // The before loop is not further partitioned.
+                if (start.defined()) {
+                    append_stmt(block, new For(op->name, before_min, before_extent, op->for_type, -2, -2, op->body));
+                }
+                append_stmt(block, new For(op->name, main_min, main_extent, op->for_type, -3, -3, new_body));
+                if (end.defined()) {
+                    append_stmt(block, new For(op->name, after_min, after_extent, op->for_type, -4, -4, op->body));
+                }
+                if (end.defined()) {
+                    block = new LetStmt(endName, endValue, block);
+                }
+                if (start.defined()) {
+                    block = new LetStmt(startName, startValue, block);
+                }
+                stmt = block;
+                if (equal(block, op)) { // Equality test required because new For loop always constructed.
+                    stmt = op;
+                }
+                done = true;
             }
         }
         if (! done) {
@@ -282,7 +474,13 @@ public:
 };
 
 Stmt loop_partition(Stmt s) {
-    return LoopPartition().mutate(s);
+    //return LoopPartition().mutate(s);
+    Stmt simp = simplify(s); // Must be fully simplified first
+    Stmt pre = LoopPreSolver().mutate(simp);
+    Stmt solved = solver(pre);
+    LoopPartition loop_part;
+    loop_part.solved = solved;
+    return loop_part.mutate(simp);
 }
 
 // Test loop partition routines.

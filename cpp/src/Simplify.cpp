@@ -301,6 +301,9 @@ protected:
             expr = mutate(a * (mul_b->b + 1));
         } else if (mul_b && equal(mul_b->b, a) && ! is_const(a)) { //LH
             expr = mutate(a * (mul_b->a + 1));
+        } else if ((b.as<Max>() || b.as<Min>()) && ! (a.as<Max>() || a.as<Min>())) { //LH
+            // Push max/min to LHS of add to reduce cases elsewhere (especially in LT).
+            expr = mutate(b + a);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             // If we've made no changes, and can't find a rule to apply, return the operator unchanged.
             expr = op;
@@ -1103,8 +1106,13 @@ protected:
         const Sub *sub_b = b.as<Sub>();
         const Mul *mul_a = a.as<Mul>();
         const Mul *mul_b = b.as<Mul>();
+        const Min *min_a = a.as<Min>();
+        const Min *min_b = b.as<Min>();
+        const Max *max_a = a.as<Max>();
+        const Max *max_b = b.as<Max>();
 
         int ia, ib;
+        bool disproved;
         
         // Note that the computation of delta could be incorrect if 
         // ia and/or ib are large unsigned integer constants, especially when
@@ -1162,10 +1170,20 @@ protected:
             expr = mutate(sub_a->b < sub_b->b);
         } else if (sub_a && sub_b && equal(sub_a->b, sub_b->b)) {
             expr = mutate(sub_a->a < sub_b->a);
-        } else if (add_a) {
+        } else if (add_b && !(min_a || max_a) && (add_b->a.as<Min>() || add_b->a.as<Max>())) {
+            // Push the add to the other side to expose the min/max
+            expr = mutate(a - add_b->b < add_b->a);
+        } else if (sub_b && !(min_a || max_a) && (sub_b->a.as<Min>() || sub_b->a.as<Max>())) {
+            // Push the subtract to the other side to expose the min/max
+            expr = mutate(a + sub_b->b < sub_b->a);
+        } else if (sub_b && !(min_a || max_a) && (sub_b->b.as<Min>() || sub_b->b.as<Max>())) {
+            // Push the min/max to the other side to expose it
+            expr = mutate(sub_b->b < sub_b->a - a);
+        } else if (add_a && ! min_b && ! max_b) {
             // Rearrange so that all adds and subs are on the rhs to cut down on further cases
+            // Exception: min/max on RHS keeps the add/sub away
             expr = mutate(add_a->a < (b - add_a->b));
-        } else if (sub_a) {
+        } else if (sub_a && ! min_b && ! max_b) {
             expr = mutate(sub_a->a < (b + sub_a->b));
         } else if (add_b && equal(add_b->a, a)) {
             // Subtract a term from both sides
@@ -1180,6 +1198,32 @@ protected:
                    equal(mul_a->b, mul_b->b)) {
             // Divide both sides by a constant
             expr = mutate(mul_a->a < mul_b->a);
+        } else if (min_a && (proved(min_a->b < b, disproved) || proved(min_a->a < b))) { //LH
+            // Prove min(x,y) < b by proving x < b or y < b
+            // Because constants are pushed to RHS, it is more likely that min_a->b < b
+            // can be resolved quickly
+            expr = const_true();
+        } else if (min_a && (disproved /* proved(min_a->b >= b) */ && proved(min_a->a >= b))) { //LH
+            // Prove min(x,y) >= b by proving x >= b and y >= b
+            expr = const_false();
+        } else if (min_b && (proved(a >= min_b->b, disproved) || proved(a >= min_b->a))) { //LH
+            // Prove a >= min(x,y) by proving a >= x or a >= y
+            expr = const_false();
+        } else if (min_b && (disproved /* proved(a < min_b->b) */ && proved(a < min_b->a))) { //LH
+            // Prove a < min(x,y) by proving a < x and a < y
+            expr = const_true();
+        } else if (max_a && (proved(max_a->b >= b, disproved) || proved(max_a->a >= b))) { //LH
+            // Prove that max(x,y) >= b by proving x >= b or y >= b
+            expr = const_false();
+        } else if (max_a && (disproved /* proved(max_a->b < b) */ && proved(max_a->a < b))) { //LH
+            // Prove that max(x,y) < b by proving x < b and y < b
+            expr = const_true();
+        } else if (max_b && (proved(a < max_b->b, disproved) || proved(a < max_b->b))) { //LH
+            // Prove that a < max(x,y) by proving a < x or a < y
+            expr = const_true();
+        } else if (max_b && (disproved /* proved(a >= max_b->b) */ && proved(a >= max_b->a))) { //LH
+            // Prove that a >= max(x,y) by proving a >= x and a >= y
+            expr = const_false();
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
@@ -1460,15 +1504,24 @@ Expr simplify_undef(Expr e) {
     return e.defined() ? simplify(e) : e; 
 }
 
-bool proved(Expr e) {
+bool proved(Expr e, bool &disproved) {
     Expr b = Simplify().mutate(e);
-    log(4) << "Attempt to prove  " << e << "  ==>  " << b << "  ==>  ";;
     bool result = is_one(b);
-    log(4) << (result ? "true" : "false") << "\n";
+    disproved = is_zero(b);
+    log logger(2);
+    logger << "Attempt to prove  " << e << "\n  ==>  ";
+    if (equal(e,b)) logger << "same  ==>  ";
+    else logger << b << "\n  ==>  ";
+    logger << (result ? "true" : "false") << "\n";
     return result;
 }
 
+bool proved(Expr e) {
+    bool dummy;
+    return proved(e, dummy);
+}
 
+namespace{
 void check(Expr a, Expr b) {
     Expr simpler = simplify(a);
     if (!equal(simpler, b)) {
@@ -1479,6 +1532,15 @@ void check(Expr a, Expr b) {
         assert(false);
     }
 }
+
+void check_proved(Expr e) {
+    if (proved(e)) return;
+    std::cout << "Could not prove: " << e << std::endl;
+    std::cout << "Simplified: " << simplify(e) << std::endl;
+    assert(false);
+}
+}
+
         
 void simplify_test() {
     Expr x = Var("x"), y = Var("y"), z = Var("z");
@@ -1758,6 +1820,10 @@ void simplify_test() {
 
     check(new Let("x", y, Expr(new Let("x", y*17, x+4)) + x), 
           new Let("x", y, Expr(new Let("x", y*17, x+4)) + y));
+          
+    check_proved(Expr(new Min(new Max(x, 1), 10)) <= 10);
+    check_proved(Expr(new Min(new Max(x, 1), 10)) >= 1);
+    check_proved(Expr(new Min(x, 1953)) + -2 + -1 <= x + -1);
 
     std::cout << "Simplify test passed" << std::endl;
 }

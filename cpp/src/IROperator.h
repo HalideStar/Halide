@@ -98,8 +98,8 @@ Expr EXPORT const_false(int width = 1);
 
 /** Check that operands are defined and report if not.  Print the
  * expression as best we can. */
-void EXPORT check_defined(Expr a, std::string op, Expr b);
-void EXPORT check_defined(std::string op, Expr a, Expr b);
+void EXPORT check_defined(const Expr &a, const std::string &op, const Expr &b);
+void EXPORT check_defined(const std::string &op, const Expr &a, const Expr &b);
 
 /** Coerce the two expressions to have the same type, using C-style
  * casting rules. For the purposes of casting, a boolean type is

@@ -28,9 +28,11 @@ Expr simplify_undef(Expr e);
 // @} 
 
 /** Use the simplifier to test whether an expression can be
- * evaluated to true.
+ * evaluated to true.  Disproved parameter (if used) tests
+ * whether the expression can be evaluated to false.
  */
 // @{
+bool proved(Expr, bool& disproved);
 bool proved(Expr);
 // @}
    
