@@ -26,6 +26,7 @@
 #include "LowerClamp.h"
 #include "LoopPartition.h"
 #include "IntervalAnalysis.h"
+#include "Statistics.h"
 
 namespace Halide {
 namespace Internal {
@@ -750,6 +751,8 @@ void log_to_file(std::string base, Stmt s) {
 }
 
 Stmt lower(Function f) {
+    Statistics start_statistics = global_statistics;
+    
     // Compute an environment
     map<string, Function> env;
     populate_environment(f, env);
@@ -910,6 +913,10 @@ Stmt lower(Function f) {
     log(1) << "Simplified: \n" << s << "\n\n";
     
     log(f.name() + "_900_final", 1) << s << "\n";
+    
+    Statistics run_statistics = global_statistics;
+    run_statistics.Subtract(start_statistics);
+    log(0) << run_statistics;
 
     return s;
 } 

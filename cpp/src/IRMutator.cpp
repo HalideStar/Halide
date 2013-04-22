@@ -7,7 +7,7 @@ namespace Internal {
 
 using std::vector;
 
-IRMutator::IRMutator() : depth(0), maxdepth(100000), failing(false) {
+IRMutator::IRMutator() : depth(0), maxdepth(1000), failing(false) {
 }
 
 Expr IRMutator::mutate(Expr e) {

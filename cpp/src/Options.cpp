@@ -22,6 +22,9 @@ Options::Options() {
     loop_partition_letbind = true;
     lift_let = true;
 	interval_analysis_simplify = true;
+    mutator_cache = true;
+    mutator_cache_check = false;
+    mutator_cache_check_limit = 10000000;
 }
 
 
@@ -34,6 +37,7 @@ std::ostream &operator<<(std::ostream &stream, Options opt) {
            << "    loop_partition_letbind=" << opt.loop_partition_letbind << "\n";
     stream << "lift_let=" << opt.lift_let
 	       << "    interval_analysis_simplify=" << opt.interval_analysis_simplify << "\n";
+    stream << "mutator_cache=" << opt.mutator_cache << "\n";
     return stream;
 }
 

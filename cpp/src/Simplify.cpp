@@ -3,6 +3,7 @@
 #include "IREquality.h"
 #include "IRPrinter.h"
 #include "IRMutator.h"
+#include "IRCacheMutator.h"
 #include "Scope.h"
 #include "Var.h"
 #include "Log.h"
@@ -38,7 +39,7 @@ int do_indirect_int_cast(Type t, int x) {
 
 // Implementation of Halide div and mod operators
 
-class Simplify : public IRMutator {
+class Simplify : public IRCacheMutator {
 protected:
     Scope<Expr> scope;
 
@@ -212,7 +213,9 @@ protected:
 
         // rearrange const + varying to varying + const, to cut down
         // on cases to check
-        if (is_simple_const(a) && !is_simple_const(b)) std::swap(a, b);
+        if (is_simple_const(a) && !is_simple_const(b)) {
+            std::swap(a, b);
+        }
 
         const Ramp *ramp_a = a.as<Ramp>();
         const Ramp *ramp_b = b.as<Ramp>();
@@ -1363,6 +1366,9 @@ protected:
         // If the value is trivial, make a note of it in the scope so
         // we can subs it in later
         Expr value = mutator->mutate(op->value);
+        
+        push_context(Body(op));
+        
         Body body = op->body;
         assert(value.defined());
         assert(body.defined());
@@ -1439,6 +1445,8 @@ protected:
         }
 
         scope.pop(op->name);
+        
+        pop_context(Body(op));
 
         if (wrapper_value.defined()) {
             return new T(wrapper_name, wrapper_value, new T(op->name, value, body));

@@ -45,6 +45,13 @@ public:
 	
 	// interval_analysis_simplify: If true, simplify loop contents using interval analysis.
 	bool interval_analysis_simplify;
+    
+    // mutator_cache: If true, enable caching in IRCacheMutator.  If false, no caching is done.
+    bool mutator_cache;
+    // mutator_cache_check: If true, verify cached data by recomputing the result and comparing.
+    bool mutator_cache_check;
+    // mutator_cache_check_limit: Maximum number of additional mutations to perform as checking.
+    int mutator_cache_check_limit;
 };
 
 std::ostream &operator<<(std::ostream &stream, Options opt);

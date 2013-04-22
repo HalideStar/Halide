@@ -152,6 +152,7 @@ Interval inverseMax(Interval v, Expr k) {
 
 /** A base class that adds tracking of target variables to a mutator.
  * You need to call track() methods from corresponding visit() methods. */
+ // TIDINESS: This could be a template class, with visit methods incorporated
 class TargetTracker {
 public:
     
@@ -161,6 +162,8 @@ public:
     std::vector<Expr> expr_sources;
     std::vector<Stmt> stmt_sources;
     
+    // EFFICIENCY: is_constant_expr is an attribute and could be cached.
+    // Need access to context, so best done as part of a template class.
     bool is_constant_expr(Expr e) {
         return Halide::Internal::is_constant_expr(targets, e);
     }
@@ -174,8 +177,9 @@ public:
         return -1; // Not found.
     }
     
-    Expr track(IRMutator *mutator, const TargetVar *op) {
+    Expr track(IRCacheMutator *mutator, const TargetVar *op) {
         // Target variable named in the node is added to the targets.
+        mutator->push_context(Expr(op));
         targets.push_back(op->var);
         expr_sources.push_back(op->source);
         stmt_sources.push_back(Stmt());
@@ -186,11 +190,13 @@ public:
         stmt_sources.pop_back();
         expr_sources.pop_back();
         targets.pop_back(); // Remove the target for processing above
+        mutator->pop_context(Expr(op));
         return expr;
     }
     
-    Stmt track(IRMutator *mutator, const StmtTargetVar *op) {
+    Stmt track(IRCacheMutator *mutator, const StmtTargetVar *op) {
         // Target variable named in the node is added to the targets.
+        mutator->push_context(Stmt(op));
         targets.push_back(op->var);
         expr_sources.push_back(Expr());
         stmt_sources.push_back(op->source);
@@ -201,6 +207,7 @@ public:
         stmt_sources.pop_back();
         expr_sources.pop_back();
         targets.pop_back(); // Remove the target for processing above
+        mutator->pop_context(Stmt(op));
         return stmt;
     }
     
@@ -282,15 +289,9 @@ public:
     //virtual void visit(const Cast *op) {
     //virtual void visit(const Variable *op) {
     
-    virtual void visit(const Add *op) {
+virtual void visit(const Add *op) {
         log(3) << depth << " XAdd simplify " << Expr(op) << "\n";
         Expr a = mutate(op->a), b = mutate(op->b);
-        
-        // Override default behavior: any constant expression is pushed outside of variable expressions.
-        if (is_constant_expr(a) && ! is_constant_expr(b)) {
-            std::swap(a, b);
-        }
-        
         
         const Add *add_a = a.as<Add>();
         const Add *add_b = b.as<Add>();
@@ -305,15 +306,25 @@ public:
         // and expressions consisting only of constant variables outside of expressions
         // consisting of/containing target variables.
         
+        // Rules that are not included below and why.
+        // Swap a with b when a is a constant expr and b is not.  This is not done because Simplify sometimes swaps
+        // things around and there can arise a conflict leading to infinite recursion of rules.
+        
         // In the following comments, k... denotes constant expression, v... denotes target variable.
         if (const_a && const_b) {
             Simplify::visit(op); // Pure constant expressions get simplified in the normal way
         } else if (add_a && !const_b && !const_a && is_constant_expr(add_a->b)) {
             // (vaa + kab) + vb --> (vaa + vb) + kab
             expr = mutate((add_a->a + b) + add_a->b);
+        } else if (add_a && !const_b && !const_a && is_constant_expr(add_a->a)) {
+            // (kaa + vab) + vb --> (vab + vb) + kaa
+            expr = mutate((add_a->b + b) + add_a->a);
         } else if (add_b && !const_a && !const_b && is_constant_expr(add_b->b)) {
             // va + (vba + kbb) --> (va + vba) + kbb
             expr = mutate((a + add_b->a) + add_b->b);
+        } else if (add_b && !const_a && !const_b && is_constant_expr(add_b->a)) {
+            // va + (kba + vbb) --> (va + vbb) + kba
+            expr = mutate((a + add_b->b) + add_b->a);
         } else if (sub_a && !const_b && !const_a && is_constant_expr(sub_a->a)) {
             // (kaa - vab) + vb --> (vb - vab) + kaa
             expr = mutate((b - sub_a->b) + sub_a->a);
@@ -386,25 +397,54 @@ public:
         log(3) << depth << " XMul simplify " << Expr(op) << "\n";
         Expr a = mutate(op->a), b = mutate(op->b);
 
-        // Override default behavior: any constant expression is pushed outside of variable expressions.
-        if (is_constant_expr(a) && ! is_constant_expr(b)) {
-            std::swap(a, b);
-        }
-        
-        //const Add *add_a = a.as<Add>();
         const Mul *mul_a = a.as<Mul>();
+        const Mul *mul_b = b.as<Mul>();
+        const Div *div_a = a.as<Div>();
+        const Div *div_b = b.as<Div>();
+        bool const_a = is_constant_expr(a);
+        bool const_b = is_constant_expr(b);
+        bool integer_types = op->type.is_int() || op->type.is_uint();
         
-        //if (add_a && is_constant_expr(add_a->b) && is_constant_expr(b)) {
-            // (aa + kab) * kb --> (aa * kb) + (kab + kb)
-            //expr = mutate(add_a->a * b + add_a->b * b);
-        //} else 
-        if (mul_a && is_constant_expr(mul_a->b) && is_constant_expr(b)) {
-            // (aa * kab) * kb --> aa * (kab * kb)
-            expr = mutate(mul_a->a * (mul_a->b * b));
-        //} else if (mul_b && is_constant_expr(b)) {
-            // aa * kb: Keep unchanged.
-            //expr = op;
+        // Some rules that are not included below and why
+        // Swapping constant expr to RHS - in case conflict with Simplify
+        // (vaa + kab) * kb  -->  (vaa * kb) + (kab * kb)
+        //      No benefit. Solver can pull multiply and then add outside of a Solve node.
+        // (vaa + kab) * vb  -->  (vaa * vb) + (kab * vb)
+        //      No benefit. There are still two output terms to be solved simultaneously.
+        
+        if (const_a && const_b) {
+            Simplify::visit(op); // Pure constant expressions get simplified in the normal way
+        } else if (div_a && equal(div_a->b, b)) {
+            // Rules to simplify multiplication combined with division.
+            // (aa / b) * b  -->  aa
+            expr = div_a->a;
+        } else if (div_b && equal(div_b->b, a)) {
+            // a * (ba / a)  -->  ba
+            expr = div_b->a;
+        } else if (mul_a && ! const_a && ! const_b && is_constant_expr(mul_a->b)) {
+            // Rules to pull out constant expressions from inside.
+            // (vaa * kab) * vb  -->  (vaa * vb) * kab
+            expr = mutate((mul_a->a * b) * mul_a->b);
+        } else if (mul_a && ! const_a && ! const_b && is_constant_expr(mul_a->a)) {
+            // Rules to pull out constant expressions from inside.
+            // (kaa * vab) * vb  -->  (vab * vb) * kaa
+            expr = mutate((mul_a->b * b) * mul_a->a);
+        } else if (mul_b && ! const_a && ! const_b && is_constant_expr(mul_b->b)) {
+            // va * (vba * kbb)  -->  (va * vba) * kbb
+            expr = mutate((a * mul_b->a) * mul_b->b);
+        } else if (mul_b && ! const_a && ! const_b && is_constant_expr(mul_b->a)) {
+            // va * (kba * vbb)  -->  (va * vbb) * kba
+            expr = mutate((a * mul_b->b) * mul_b->a);
+        } else if (div_a && ! const_a && ! const_b && ! integer_types && is_constant_expr(div_a->b)) {
+            // (vaa / kab) * vb  -->  (vaa * vb) / kab.  This is correct on real
+            // numbers but not on integers.
+            expr = mutate((div_a->a * b) / div_a->b);
+        } else if (div_b && ! const_a && ! const_b && ! integer_types && is_constant_expr(div_b->b)) {
+            // va * (vba / kbb)  -->  (va * vba) / kbb.  This is correct on real
+            // numbers but not on integers.
+            expr = mutate((a * div_b->a) / div_b->b);
         } else {
+            // Simplify everything else in the normal way.
             Simplify::visit(op);
         }
         log(3) << depth << " XMul simplified to " << expr << "\n";
@@ -418,25 +458,35 @@ public:
         const Add *add_a = a.as<Add>();
         const Sub *sub_a = a.as<Sub>();
         const Div *div_a = a.as<Div>();
-        if (mul_a && equal(mul_a->b, b) && is_constant_expr(b)) {
-            // aa * k / k.  Eliminate k assuming k != 0.
+        bool const_a = is_constant_expr(a);
+        bool const_b = is_constant_expr(b);
+        
+        // In the following comments, k... denotes constant expression, v... denotes target variable.
+        if (const_a && const_b) {
+            Simplify::visit(op); // Pure constant expressions get simplified in the normal way
+        } else if (mul_a && equal(mul_a->b, b)) {
+            // Rules that help solve equations by eliminating multiply and divide
+            // by the same expression.  These rules produce particular solutions
+            // that assume that the expression is non-zero.  These rules are useful whether
+            // the eliminated term is a constant expression or a target variable expression.
+            // aa * b / b  -->  aa
             expr = mul_a->a;         
-        } else if (mul_a && equal(mul_a->a, b) && is_constant_expr(b)) {
-            // k * aa / k.  Eliminate k assuming k != 0.
+        } else if (mul_a && equal(mul_a->a, b)) {
+            // b * ab / b  -->  ab
             expr = mul_a->b;    
-        } else if (add_a && equal(add_a->b, b) && is_constant_expr(b)) {
-            // (e + k) / k --> (e / k) + 1
+        } else if (add_a && equal(add_a->b, b)) {
+            // (aa + b) / b  -->  aa / b + 1
             expr = mutate(add_a->a / b + make_one(b.type()));
-        } else if (add_a && equal(add_a->a, b) && is_constant_expr(b)) {
-            // (k + e) / k --> (e / k) + 1
+        } else if (add_a && equal(add_a->a, b)) {
+            // (b + ab) / b  -->  ab / b + 1
             expr = mutate(add_a->b / b + make_one(b.type()));
-        } else if (sub_a && equal(sub_a->b, b) && is_constant_expr(b)) {
-            // (e - k) / k --> (e / k) - 1
+        } else if (sub_a && equal(sub_a->b, b)) {
+            // (aa - b) / b  -->  aa / b - 1
             expr = mutate(sub_a->a / b - make_one(b.type()));
-        } else if (sub_a && equal(sub_a->a, b) && is_constant_expr(b)) {
-            // (k - e) / k --> 1 - (e / k)
+        } else if (sub_a && equal(sub_a->a, b)) {
+            // (b - ab) / b  -->  1 - ab / b
             expr = mutate(make_one(b.type()) - sub_a->b / b);
-        } else if (div_a && is_constant_expr(div_a->b) && ! is_constant_expr(b)) {
+        } else if (div_a && is_constant_expr(div_a->b) && ! const_b) {
             // (aa / kab) / vb --> (aa / vb) / kab
             expr = mutate((div_a->a / b) / div_a->b);
         } else {
@@ -445,6 +495,7 @@ public:
         log(3) << depth << " XDiv simplified to " << expr << "\n";
     }
 
+    
     //virtual void visit(const Mod *op) {
     //virtual void visit(const Min *op) {
     //virtual void visit(const Max *op) {
@@ -490,7 +541,7 @@ Expr solver(Expr e) {
 
 
 
-class ExtractSolutions : public IRMutator, public TargetTracker {
+class ExtractSolutions : public IRCacheMutator, public TargetTracker {
     using IRMutator::visit;
 public:
 
@@ -630,6 +681,14 @@ void solver_test() {
     // -25 <= x * 2 <= -15
     // -12 <= x <= -8
     checkSolver(solve(x + 10 + x + 15, Interval(0,10)), solve(x, Interval(-12, -8)) * 2 + 25);
+    
+    checkSolver(x * x, x * x);
+    checkSolver(x * d, x * d);
+    checkSolver(d * x, d * x);
+    checkSolver((x + c) + d, (x + c) + d);
+    checkSolver((x + c) + y, (x + y) + c);
+    checkSolver((min(x, 1) + c) + min(y, 1), (min(x, 1) + min(y, 1)) + c);
+    checkSolver((min(x, 1) + c) + min(d, 1), min(d, 1) + (min(x, 1) + c)); // Simplify reorders expression
     
     std::cout << "Solve test passed" << std::endl;
 }
