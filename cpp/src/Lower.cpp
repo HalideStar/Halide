@@ -113,7 +113,7 @@ Stmt build_provide_loop_nest(string buffer, string prefix, vector<Expr> site, Ex
         const Schedule::Dim &dim = s.dims[i];
         Expr min = new Variable(Int(32), prefix + dim.var + ".min");
         Expr extent = new Variable(Int(32), prefix + dim.var + ".extent");
-        stmt = new For(prefix + dim.var, min, extent, dim.for_type, dim.partition_begin, dim.partition_end, stmt);
+        stmt = new For(prefix + dim.var, min, extent, dim.for_type, 0, 0, stmt); // TO FIX
     }
 
     // Define the bounds on the split dimensions using the bounds
@@ -482,6 +482,8 @@ public:
         }
     }
 };
+
+
 
 /* Find all the externally referenced buffers in a stmt */
 class FindBuffers : public IRVisitor {

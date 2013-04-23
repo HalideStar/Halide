@@ -18,6 +18,7 @@
 #include "Util.h"
 // LH
 #include "DomainInference.h"
+#include "Interval.h"
 
 #include <iostream>
 
@@ -233,11 +234,22 @@ public:
      * innermost out */
     EXPORT ScheduleHandle &reorder(Var x, Var y, Var z, Var w, Var t);
 
-    /** Partition a loop so that the first begin iterations and the last
-     * end iterations are handled separately from the main body of the loop.
-     * Use this to optimise code where a select statement depends on the
-     * loop index as arises in border handling in particular.*/
-    EXPORT ScheduleHandle &partition(Var var, int begin, int end);
+    //LH
+    /** Partition a loop by specifying an Interval for the main loop.
+     * Cancels automatic partitioning if previously specified. */
+    EXPORT ScheduleHandle &partition(Var var, Interval mainloop);
+    /** Partition a loop automatically, or not, under control of boolean. 
+     * Cancels manual partition if already specified. */
+    EXPORT ScheduleHandle &partition(Var var, bool do_partition = true);
+    /** Partition all loops in this function, or not, under control of boolean. 
+     * Not effective if the function is inlined into another function.
+     * Does not override partitioning of individual variables. */
+    EXPORT ScheduleHandle &partition(bool do_partition = true);
+    /** Partition all loops in this function and in all called functions
+     * but without overriding any individual partition specification for
+     * individual functions.  This applies .partition(do_partition) to all underlying
+     * functions that currently have auto_partition undefined. */
+    EXPORT ScheduleHandle &partition_all(bool do_partition = true);
 };
 
 /** A halide function. This class represents one stage in a Halide
@@ -561,8 +573,12 @@ public:
     EXPORT Func &reorder(Var x, Var y, Var z, Var w, Var t);
     // @}
 
+    //LH
     /** Scheduling of loop partitioning. */
-    EXPORT Func &partition(Var var, int begin, int end);
+    EXPORT Func &partition(Var var, Interval mainloop);
+    EXPORT Func &partition(Var var, bool do_partition = true);
+    EXPORT Func &partition(bool do_partition = true);
+    EXPORT Func &partition_all(bool do_partition = true);
 
     /** Scheduling calls that control how the storage for the function
      * is laid out. Right now you can only reorder the dimensions. */

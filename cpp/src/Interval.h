@@ -7,8 +7,6 @@
 
 namespace Halide {
 
-namespace Internal {
-
 /** An interval.  Includes all numbers from min to max inclusive. */
 struct Interval {
     Expr min, max;
@@ -27,7 +25,6 @@ EXPORT Interval operator/(Interval v, Expr b);
 EXPORT Interval operator%(Interval v, Expr b);
 EXPORT Interval intersection(Interval u, Interval v);
 
-}
 }
 
 #endif

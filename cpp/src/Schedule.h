@@ -12,6 +12,24 @@
 namespace Halide {
 namespace Internal {
 
+/** Information for loop partitioning from the .partition schedule.
+ * It is stored in the Dim portion of the Schedule, and later into the For loops. */
+struct PartitionInfo {
+    /** One option is for the user to partition the main loop manually.
+     * Specify an Interval for the loop.  The bounds can be expressions.
+     * If not used, the expressions will be undefined. */
+    Interval interval;
+    /** Boolean options translate to tristate variables internally because they can
+     * be undefined. */
+    enum TriState { Undefined, No, Yes };
+    /** Record the auto_partition option for this variable. */
+    TriState auto_partition;
+    
+    PartitionInfo(bool do_partition) { interval = Interval(Expr(), Expr()); auto_partition = do_partition ? Yes : No; }
+    PartitionInfo(Interval _interval) { interval = _interval; auto_partition = Undefined; }
+};
+        
+
 /** A schedule for a halide function, which defines where, when, and
  * how it should be evaluated. */
 struct Schedule {
@@ -70,11 +88,11 @@ struct Schedule {
      * dimensions split into sub-dimensions. See 
      * \ref ScheduleHandle::split */
     std::vector<Split> splits;
-        
+    
     struct Dim {
         std::string var;
         For::ForType for_type;
-        int partition_begin, partition_end; // LH. Zero means no loop partition is specified.
+        PartitionInfo partition; //LH
     };
     /** The list and ordering of dimensions used to evaluate this
      * function, after all splits have taken place. The first
@@ -84,7 +102,15 @@ struct Schedule {
      * each dimension. These get inferred from how the function is
      * used, what the splits are, and any optional bounds in the list below. */
     std::vector<Dim> dims;
-
+    
+    /** Record the auto partition option for this function.
+     * Note that individual variable partition information overrides auto_partition 
+     * for the entire function. */
+    PartitionInfo::TriState auto_partition;
+    
+    /** Record the auto partition all option. */
+    PartitionInfo::TriState auto_partition_all;
+    
     /** The list and order of dimensions used to store this
      * function. The first dimension in the vector corresponds to the
      * innermost dimension for storage (i.e. which dimension is

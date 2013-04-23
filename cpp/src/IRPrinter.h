@@ -25,7 +25,7 @@
  * C++ looks for a definition associated with std::vector in namespace std. */ 
 namespace std {
 std::ostream &operator<<(std::ostream &stream, const std::vector<Halide::Expr> &v);
-std::ostream &operator<<(std::ostream &stream, const std::vector<Halide::Internal::Interval> &v);
+std::ostream &operator<<(std::ostream &stream, const std::vector<Halide::Interval> &v);
 }
 
 namespace Halide { 
@@ -47,10 +47,10 @@ std::ostream &operator<<(std::ostream &stream, Type);
 /** Emit a halide Domain in a human readable form */
 std::ostream &operator<<(std::ostream &stream, Domain);
 
-namespace Internal {
-
 /** Emit an Interval in human readable form */
-std::ostream &operator<<(std::ostream &stream, Halide::Internal::Interval v);
+std::ostream &operator<<(std::ostream &stream, Halide::Interval v);
+
+namespace Internal {
 
 /** Emit a halide statement on an output stream (such as std::cout) in
  * a human-readable form */

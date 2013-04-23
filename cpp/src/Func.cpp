@@ -16,6 +16,7 @@
 
 //LH
 #include "DomainInference.h"
+#include "Interval.h"
 
 namespace Halide {
 
@@ -345,15 +346,14 @@ ScheduleHandle &ScheduleHandle::reorder(Var x, Var y, Var z, Var w, Var t) {
     return reorder(x, y).reorder(x, z).reorder(x, w).reorder(x, t).reorder(y, z, w, t);
 }
 
-
-ScheduleHandle &ScheduleHandle::partition(Var var, int begin, int end) {
+namespace {
+void record_partition(Internal::Schedule &schedule, Var var, PartitionInfo info) {
     bool found = false;
     vector<Schedule::Dim> &dims = schedule.dims;
     for (size_t i = 0; (!found) && i < dims.size(); i++) {
         if (var_name_match(dims[i].var, var.name())) {
             found = true;
-            dims[i].partition_begin = begin;
-            dims[i].partition_end = end;
+            dims[i].partition = info;
         }
     }
     
@@ -367,9 +367,29 @@ ScheduleHandle &ScheduleHandle::partition(Var var, int begin, int end) {
     }
     assert(found && "Could not find dimension in argument list for function");
 
+    return;
+}
+}
+
+ScheduleHandle &ScheduleHandle::partition(Var var, bool auto_partition) {
+    record_partition(schedule, var, PartitionInfo(auto_partition));
     return *this;
 }
 
+ScheduleHandle &ScheduleHandle::partition(Var var, Interval interval) {
+    record_partition(schedule, var, PartitionInfo(interval));
+    return *this;
+}
+
+ScheduleHandle &ScheduleHandle::partition(bool auto_partition) {
+    schedule.auto_partition = auto_partition ? PartitionInfo::Yes : PartitionInfo::No;
+    return *this;
+}
+
+ScheduleHandle &ScheduleHandle::partition_all(bool auto_partition_all) {
+    schedule.auto_partition_all = auto_partition_all ? PartitionInfo::Yes : PartitionInfo::No;
+    return *this;
+}
 
 Func &Func::split(Var old, Var outer, Var inner, Expr factor) {
     ScheduleHandle(func.schedule()).split(old, outer, inner, factor);
@@ -436,8 +456,25 @@ Func &Func::reorder(Var x, Var y, Var z, Var w, Var t) {
     return *this;
 }
 
-Func &Func::partition(Var x, int begin, int end) {
-    ScheduleHandle(func.schedule()).partition(x, begin, end);
+Func &Func::partition(Var x, Interval partition) {
+    ScheduleHandle(func.schedule()).partition(x, partition);
+    return *this;
+}
+
+Func &Func::partition(Var x, bool auto_partition) {
+    ScheduleHandle(func.schedule()).partition(x, auto_partition);
+    return *this;
+}
+
+Func &Func::partition(bool auto_partition) {
+    ScheduleHandle(func.schedule()).partition(auto_partition);
+    update().partition(auto_partition);
+    return *this;
+}
+
+Func &Func::partition_all(bool auto_partition) {
+    ScheduleHandle(func.schedule()).partition_all(auto_partition);
+    update().partition_all(auto_partition);
     return *this;
 }
 

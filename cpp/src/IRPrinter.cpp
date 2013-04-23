@@ -26,7 +26,7 @@ ostream &operator<<(ostream &stream, const vector<Halide::Expr> &v) {
     }
     return stream;
 }
-ostream &operator<<(ostream &stream, const vector<Halide::Internal::Interval> &v) {
+ostream &operator<<(ostream &stream, const vector<Halide::Interval> &v) {
     for (size_t i = 0; i < v.size(); i++) {
         stream << v[i];
         if (i+1 < v.size()) {
@@ -89,12 +89,12 @@ ostream &operator<<(ostream &stream, Domain d) {
     return stream;
 }
 
-namespace Internal {
-
-ostream &operator<<(ostream &stream, Internal::Interval v) {
+ostream &operator<<(ostream &stream, Interval v) {
     stream << "[" << v.min << ", " << v.max << "]";
     return stream;
 }
+
+namespace Internal {
 
 void IRPrinter::test() {
     Type i32 = Int(32);
