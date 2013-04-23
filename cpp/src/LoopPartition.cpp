@@ -332,38 +332,22 @@ protected:
     void visit(const For *op) {
         bool done = false;
         
-        // Only apply optimisation to serial For loops.
-        // Parallel loops may also be eligible for optimisation, but not yet handled.
+        // Only apply optimisation to serial For loops and Parallel For loops.
         // Vectorised loops are not eligible, and unrolled loops should be fully
         // optimised for each iteration due to the unrolling.
         Stmt new_body = mutate(op->body);
-        if (op->for_type == For::Serial || op->for_type == For::Parallel) {
-            // Manually specified loop partitioning.
-            // NOTE: A better approach would be to specify the start and extent (or Interval) of the central For loop.
-            if (op->partition_begin > 0 || op->partition_end > 0) {
-                //log(0) << "Found serial for loop \n" << Stmt(op) << "\n";
-                // Greedy allocation of up to partition_begin loop iterations to before.
-                Expr before_min = op->min;
-                Expr before_extent = min(op->partition_begin, op->extent);
-                // Greedy allocation of up to partition_end loop iterations to after.
-                Expr main_min = before_min + op->partition_begin; // May be BIG
-                Expr main_extent = op->extent - op->partition_begin - op->partition_end; // May be negative
-                Expr after_min = main_min + max(0,main_extent);
-                Expr after_extent = min(op->partition_end, op->extent - before_extent);
-                // Now generate the partitioned loops.
-                // Mark them by using negative numbers for the partition information.
-                Stmt before = new For(op->name, before_min, before_extent, op->for_type, -2, -2, op->body);
-                Stmt main = new For(op->name, main_min, main_extent, op->for_type, -3, -3, new_body);
-                Stmt after = new For(op->name, after_min, after_extent, op->for_type, -4, -4, op->body);
-                stmt = new Block(new Block(before,main),after);
-                if (stmt.same_as(op)) {
-                    stmt = op;
-                }
-                done = true;
-            } else if (global_options.loop_partition_all) {
-                // Automatic loop partitioning.
+        if ((op->for_type == For::Serial || op->for_type == For::Parallel) &&
+             (op->partition.status == PartitionInfo::Ordinary)) {
+            Interval part;
+            if (op->partition.interval.min.defined() || op->partition.interval.max.defined()) {
+                part = op->partition.interval;
+            } else if (op->partition.auto_partition == PartitionInfo::Yes || 
+                      (op->partition.auto_partition == PartitionInfo::Undefined && global_options.loop_partition_all)) {
+                // Automatic loop partitioning.  Determine an interval for the loop to be partitioned on.
+
                 // Search for solutions related to this particular for loop.
                 std::vector<Solution> solutions = extract_solutions(op->name, op, solved);
+                //std::cout << global_options;
                 //std::cout << "For loop: \n" << Stmt(op);
                 //std::cout << "Solutions: \n";
                 //for (size_t i = 0; i < solutions.size(); i++) {
@@ -391,6 +375,30 @@ protected:
                 }
                 log(3) << "\n";
                 
+                // The interval for the main loop is max(starts) to min(ends)-1.
+                // If no partition points are found then the interval has undefined min and/or max.
+                Expr part_start, part_end;
+                if (starts.size() > 0) {
+                    part_start = starts[0];
+                    for (size_t i = 1; i < starts.size(); i++) {
+                        part_start = min (part_start, starts[i]);
+                    }
+                }
+                if (ends.size() > 0) {
+                    part_end = ends[0];
+                    for (size_t i = 1; i < ends.size(); i++) {
+                        part_end = min (part_end, ends[i]);
+                    }
+                    part_end = part_end - 1;
+                }
+                
+                part = Interval(part_start, part_end);
+                
+                log(2) << "Auto partition: " << part << "\n";
+            }
+            
+            if ((part.min.defined() && infinity_count(part.min) == 0) || 
+                (part.max.defined() && infinity_count(part.max) == 0)) {
                 // The partitioned loops are as follows:
                 // for (x, .min, Min(start - .min, .extent))
                 //     This loop starts at .min and never reaches start.  It also never exceeds .extent.
@@ -407,20 +415,25 @@ protected:
                 // For optimisation to be effective, it must be possible to determine from the loop bounds
                 // that certain expressions are true or false.  This applies particularly to the main loop
                 // and that is why we would rather have a negative extent then force it to be zero extent.
+                //
+                // A negative extent can cause problems for parallel for loops unless
+                // halide_do_par_for returns immediately when size <= 0.
                 string startName = op->name + ".start";
                 string endName = op->name + ".end";
                 Expr start, startValue, before_min, before_extent;
-                if (starts.size() > 0) {
+                if (part.min.defined() && infinity_count(part.min) == 0) {
                     start = new Variable(op->min.type(), startName);
-                    startValue = starts[0]; // For now, only use one of them.
+                    startValue = simplify(part.min);
                     before_min = op->min;
+                    //before_extent = max(min(start - op->min, op->extent), 0);
                     before_extent = min(start - op->min, op->extent);
                 }
                 Expr end, endValue, after_min, after_extent;
-                if (ends.size() > 0) {
+                if (part.max.defined() && infinity_count(part.max) == 0) {
                     end = new Variable(op->min.type(), endName);
-                    endValue = ends[0]; // For now, only use one of them.
+                    endValue = simplify(part.max + 1); // end is after the end of the loop.
                     after_min = end;
+                    //after_extent = max(op->min + op->extent - end, 0);
                     after_extent = op->min + op->extent - end;
                 }
                 Expr main_min, main_extent;
@@ -445,19 +458,24 @@ protected:
                     main_min_let = main_min;
                     main_extent_let = main_extent;
                     main_min_name = op->name + ".mainmin";
-                    main_extent_name = op->name + ".mainextent"; // LH: Dont use .extent. in name in case IA uses it.  Disabled, however.
+                    main_extent_name = op->name + ".mainextent"; // Prefer not to use .extent to avoid confusion.
                     main_min = new Variable(op->min.type(), main_min_name);
                     main_extent = new Variable(op->min.type(), main_extent_name);
                 }
                 // Build the code.
                 Stmt block; // An undefined block of code.
-                // The before loop is not further partitioned.
+                // The before and after loops use the original loop body - their nested loops
+                // are not partitioned.
+                PartitionInfo p = op->partition;
                 if (start.defined()) {
-                    append_stmt(block, new For(op->name, before_min, before_extent, op->for_type, -2, -2, op->body));
+                    p.status = PartitionInfo::Before;
+                    append_stmt(block, new For(op->name, before_min, before_extent, op->for_type, p, op->body));
                 }
-                append_stmt(block, new For(op->name, main_min, main_extent, op->for_type, -3, -3, new_body));
+                p.status = PartitionInfo::Main;
+                append_stmt(block, new For(op->name, main_min, main_extent, op->for_type, p, new_body));
+                p.status = PartitionInfo::After;
                 if (end.defined()) {
-                    append_stmt(block, new For(op->name, after_min, after_extent, op->for_type, -4, -4, op->body));
+                    append_stmt(block, new For(op->name, after_min, after_extent, op->for_type, p, op->body));
                 }
                 if (global_options.loop_partition_letbind) {
                     block = new LetStmt(main_extent_name, main_extent_let, block);
@@ -473,6 +491,10 @@ protected:
                 if (equal(block, op)) { // Equality test required because new For loop is always constructed.
                     stmt = op;
                 }
+                //log(0) << "\nOriginal loop:\n";
+                //log(0) << Stmt(op);
+                //log(0) << "\nPartitioned loop:\n";
+                //log(0) << stmt;
                 done = true;
             }
         }
@@ -516,12 +538,14 @@ void test_loop_partition_1() {
     Expr select = new Select(x > 3, new Select(x < 87, input, new Cast(Int(16), -17)),
                              new Cast(Int(16), -17));
     Stmt store = new Store("buf", select, x - 1);
-    Stmt for_loop = new For("x", 0, 100, For::Parallel, 0, 0, store);
+    PartitionInfo partition(true);
+    Stmt for_loop = new For("x", 0, 100, For::Parallel, partition, store);
     Expr call = new Call(i32, "buf", vec(max(min(x,100),0)));
     Expr call2 = new Call(i32, "buf", vec(max(min(x-1,100),0)));
     Expr call3 = new Call(i32, "buf", vec(Expr(new Clamp(Clamp::Reflect, x+1, 0, 100))));
     Stmt store2 = new Store("out", call + call2 + call3 + 1, x);
-    Stmt for_loop2 = new For("x", 0, 100, For::Serial , 0, 0, store2);
+    PartitionInfo partition2(Interval(1,99));
+    Stmt for_loop2 = new For("x", 0, 100, For::Serial, partition2, store2);
     Stmt pipeline = new Pipeline("buf", for_loop, Stmt(), for_loop2);
     
     std::cout << "Raw:\n" << pipeline << "\n";

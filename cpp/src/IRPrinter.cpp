@@ -106,11 +106,11 @@ void IRPrinter::test() {
     assert(expr_source.str() == "((x + 3)*((y/2) + 17))");
 
     Stmt store = new Store("buf", (x * 17) / (x - 3), y - 1);
-    Stmt for_loop = new For("x", -2, y + 2, For::Parallel, 0, 0, store);
+    Stmt for_loop = new For("x", -2, y + 2, For::Parallel, store);
     vector<Expr> args(1); args[0] = x % 3;
     Expr call = new Call(i32, "buf", args);
     Stmt store2 = new Store("out", call + 1, x);
-    Stmt for_loop2 = new For("x", 0, y, For::Vectorized , 0, 0, store2);
+    Stmt for_loop2 = new For("x", 0, y, For::Vectorized , store2);
     Stmt pipeline = new Pipeline("buf", for_loop, Stmt(), for_loop2);
     Stmt assertion = new AssertStmt(y > 3, "y is greater than 3");
     Stmt block = new Block(assertion, pipeline);
@@ -158,6 +158,55 @@ ostream &operator<<(ostream &out, For::ForType type) {
         break;
     default:
         assert(false && "Malformed for type");
+    }
+    return out;
+}
+
+ostream &operator<<(ostream &out, const PartitionInfo &info) {
+    bool gap = false;
+    switch (info.status) {
+    case PartitionInfo::Before:
+        out << "before";
+        gap = true;
+        break;
+    case PartitionInfo::Main:
+        out << "main";
+        gap = true;
+        break;
+    case PartitionInfo::After:
+        out << "after";
+        gap = true;
+        break;
+    case PartitionInfo::Ordinary:
+        break;
+    default:
+        out << "<unknown status=" << info.status << ">";
+        break;
+    }
+    if (info.status == PartitionInfo::Ordinary || info.status == PartitionInfo::Main) {
+        if (info.defined()) {
+            if (info.auto_partition != PartitionInfo::Undefined) {
+                if (gap) out << " ";
+                switch (info.auto_partition) {
+                case PartitionInfo::Yes:
+                    out << "auto";
+                    break;
+                case PartitionInfo::No:
+                    out << "no_auto";
+                    break;
+                case PartitionInfo::Undefined:
+                    break;
+                default:
+                    out << "<unknown auto_partition=" << info.auto_partition << ">";
+                    break;
+                }
+                gap = true;
+            }
+            if (info.interval.min.defined() || info.interval.max.defined()) {
+                if (gap) out << " ";
+                out << info.interval;
+            }
+        }
     }
     return out;
 }
@@ -518,8 +567,8 @@ void IRPrinter::visit(const For *op) {
     print(op->min);
     stream << ", ";
     print(op->extent);
-    if (op->partition_begin != 0 || op->partition_end != 0) {
-        stream << ", " << op->partition_begin << ", " << op->partition_end;
+    if (op->partition.defined() || op->partition.status != PartitionInfo::Ordinary) {
+        stream << ", " << op->partition;
     }
     stream << ") {" << endl;
         

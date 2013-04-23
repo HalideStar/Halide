@@ -251,11 +251,17 @@ ScheduleHandle &ScheduleHandle::split(Var old, Var outer, Var inner, Expr factor
             inner_name = old_name + "." + inner.name();
             outer_name = old_name + "." + outer.name();
             dims[i].var = inner_name;
-            dims.push_back(dims[dims.size()-1]);
+            //dims.push_back(dims[dims.size()-1]);
+            dims.push_back(Schedule::Dim());
             for (size_t j = dims.size(); j > i+1; j--) {
                 dims[j-1] = dims[j-2];
             }
             dims[i+1].var = outer_name;
+            dims[i].partition = PartitionInfo(); // Do not partition the inner loop
+            dims[i+1].partition.interval = dims[i+1].partition.interval / factor;
+            
+            //std::cout << "outer: " << dims[i].partition << "\n";
+            //std::cout << "inner: " << dims[i+1].partition << "\n";
         }
     }
         

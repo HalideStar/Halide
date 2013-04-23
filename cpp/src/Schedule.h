@@ -12,23 +12,6 @@
 namespace Halide {
 namespace Internal {
 
-/** Information for loop partitioning from the .partition schedule.
- * It is stored in the Dim portion of the Schedule, and later into the For loops. */
-struct PartitionInfo {
-    /** One option is for the user to partition the main loop manually.
-     * Specify an Interval for the loop.  The bounds can be expressions.
-     * If not used, the expressions will be undefined. */
-    Interval interval;
-    /** Boolean options translate to tristate variables internally because they can
-     * be undefined. */
-    enum TriState { Undefined, No, Yes };
-    /** Record the auto_partition option for this variable. */
-    TriState auto_partition;
-    
-    PartitionInfo(bool do_partition) { interval = Interval(Expr(), Expr()); auto_partition = do_partition ? Yes : No; }
-    PartitionInfo(Interval _interval) { interval = _interval; auto_partition = Undefined; }
-};
-        
 
 /** A schedule for a halide function, which defines where, when, and
  * how it should be evaluated. */
@@ -124,6 +107,8 @@ struct Schedule {
     /** You may explicitly bound some of the dimensions of a
      * function. See \ref ScheduleHandle::bound */
     std::vector<Bound> bounds;
+    
+    Schedule() : auto_partition(PartitionInfo::Undefined), auto_partition_all(PartitionInfo::Undefined) {}
 };
 
 }

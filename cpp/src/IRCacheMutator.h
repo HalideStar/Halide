@@ -80,8 +80,8 @@ public:
 
     /** Override the mutate interface so that caching can be implemented.
      */
-    Expr mutate(Expr expr);
-    Stmt mutate(Stmt stmt);
+    virtual Expr mutate(Expr expr);
+    virtual Stmt mutate(Stmt stmt);
     
     IRCacheMutator() {}
 

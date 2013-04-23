@@ -580,7 +580,55 @@ struct Pipeline : public StmtNode<Pipeline> {
         assert(consume.defined() && "Pipeline of undefined");
     }
 };
+
+// end namespace Internal
+}
+}
+
+#include "Interval.h"
+
+namespace Halide {
+namespace Internal {
+
+/** Information for loop partitioning from the .partition schedule.
+ * It is stored in the Dim portion of the Schedule, and later into the For loops. */
+struct PartitionInfo {
+    /** One option is for the user to partition the main loop manually.
+     * Specify an Interval for the loop.  The bounds can be expressions.
+     * If not used, the expressions will be undefined. */
+    Interval interval;
+    /** Boolean options translate to tristate variables internally because they can
+     * be undefined. */
+    enum TriState { Undefined, No, Yes };
+    /** Record the auto_partition option for this variable. */
+    TriState auto_partition;
+  
+    /** Record the status of For loops, mainly for debugging and optimisation. */
+    enum LoopStatus { Ordinary, Before, Main, After };
+    LoopStatus status;
     
+    PartitionInfo(bool do_partition) {
+        auto_partition = do_partition ? Yes : No;
+        status = Ordinary;
+    }
+    PartitionInfo(Interval _interval) { 
+        interval = _interval; 
+        auto_partition = Undefined; 
+        status = Ordinary;
+    }
+    PartitionInfo(TriState _auto_partition) { 
+        assert(_auto_partition == Undefined || _auto_partition == Yes || _auto_partition == No);
+        auto_partition = _auto_partition; 
+        status = Ordinary;
+    }
+    PartitionInfo() { 
+        auto_partition = Undefined; 
+        status = Ordinary;
+    }
+    
+    const bool defined() const { return auto_partition != Undefined || (interval.min.defined() && interval.max.defined()); }
+};
+        
 /** A for loop. Execute the 'body' statement for all values of the
  * variable 'name' from 'min' to 'min + extent'. There are four
  * types of For nodes. A 'Serial' for loop is a conventional
@@ -598,11 +646,12 @@ struct For : public StmtNode<For> {
     Expr min, extent;
     typedef enum {Serial, Parallel, Vectorized, Unrolled} ForType;
     ForType for_type;
-    int partition_begin, partition_end;
+    PartitionInfo partition;
     Stmt body;
 
-    For(std::string n, Expr m, Expr e, ForType f, int pbegin, int pend, Stmt b) :
-        name(n), min(m), extent(e), for_type(f), partition_begin(pbegin), partition_end(pend), body(b) {
+    /** Constructor for building a For loop with partition schedule information included. */
+    For(std::string n, Expr m, Expr e, ForType f, const PartitionInfo &p, Stmt b) :
+        name(n), min(m), extent(e), for_type(f), partition(p), body(b) {
         assert(min.defined() && "For of undefined");
         assert(extent.defined() && "For of undefined");
         assert(min.type().is_scalar() && "For with vector min");
@@ -611,20 +660,31 @@ struct For : public StmtNode<For> {
     }
     
     /** Convenience constructor that inherits information from an existing For structure.
-     * name, for_type and partitioning are inherited. */
+     * name, for_type and partition are inherited. Use this in mutators unless you need to
+     * modify the excluded parameters.  */
     For(const For *oldloop, Expr m, Expr e, Stmt b) :
         min(m), extent(e), body(b) {
         assert(oldloop && "Null pointer passed to For");
         name = oldloop->name;
         for_type = oldloop->for_type;
-        partition_begin = oldloop->partition_begin;
-        partition_end = oldloop->partition_end;
+        partition = oldloop->partition;
         assert(min.defined() && "For of undefined");
         assert(extent.defined() && "For of undefined");
         assert(min.type().is_scalar() && "For with vector min");
         assert(extent.type().is_scalar() && "For with vector extent");
         assert(body.defined() && "For of undefined");
     }
+    
+    /** Convenience constructor for building sample code. Do NOT use this in mutators as you will lose information. */
+    For(std::string n, Expr m, Expr e, ForType f, Stmt b) :
+        name(n), min(m), extent(e), for_type(f), partition(PartitionInfo()), body(b) {
+        assert(min.defined() && "For of undefined");
+        assert(extent.defined() && "For of undefined");
+        assert(min.type().is_scalar() && "For with vector min");
+        assert(extent.type().is_scalar() && "For with vector extent");
+        assert(body.defined() && "For of undefined");
+    }
+    
 };
 
 /** Store a 'value' to a 'buffer' at a given 'index'. The buffer is
@@ -674,15 +734,6 @@ struct Allocate : public StmtNode<Allocate> {
         assert(size.type().is_scalar() == 1 && "Allocate of vector size");
     }
 };
-
-// end namespace Internal
-}
-}
-
-#include "Interval.h"
-
-namespace Halide {
-namespace Internal {
 
 /** A single-dimensional span. Includes all numbers between min and
  * (min + extent - 1) */

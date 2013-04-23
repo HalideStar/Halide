@@ -1076,13 +1076,13 @@ void interval_analysis_test() {
     vector<Expr> input_site_2_simplified = vec(min(x+1,10));
     vector<Expr> output_site = vec(x+1);
 
-    Stmt loop = new For("x", 3, 10 /* 3 to 12 inclusive */, For::Serial, 0, 0, 
+    Stmt loop = new For("x", 3, 10 /* 3 to 12 inclusive */, For::Serial,  
                         new Provide("output", 
                                     new Add(
                                         new Call(Int(32), "input", input_site_1),
                                         new Call(Int(32), "input", input_site_2)),
                                     output_site));
-    Stmt result = new For("x", 3, 10, For::Serial, 0, 0, 
+    Stmt result = new For("x", 3, 10, For::Serial,  
                         new Provide("output", 
                                     new Add(
                                         new Call(Int(32), "input", input_site_1_simplified),

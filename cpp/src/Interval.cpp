@@ -38,6 +38,12 @@ Interval operator/(Interval v, Expr b) {
     // When the divisor is positive, floor(min/b) is less than floor(max/b).
     // When the divisor is negative, floor(max/b) is less than floor(min/b).
     // So, take maximum of the two floors and minimum of the two ceils.
+    
+    if (! v.min.defined() && ! v.max.defined()) return v; // Undefined result.
+    
+    // Convert an undefined end of the interval to infinity.
+    if (! v.min.defined()) v.min = new Internal::Infinity(v.max.type(), -1);
+    else if (! v.max.defined()) v.max = new Internal::Infinity(v.min.type(), 1);
 
     // Note: Halide defined division as floor.
     Expr newmax = select(b >= 0, v.max / b, v.min / b);

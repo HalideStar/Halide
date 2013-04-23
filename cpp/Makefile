@@ -142,7 +142,7 @@ bin/gtest_internal: test/internal.cpp lib/libg$(NAME).a
 	$(CXX) -g $< -Isrc -Llib -lg$(NAME) -lpthread -ldl -o $@	
 
 bin/gtest_%: test/%.cpp lib/libg$(NAME).a include/Halide.h
-	$(CXX) -g $<  -Iinclude -Llib -lg$(NAME) -lpthread -ldl -o $@	
+	$(CXX) -g $(TEST_CXX_FLAGS) $<  -Iinclude -Llib -lg$(NAME) -lpthread -ldl -o $@	
 
 test_%: bin/test_%
 	@-mkdir -p tmp

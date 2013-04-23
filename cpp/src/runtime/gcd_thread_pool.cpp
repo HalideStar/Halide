@@ -40,6 +40,7 @@ WEAK void halide_do_gcd_task(void *job, size_t idx) {
 }
 
 WEAK void halide_do_par_for(void (*f)(int, uint8_t *), int min, int size, uint8_t *closure) {
+    if (size <= 0) return;
     halide_gcd_job job;
     job.f = f;
     job.closure = closure;

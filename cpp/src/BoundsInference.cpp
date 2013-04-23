@@ -78,7 +78,7 @@ public:
 
 Stmt bounds_inference(Stmt s, const vector<string> &order, const map<string, Function> &env) {
     // Add a new outermost loop to make sure we get outermost bounds definitions too
-    s = new For("outermost", 0, 1, For::Serial, 0, 0, s);
+    s = new For("outermost", 0, 1, For::Serial, s);
 
     s = BoundsInference(order, env).mutate(s);
 
