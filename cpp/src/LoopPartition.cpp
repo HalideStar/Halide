@@ -12,6 +12,7 @@
 #include "Solver.h"
 #include "Simplify.h"
 #include "Options.h"
+#include "CodeLogger.h"
 
 namespace Halide {
 namespace Internal {
@@ -225,7 +226,7 @@ bool has_variable_match(std::string pattern, Expr e) {
     return matcher.result;
 }
 
-// Perform loop partition optimisation for all For loops
+// Perform loop partition optimisation on For loops
 class LoopPartition : public IRMutator {
     using IRMutator::visit;
 public:
@@ -394,7 +395,7 @@ protected:
                 
                 part = Interval(part_start, part_end);
                 
-                log(2) << "Auto partition: " << part << "\n";
+                log(0) << "Auto partition: " << op->name << " " << part << "\n";
             }
             
             if ((part.min.defined() && infinity_count(part.min) == 0) || 
@@ -514,14 +515,16 @@ public:
 Stmt loop_partition(Stmt s) {
     //return LoopPartition().mutate(s);
     LoopPartition loop_part;
-    //if (global_options.loop_partition_all) { // Disable while we fix recursion problem.
-        // Dont do the preprocessing if not doing automatic partitioning.
-        s = simplify(s); // Must be fully simplified first
-        Stmt pre = LoopPreSolver().mutate(s);
-        Stmt solved = solver(pre);
-        loop_part.solved = solved;
-    //}
-    return loop_part.mutate(s);
+    s = simplify(s); // Must be fully simplified first
+    code_logger.log(s, "simplify");
+    Stmt pre = LoopPreSolver().mutate(s);
+    code_logger.log(pre, "pre_solver");
+    Stmt solved = solver(pre);
+    code_logger.log(solved, "solved");
+    loop_part.solved = solved;
+    s = loop_part.mutate(s);
+    code_logger.log(s, "loop_partition");
+    return s;
 }
 
 // Test loop partition routines.

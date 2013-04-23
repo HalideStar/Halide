@@ -258,10 +258,14 @@ public:
             expr = mutate(-solve(sub_e->b - sub_e->a, v_apply(operator-, op->v)));
         } else if (mul_e && is_constant_expr(mul_e->b)) {
             // solve(v * k) on (a,b) --> solve(v) * k with interval (ceil(a/k), floor(b/k))
-            expr = mutate(solve(mul_e->a, v_apply(operator/, op->v, mul_e->b)) * mul_e->b);
+            // i.e. For integer types, find all the integers that could be multiplied back up
+            // and still be in the range (a,b).  Decimate does this.
+            expr = mutate(solve(mul_e->a, v_apply(decimate, op->v, mul_e->b)) * mul_e->b);
         } else if (div_e && is_constant_expr(div_e->b)) {
             // solve(v / k) on (a,b) --> solve(v) / k with interval a * k, b * k + (k +/- 1)
-            expr = mutate(solve(div_e->a, v_apply(operator*, op->v, div_e->b)) / div_e->b);
+            // For integer types, find all the expanded intervals - all the integers that would
+            // divide back down to the range (a,b).  Zoom does this.
+            expr = mutate(solve(div_e->a, v_apply(zoom, op->v, div_e->b)) / div_e->b);
         } else if (min_e && is_constant_expr(min_e->a)) {
             // Min, Max: push outside of Solve nodes.
             // solve(min(k,v)) on (a,b) --> min(k,solve(v)). 

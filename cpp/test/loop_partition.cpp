@@ -166,7 +166,9 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
     part_vec8(x,y) = e;
     norm_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8);
     //part_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8).partition(x, (xlo+7)/8*8, (xhi+7)/8*8).partition(y, ypart);
-    part_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8).partition(x, xpart / 8).partition(y, ypart);
+    //part_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8).partition(x, unzoom(xpart, 8)).partition(y, ypart);
+    //part_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).partition(x, xpart).partition(y, ypart).vectorize(x,8);
+    part_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8).partition(x, true).partition(y, true);
     compare(prefix + "_vector(8)", norm_vec8, part_vec8);
 #endif
 #if 1  
@@ -246,6 +248,8 @@ main () {
     input = init.realize(WIDTH,HEIGHT);
     
     Func undefined;
+    
+    Halide::global_options.loop_partition = true;
     
     //Expr e = cast(UInt(8), sobel_amp(cast(Int(16), input), "x")(x,y));
     Expr e = input(clamp(x-1,0,WIDTH-1),clamp(y-1,0,HEIGHT-1)) + input(clamp(x+1,0,WIDTH-1),clamp(y+1,0,HEIGHT-1));

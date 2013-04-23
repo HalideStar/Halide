@@ -27,6 +27,7 @@
 #include "LoopPartition.h"
 #include "IntervalAnalysis.h"
 #include "Statistics.h"
+#include "CodeLogger.h"
 
 namespace Halide {
 namespace Internal {
@@ -743,18 +744,39 @@ Stmt add_image_checks(Stmt s, Function f) {
     return s;
 }
 
-namespace {
-static Stmt s_prev;
+Stmt do_loop_partition(Stmt s, int section) {
+    code_logger.section(section);
+    if (global_options.loop_partition) {
+		log(1) << "Simplifying...\n";
+		s = simplify(s);
+		s = remove_dead_lets(s);
+		code_logger.log(s, "deadlets");
 
-// local method to write stmt to a named log file but only if it has changed compared to
-// the previous log file that was written.
-void log_to_file(std::string base, Stmt s) {
-    if (! s.same_as(s_prev) || log::debug_level > 2) {
-        log(base, 2) << s << "\n"; 
-        s_prev = s; 
-    }
+		log(1) << "Performing loop partition optimization...\n";
+		s = loop_partition(s);
+		log(2) << "Loop partition:\n" << s << '\n';
+		code_logger.log(s, "partition");
+	}
+	
+    code_logger.section(section + 10);
+	if (global_options.interval_analysis_simplify) {
+		//log::debug_level = 1;
+		log(1) << "Performing interval analysis simplification...\n";
+		s = simplify(s);
+		s = interval_analysis_simplify(s);
+		log(2) << "IA Simplify:\n" << s << '\n';
+		code_logger.log(s, "IA_simplify");
+		//log::debug_level = 0;
+
+		//log(1) << "Simplifying...\n";
+		//s = simplify(s);
+		//s = remove_dead_lets(s);
+		//log(2) << "Simplified: \n" << s << "\n\n";
+		//code_logger.log(s, "simplify");
+	}
+    return s;
 }
-}
+
 
 Stmt lower(Function f) {
     Statistics start_statistics = global_statistics;
@@ -768,149 +790,125 @@ Stmt lower(Function f) {
     vector<string> order = realization_order(f.name(), env, graph);
     Stmt s = create_initial_loop_nest(f);
 
-    log(f.name() + "_101_initial", 2) << s << "\n";
-    s_prev = s;
+    code_logger.reset();
+    code_logger.section(100);
+    code_logger.name(f.name());
+    code_logger.log(s, "initial");
 
-    log(2) << "Initial statement: " << '\n' << s << '\n';
+    code_logger.section(120);
     s = schedule_functions(s, order, env, graph);
-    log(2) << "All realizations injected:\n" << s << '\n';
-    log_to_file(f.name() + "_110_realize", s);
+    code_logger.log(s, "realize");
     
     s = simplify(s);
-    log_to_file(f.name() + "_111_simplify", s);
+    code_logger.log(s, "simplify");
 
 # if ! LOWER_CLAMP_LATE
     //LH
     // Lowering Clamp here does not produce the same results as using the original clamp.
+    code_logger.section(140);
     log(1) << "Lowering Clamp early\n";
     s = lower_clamp(s);
     s = simplify(s);
-    log(1) << "Clamp lowered:\n" << s << '\n';
-    log_to_file(f.name() + "_125_clamp", s);
+    code_logger.log(s, "clamp");
 # endif
 
+    code_logger.section(200);
     log(1) << "Injecting tracing...\n";
     s = inject_tracing(s);
     log(2) << "Tracing injected:\n" << s << '\n';
-    log_to_file(f.name() + "_130_trace", s);
+    code_logger.log(s, "trace");
 
+    code_logger.section(210);
     log(1) << "Adding checks for images\n";
     s = add_image_checks(s, f);    
     log(2) << "Image checks injected:\n" << s << '\n';
 
+    code_logger.section(220);
     log(1) << "Performing bounds inference...\n";
     s = bounds_inference(s, order, env);
     log(2) << "Bounds inference:\n" << s << '\n';
-    log_to_file(f.name() + "_140_bounds", s);
+    code_logger.log(s, "bounds");
     
 # if LOWER_CLAMP_LATE
     //LH
     // Lowering Clamp here does not produce the same results as using the original clamp.
+    code_logger.section(240);
     log(1) << "Lowering Clamp late\n";
     s = lower_clamp(s);
     s = simplify(s);
     log(1) << "Clamp lowered:\n" << s << '\n';
-    log_to_file(f.name() + "_150_clamp", s);
+    code_logger.log(s, "clamp");
 # endif
 
+    code_logger.section(300);
     log(1) << "Performing sliding window optimization...\n";
     s = sliding_window(s, env);
     log(2) << "Sliding window:\n" << s << '\n';
-    log_to_file(f.name() + "_155_sliding", s);
+    code_logger.log(s, "sliding");
 
 # if 0
-    log(1) << "Simplifying...\n";
-    s = simplify(s);
-    s = remove_dead_lets(s);
-    log(2) << "Simplified: \n" << s << "\n\n";
-    log_to_file(f.name() + "_164_simplify", s);
-
-    log(1) << "Performing loop partition optimization...\n";
-    s = loop_partition(s);
-    log(2) << "Loop partition:\n" << s << '\n';
-    log_to_file(f.name() + "_165_partition", s);
-
-    //log::debug_level = 1;
-    log(1) << "Performing interval analysis simplification...\n";
-    s = simplify(s);
-    s = interval_analysis_simplify(s);
-    log(2) << "IA Simplify:\n" << s << '\n';
-    log_to_file(f.name() + "_166_IA_simplify", s);
-    //log::debug_level = 0;
+    // Untried recently.
+    s = do_loop_partition(s, 320);
 #endif
 
+    code_logger.section(340);
     log(1) << "Simplifying...\n";
     s = simplify(s);
     log(2) << "Simplified: \n" << s << "\n\n";
-    log_to_file(f.name() + "_167_simplify", s);
+    code_logger.log(s, "simplify");
 
+    code_logger.section(400);
     log(1) << "Performing storage folding optimization...\n";
     s = storage_folding(s);
     log(2) << "Storage folding:\n" << s << '\n';
-    log_to_file(f.name() + "_170_storefold", s);
+    code_logger.log(s, "storefold");
 
+    code_logger.section(420);
     log(1) << "Injecting debug_to_file calls...\n";
     s = debug_to_file(s, env);
     log(2) << "Injected debug_to_file calls:\n" << s << '\n';
+    code_logger.log(s, "debug_to_file");
 
+    code_logger.section(440);
     log(1) << "Performing storage flattening...\n";
     s = storage_flattening(s, env);
     log(2) << "Storage flattening: " << '\n' << s << "\n\n";
+    code_logger.log(s, "flattening");
 
     log(1) << "Simplifying...\n";
     s = simplify(s);
     log(2) << "Simplified: \n" << s << "\n\n";
-    log_to_file(f.name() + "_180_storeflatten", s);
+    code_logger.log(s, "simplify");
 
+    s = do_loop_partition(s, 460);
+
+    code_logger.section(500);
     log(1) << "Vectorizing...\n";
     s = vectorize_loops(s);
     log(2) << "Vectorized: \n" << s << "\n\n";
-    log_to_file(f.name() + "_185_vector", s);
+    code_logger.log(s, "vector");
 
+    code_logger.section(520);
     log(1) << "Unrolling...\n";
     s = unroll_loops(s);
     log(2) << "Unrolled: \n" << s << "\n\n";
+    code_logger.log(s, "unroll");
 
     log(1) << "Simplifying...\n";
     s = simplify(s);
     log(2) << "Simplified: \n" << s << "\n\n";
-    log_to_file(f.name() + "_190_unroll", s);
+    code_logger.log(s, "simplify");
 
+    code_logger.section(540);
     log(1) << "Detecting vector interleavings...\n";
     s = rewrite_interleavings(s);
     log(2) << "Rewrote vector interleavings: \n" << s << "\n\n";    
-    log_to_file(f.name() + "_195_interleave", s);
+    code_logger.log(s, "interleave");
 
 
-    if (global_options.loop_partition) {
-		log(1) << "Simplifying...\n";
-		s = simplify(s);
-		s = remove_dead_lets(s);
-		log(2) << "Simplified: \n" << s << "\n\n";
-		log_to_file(f.name() + "_196_simplify", s);
-
-		log(1) << "Performing loop partition optimization...\n";
-		s = loop_partition(s);
-		log(2) << "Loop partition:\n" << s << '\n';
-		log_to_file(f.name() + "_197_partition", s);
-	}
-	
-	if (global_options.interval_analysis_simplify) {
-		//log::debug_level = 1;
-		log(1) << "Performing interval analysis simplification...\n";
-		s = simplify(s);
-		s = interval_analysis_simplify(s);
-		log(2) << "IA Simplify:\n" << s << '\n';
-		log_to_file(f.name() + "_198_IA_simplify", s);
-		//log::debug_level = 0;
-
-		//log(1) << "Simplifying...\n";
-		//s = simplify(s);
-		//s = remove_dead_lets(s);
-		//log(2) << "Simplified: \n" << s << "\n\n";
-		//log_to_file(f.name() + "_199_simplify", s);
-	}
-
+    //s = do_loop_partition(s, 560);
+    
+    code_logger.section(800);
     log(1) << "Simplifying...\n";
     s = simplify(s);
     s = remove_trivial_for_loops(s);
@@ -918,7 +916,8 @@ Stmt lower(Function f) {
     s = simplify(s);
     log(1) << "Simplified: \n" << s << "\n\n";
     
-    log(f.name() + "_900_final", 1) << s << "\n";
+    code_logger.section(900);
+    code_logger.log(s, "final");
     
     Statistics run_statistics = global_statistics;
     run_statistics.Subtract(start_statistics);
