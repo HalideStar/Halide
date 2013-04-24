@@ -58,6 +58,7 @@ template<> EXPORT IRNodeType ExprNode<Solve>::_type_info = {};
 template<> EXPORT IRNodeType ExprNode<TargetVar>::_type_info = {};
 template<> EXPORT IRNodeType StmtNode<StmtTargetVar>::_type_info = {};
 template<> EXPORT IRNodeType ExprNode<Infinity>::_type_info = {};
+//template<> EXPORT IRNodeType ExprNode<ExprInterval>::_type_info = {};
 
 template<>
 EXPORT RefCount &ref_count<IRNode>(const IRNode *n) {return n->ref_count;}
@@ -67,6 +68,10 @@ EXPORT void destroy<IRNode>(const IRNode *n) {delete n;}
 
 
 void check_same_type(std::string opname, Expr a, Expr b) {
+    if (! a.defined() || ! b.defined()) {
+        std::cerr << opname << "(" << a << ", " << b << ") has undefined operand" << std::endl;
+        assert(0 && "Undefined operand");
+    }
     if (a.type() == b.type()) return;
     std::cerr << opname << "(" << a << ", " << b << ") has mismatched types " 
         << a.type() << "and " << b.type() << std::endl;

@@ -32,44 +32,58 @@ class LoopPreSolver : public InlineLet {
     bool is_constant_expr(Expr a) { return Halide::Internal::is_constant_expr(varlist, a); }
     
     virtual void visit(const For *op) {
-        // Indicate that the For variable is not a constant variable
-        varlist.push_back(op->name);
-        
-        // Mutate the children including inlining of Let expressions.
-        InlineLet::visit(op); 
-        
-        // Use the mutated for loop returned by InlineLet::visit(op)
-        // Tricky pointer management issue arises here:
-        // If we write:
-        //    const For *forloop = stmt.as<For>() 
-        // this does not retain an intrusive pointer to the underlying For
-        // loop node once stmt is reused.  The outcome is that
-        //    stmt = new For(forloop, ...)
-        // crashes because stmt is reinitialised and the For loop node is destroyed;
-        // it turns out that the node is destroyed before the new node is constructed.
-        // Assign stmt to result so that this does not happen.
-        Stmt result = stmt;
-        const For *forloop = result.as<For>();
-        assert(forloop && "InlineLet did not return a For loop");
-        
-        // Construct a new body that wraps the loop body as a target variable for solver.
-        // The source node is the original op.
-        Stmt body = new StmtTargetVar(op->name, forloop->body, op);
-        varlist.pop_back();
-        stmt = new For(forloop, forloop->min, forloop->extent, body);
+        // Only serial and parallel for loops can be partitioned.
+        // Vector and Unrolled for loops, if present, become intervals for the solver to deal with.
+        if (op->for_type == For::Serial || op->for_type == For::Parallel) {
+            // Indicate that the For variable is not a constant variable
+            varlist.push_back(op->name);
+            
+            // Mutate the children including inlining of Let expressions.
+            InlineLet::visit(op); 
+            
+            // Use the mutated for loop returned by InlineLet::visit(op)
+            // Tricky pointer management issue arises here:
+            // If we write:
+            //    const For *forloop = stmt.as<For>() 
+            // this does not retain an intrusive pointer to the underlying For
+            // loop node once stmt is reused.  The outcome is that
+            //    stmt = new For(forloop, ...)
+            // crashes because stmt is reinitialised and the For loop node is destroyed;
+            // it turns out that the node is destroyed before the new node is constructed.
+            // Assign stmt to result so that this does not happen.
+            Stmt result = stmt;
+            const For *forloop = result.as<For>();
+            assert(forloop && "InlineLet did not return a For loop");
+            
+            // Construct a new body that wraps the loop body as a target variable for solver.
+            // The source node is the original op.
+            Stmt body = new StmtTargetVar(op->name, forloop->body, op);
+            varlist.pop_back();
+            stmt = new For(forloop, forloop->min, forloop->extent, body);
+        } else {
+            // It is a real horrible hack but for now we try
+            // converting a vector or unrolled for loop into
+            // a LetStmt with a clamp representing the range of values.
+            // The solver should really be able to solve such an expression.
+            Stmt body = op->body;
+            Expr unknownvar = new Variable(op->min.type(), "unknown." + op->name);
+            Expr value = clamp(unknownvar, op->min, op->min + (op->extent-1));
+            Stmt letstmt = new LetStmt(op->name, value, body);
+            mutate(letstmt);
+        }
     }
     
-    // Min can be eliminated in a loop body if the target expression is always either
-    // <= the limit or >= the limit.
+    // Solve the non-constant side of a min expression.
+    // If we can partition the loop so that one side is always <= or >= the other side
+    // then min can be eliminated.
     virtual void visit(const Min *op) {
         // Min(a,b).
         // Min(a,k) or Min(k,a): Solve for a on (-infinity,k).
-        // Min(a,b) is not solved because it is too general, although we could
-        // solve Min(a-b,0)+b.
+        // Min(a,b) is not solved because it is too general.
         Expr a = mutate(op->a);
         Expr b = mutate(op->b);
         if (is_constant_expr(a) && ! is_constant_expr(b)) std::swap(a,b);
-        if (is_constant_expr(b)) {
+        if (!is_constant_expr(a) && is_constant_expr(b)) {
             expr = new Min(new Solve(a, Interval(make_infinity(b.type(), -1), b)), b);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
@@ -78,17 +92,15 @@ class LoopPreSolver : public InlineLet {
         }
     }
 
-    // Max can be eliminated in a loop body if the target expression is always either
-    // <= the limit or >= the limit.
+    // Solve the non-constant side of a max expression.
     virtual void visit(const Max *op) {
         // Max(a,b).
         // Max(a,k) or Max(k,a): Solve for a on (k, infinity)
-        // Max(a,b) is not solved because it is too general, although we could
-        // solve Max(a-b,0)+b.
+        // Max(a,b) is not solved because it is too general.
         Expr a = mutate(op->a);
         Expr b = mutate(op->b);
         if (is_constant_expr(a) && ! is_constant_expr(b)) std::swap(a,b);
-        if (is_constant_expr(b)) {
+        if (!is_constant_expr(a) && is_constant_expr(b)) {
             expr = new Max(new Solve(a, Interval(b, make_infinity(b.type(), +1))), b);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
@@ -97,6 +109,7 @@ class LoopPreSolver : public InlineLet {
         }
     }
     
+    // Solve an inequality.
     // All comparisons should first be simplified to LT or EQ.
     // LT can be eliminated in a loop body if it always evaluated either to true or to false.
     virtual void visit(const LT *op) {

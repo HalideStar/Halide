@@ -259,9 +259,7 @@ struct Add : public ExprNode<Add> {
     Expr a, b;
 
     Add(Expr _a, Expr _b) : ExprNode<Add>(_a.type()), a(_a), b(_b) {
-        assert(a.defined() && "Add of undefined");
-        assert(b.defined() && "Add of undefined");
-        assert(b.type() == type && "Add of mismatched types");
+        check_same_type("Add", a, b);
     }
 };
 
@@ -270,9 +268,7 @@ struct Sub : public ExprNode<Sub> {
     Expr a, b;
 
     Sub(Expr _a, Expr _b) : ExprNode<Sub>(_a.type()), a(_a), b(_b) {
-        assert(a.defined() && "Sub of undefined");
-        assert(b.defined() && "Sub of undefined");
-        check_same_type("Sub",a,b);
+        check_same_type("Sub", a, b);
     }
 };
 
@@ -281,9 +277,7 @@ struct Mul : public ExprNode<Mul> {
     Expr a, b;
 
     Mul(Expr _a, Expr _b) : ExprNode<Mul>(_a.type()), a(_a), b(_b) {
-        assert(a.defined() && "Mul of undefined");
-        assert(b.defined() && "Mul of undefined");
-        assert(b.type() == type && "Mul of mismatched types");
+        check_same_type("Mul", a, b);
     }        
 };
 
@@ -292,9 +286,7 @@ struct Div : public ExprNode<Div> {
     Expr a, b;
 
     Div(Expr _a, Expr _b) : ExprNode<Div>(_a.type()), a(_a), b(_b) {
-        assert(a.defined() && "Div of undefined");
-        assert(b.defined() && "Div of undefined");
-        assert(b.type() == type && "Div of mismatched types");
+        check_same_type("Div", a, b);
     }
 };
 
@@ -306,9 +298,7 @@ struct Mod : public ExprNode<Mod> {
     Expr a, b;
 
     Mod(Expr _a, Expr _b) : ExprNode<Mod>(_a.type()), a(_a), b(_b) {
-        assert(a.defined() && "Mod of undefined");
-        assert(b.defined() && "Mod of undefined");
-        assert(b.type() == type && "Mod of mismatched types");
+        check_same_type("Mod", a, b);
     }
 };
 
@@ -317,9 +307,7 @@ struct Min : public ExprNode<Min> {
     Expr a, b;
 
     Min(Expr _a, Expr _b) : ExprNode<Min>(_a.type()), a(_a), b(_b) {
-        assert(a.defined() && "Min of undefined");
-        assert(b.defined() && "Min of undefined");
-        assert(b.type() == type && "Min of mismatched types");
+        check_same_type("Min", a, b);
     }
 };
 
@@ -328,9 +316,7 @@ struct Max : public ExprNode<Max> {
     Expr a, b;
 
     Max(Expr _a, Expr _b) : ExprNode<Max>(_a.type()), a(_a), b(_b) {
-        assert(a.defined() && "Max of undefined");
-        assert(b.defined() && "Max of undefined");
-        check_same_type("Max",a,b);
+        check_same_type("Max", a, b);
     }
 };
 
@@ -592,42 +578,42 @@ namespace Internal {
 
 /** Information for loop partitioning from the .partition schedule.
  * It is stored in the Dim portion of the Schedule, and later into the For loops. */
-struct PartitionInfo {
-    /** One option is for the user to partition the main loop manually.
-     * Specify an Interval for the loop.  The bounds can be expressions.
-     * If not used, the expressions will be undefined. */
-    Interval interval;
-    /** Boolean options translate to tristate variables internally because they can
-     * be undefined. */
-    enum TriState { Undefined, No, Yes };
-    /** Record the auto_partition option for this variable. */
-    TriState auto_partition;
-  
-    /** Record the status of For loops, mainly for debugging and optimisation. */
-    enum LoopStatus { Ordinary, Before, Main, After };
-    LoopStatus status;
-    
-    PartitionInfo(bool do_partition) {
-        auto_partition = do_partition ? Yes : No;
-        status = Ordinary;
-    }
-    PartitionInfo(Interval _interval) { 
-        interval = _interval; 
-        auto_partition = Undefined; 
-        status = Ordinary;
-    }
-    PartitionInfo(TriState _auto_partition) { 
-        assert(_auto_partition == Undefined || _auto_partition == Yes || _auto_partition == No);
-        auto_partition = _auto_partition; 
-        status = Ordinary;
-    }
-    PartitionInfo() { 
-        auto_partition = Undefined; 
-        status = Ordinary;
-    }
-    
-    const bool defined() const { return auto_partition != Undefined || (interval.min.defined() && interval.max.defined()); }
-};
+    struct PartitionInfo {
+        /** One option is for the user to partition the main loop manually.
+         * Specify an Interval for the loop.  The bounds can be expressions.
+         * If not used, the expressions will be undefined. */
+        Interval interval;
+        /** Boolean options translate to tristate variables internally because they can
+         * be undefined. */
+        enum TriState { Undefined, No, Yes };
+        /** Record the auto_partition option for this variable. */
+        TriState auto_partition;
+      
+        /** Record the status of For loops, mainly for debugging and optimisation. */
+        enum LoopStatus { Ordinary, Before, Main, After };
+        LoopStatus status;
+        
+        PartitionInfo(bool do_partition) {
+            auto_partition = do_partition ? Yes : No;
+            status = Ordinary;
+        }
+        PartitionInfo(Interval _interval) { 
+            interval = _interval; 
+            auto_partition = Undefined; 
+            status = Ordinary;
+        }
+        PartitionInfo(TriState _auto_partition) { 
+            assert(_auto_partition == Undefined || _auto_partition == Yes || _auto_partition == No);
+            auto_partition = _auto_partition; 
+            status = Ordinary;
+        }
+        PartitionInfo() { 
+            auto_partition = Undefined; 
+            status = Ordinary;
+        }
+        
+        const bool defined() const { return auto_partition != Undefined || (interval.min.defined() && interval.max.defined()); }
+    };
         
 /** A for loop. Execute the 'body' statement for all values of the
  * variable 'name' from 'min' to 'min + extent'. There are four
@@ -924,14 +910,28 @@ struct StmtTargetVar : public StmtNode<StmtTargetVar> {
 /** Infinity node is useful for interval analysis and solver.  It represents an undefined
  * minimum of an interval as negative infinity, and an undefined maximum as positive infinity.
  * Simplify is made able to simplify expressions involving infinity nodes.
- * The type of Infinity is Int(32) but it is a weak type - when combined with other types, it
- * should always defer to the other type.
+ * The type of Infinity is specified at construction.
  */
 struct Infinity : public ExprNode<Infinity> {
     int count; // Count of infinity. >0 means +ve infinity, <0 means negative infinity.
     
     Infinity(Type t, int _c) : ExprNode<Infinity>(t), count(_c) {}
 };
+
+#if 0
+/** ExprInterval node is useful for solver and interval analysis.  It represents in interval
+ * from min to max inclusive of both.  The representation is a Halide expression 
+ * as an alternative to representing an interval as a separate data object.
+ * Similar to Infinity, Interval cannot be code generated because it cannot be evaluated
+ * at run time. */
+struct ExprInterval : public ExprNode<Interval> {
+    Expr min, max;
+    
+    Interval(Expr _a, Expr _b) : ExprNode<Interval>(_min.type), min(_a), max(_b) {
+        check_same_type("Interval", min, max);
+    }
+};
+#endif
 
 }
 }
