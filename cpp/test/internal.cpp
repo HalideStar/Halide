@@ -18,6 +18,7 @@
 #include "LoopPartition.h"
 #include "Statistics.h"
 #include "Interval.h"
+#include "LazyScope.h"
 
 using namespace Halide;
 using namespace Halide::Internal;
@@ -45,6 +46,7 @@ int main(int argc, const char **argv) {
     interval_analysis_test();
     solver_test();
     loop_partition_test();
+    lazy_scope_test();
     
     std::cout << "Compiler Statistics:\n";
     std::cout << global_statistics;

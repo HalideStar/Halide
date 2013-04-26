@@ -279,17 +279,20 @@ public:
     
     virtual void process(const Stmt& parent, const Stmt& child) {
         stmt_child = child;
-        parent.accept(this);
+        if (parent.defined())
+            parent.accept(this);
     }
     
     virtual void process(const Stmt& parent, const Expr& child) {
         expr_child = child;
-        parent.accept(this);
+        if (parent.defined())
+            parent.accept(this);
     }
     
     virtual void process(const Expr& parent, const Expr& child) {
         expr_child = child;
-        parent.accept(this);
+        if (parent.defined())
+            parent.accept(this);
     }
     
 protected:
@@ -307,7 +310,7 @@ protected:
     
     virtual void visit(LetStmt *op) {
         lazy_scope.bind(op->name, op);
-        if (op->body.same_as(expr_child)) {
+        if (op->body.same_as(stmt_child)) {
             lazy_scope.push(op);
         }
     }
@@ -341,17 +344,20 @@ public:
     
     virtual void process(const Stmt& parent, const Stmt& child) {
         stmt_child = child;
-        parent.accept(this);
+        if (parent.defined())
+            parent.accept(this);
     }
     
     virtual void process(const Stmt& parent, const Expr& child) {
         expr_child = child;
-        parent.accept(this);
+        if (parent.defined())
+            parent.accept(this);
     }
     
     virtual void process(const Expr& parent, const Expr& child) {
         expr_child = child;
-        parent.accept(this);
+        if (parent.defined())
+            parent.accept(this);
     }
     
 protected:
@@ -407,9 +413,8 @@ class LazyScopeBinder : public Wrapped {
     LSInternal::LazyScopePostBinder post_binder;
     
 public:
-    LazyScopeBinder(LazyScope &lazy_scope) : pre_binder(lazy_scope), post_binder(lazy_scope) {}
+    LazyScopeBinder(LazyScope &lazy_scope) : Wrapped(lazy_scope), pre_binder(lazy_scope), post_binder(lazy_scope) {}
     
-protected:
     virtual void process(const Stmt& parent, const Stmt& child) {
         pre_binder.process(parent, child);
         Wrapped::process(parent, child);
@@ -430,6 +435,8 @@ protected:
     
 };
 
+
+void lazy_scope_test();
 
 }
 }

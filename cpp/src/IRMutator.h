@@ -53,6 +53,10 @@ protected:
     /** visit methods that take Stmts assign to this to return their
      * new value */
     Stmt stmt;
+    
+    //virtual void process(const Stmt& parent, const Stmt& child);
+    //virtual void process(const Stmt& parent, const Expr& child);
+    //virtual void process(const Expr& parent, const Expr& child);
 
     virtual void visit(const IntImm *);
     virtual void visit(const FloatImm *);

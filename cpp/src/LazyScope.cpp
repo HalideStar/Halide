@@ -1,6 +1,8 @@
 #include "LazyScope.h"
 #include "IR.h"
 #include "IRInspector.h"
+#include "IROperator.h"
+#include "IRPrinter.h"
 
 #include <string>
 #include <vector>
@@ -136,8 +138,60 @@ const ScopedNode *LazyScope::lookup(const LSInternal::BindingMap& map, int scope
     return NULL;
 }
 
-LazyScope test_scope;
-LazyScopeBinder<IRVisitor> test_global_binder(test_scope);
+
+namespace {
+    // A simple tree walker runs over the tree.
+    class Walker : public IRVisitor {
+        LazyScope &lazy_scope;
+    public:
+        Walker(LazyScope &_lazy_scope) : lazy_scope(_lazy_scope) {}
+        
+        using IRVisitor::visit;
+        
+        // Walk the tree.
+        virtual void visit(Variable *op) {
+            // Look up to see whether the variable is defined.
+            const ScopedNode *found = lazy_scope.find_variable(op->name);
+            if (found) {
+                std::cout << lazy_scope.current_scope() << " Found " << op->name << "[" << found->scope << "]" << " " << found->expr << "\n";
+            } else {
+                std::cout << "Could not find " << op->name << " from scope " << lazy_scope.current_scope() << "\n";
+            }
+        }
+    };
+}   
+
+/* Test the lazy scope. */
+void lazy_scope_test() {
+    // Build a program tree.
+    Type i32 = Int(32);
+    Expr x = new Variable(Int(32), "x");
+    Expr y = new Variable(Int(32), "y");
+    Expr a = new Variable(Int(32), "a");
+
+    Expr input = new Call(Int(16), "input", vec((x - 10) % 100 + 10));
+    Expr select = new Select(x > 3, new Select(x < 87, input, new Cast(Int(16), -17)),
+                             new Cast(Int(16), -17));
+    Stmt store = new Store("buf", select, x - 1);
+    PartitionInfo partition(true);
+    Stmt for_loop = new For("x", 0, 100, For::Parallel, partition, store);
+    Stmt letstmt = new LetStmt("y", a * 2 + 5, for_loop);
+    Expr call = new Call(i32, "buf", vec(max(min(x,100),0)));
+    Expr call2 = new Call(i32, "buf", vec(max(min(x-1,100),0)));
+    Expr call3 = new Call(i32, "buf", vec(Expr(new Clamp(Clamp::Reflect, x+1, 0, 100))));
+    Stmt store2 = new Store("out", call + call2 + call3 + 1, x);
+    PartitionInfo partition2(Interval(1,99));
+    Stmt for_loop2 = new For("x", 0, 100, For::Serial, partition2, store2);
+    Stmt pipeline = new Pipeline("buf", letstmt, Stmt(), for_loop2);
+    
+    LazyScope test_scope;
+    
+    LazyScopeBinder<Walker> binder(test_scope);
+    
+    std::cout << "Commence lazy scope test\n";
+    binder.process(Stmt(), pipeline);
+    std::cout << "Lazy scope test completed\n";
+}
 
 }
 }
