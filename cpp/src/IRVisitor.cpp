@@ -11,6 +11,18 @@ IRVisitor::IRVisitor() {
 IRVisitor::~IRVisitor() {
 }
 
+void IRVisitor::process(const Stmt& parent, const Stmt& child) {
+    child.accept(this);
+}
+
+void IRVisitor::process(const Stmt& parent, const Expr& child) {
+    child.accept(this);
+}
+
+void IRVisitor::process(const Expr& parent, const Expr& child) {
+    child.accept(this);
+}
+
 void IRVisitor::visit(const IntImm *) {
     defaulted = true;
 }

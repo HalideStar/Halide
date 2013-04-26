@@ -65,6 +65,10 @@ struct Infinity;
  */
 class IRVisitor {
 public:
+    virtual void process(const Stmt& parent, const Stmt& child);
+    virtual void process(const Stmt& parent, const Expr& child);
+    virtual void process(const Expr& parent, const Expr& child);
+    
     // Sometimes, you need to know if IRVisitor has adopted
     // the default behaviour of visiting all the children
     // of a node for which no explicit visit method is defined.

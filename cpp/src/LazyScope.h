@@ -8,6 +8,7 @@
  */
 
 #include "IR.h"
+#include "IRInspector.h"
 
 #include <string>
 #include <vector>
@@ -37,34 +38,9 @@ namespace Internal {
  * actually records both an Expr and a Stmt.  One of these is undefined.
  */
 
- namespace LazyScopeClasses {
-
-/** A little class for the keys to the bindings map. */
-class BindingKey {
-public:
-    int scope; // Current scope unique ID
-    std::string name; // Variable name
-    BindingKey(int _scope, std::string _name) : scope(_scope), name(_name) {}
-};
-
-bool operator< (const BindingKey &a, const BindingKey &b) {
-    if (a.scope != b.scope) return a.scope < b.scope;
-    else return a.name < b.name;
-}
-
-/** A little class for the values of the bindings map. */
-class BindingValue {
-public:
-    int scope; // Scope ID that encloses the defining node.
-    Expr expr; // If defining node is Expr, here it is.
-    Stmt stmt; // If defining node is Stmt, here it is.
-    BindingValue(int _scope, Expr _expr) : scope(_scope), expr(_expr), stmt(Stmt()) {}
-    BindingValue(int _scope, Stmt _stmt) : scope(_scope), expr(Expr()), stmt(_stmt) {}
-};
-
-/** A class for the bindings map. */
-class BindingMap : public std::map<BindingKey, BindingValue> {
-};
+ // There are quite a few support classes that are used within LazyScope.
+ // These are hidden in their own namespace.
+ namespace LSInternal {
 
 
 //-------------------------------------------------------------------------------
@@ -121,11 +97,12 @@ public:
     void pop(ScopeStackManager &mgr, const Node &node);
 };
 
-// end namespace LazyScopeClasses
+// end namespace LSInternal
 }
 
+
 /** A little class to use as a key for caching information about the current tree node.
- * Also use this class to record the node and scope that defines a scope. One of expr or stmt will be undefined. */
+ * Also use this class to record a node and its enclosing scope. One of expr or stmt will be undefined. */
 class NodeKey {
 public:
     int scope;
@@ -138,16 +115,16 @@ public:
     NodeKey() : scope(0), expr(Expr()), stmt(Stmt()) {}
 };
 
-namespace LazyScopeClasses {
+typedef NodeKey ScopedNode;
 
-/** A little class to build a map that records the defining node and its scope for each scope. */
-class DefiningMap : public std::map<int, NodeKey> {
+
+namespace LSInternal {
+
+/** A little class to build a map that records the defining node and its enclosing scope for each scope. */
+class DefiningMap : public std::map<int, ScopedNode> {
 public: 
-    const NodeKey *lookup(int _scope);
+    const ScopedNode *lookup(int _scope);
 };
-
-// end namesapce LazyScopeClasses
-}
 
 /** A class to store scopes pushed by various defining nodes, and to implement push and pop of scope. 
  * Only use one of these at a time.
@@ -161,14 +138,14 @@ public:
  * node_key: Returns a NodeKey that you can use to cache/lookup information for a node in the current scope.
  */
 class ScopeManager {
-    ScopeStackManager stack_manager;
+    LSInternal::ScopeStackManager stack_manager;
     
     // Maps to record the child scope.  scope x Node --> scope.
-    ChildScope<Expr> expr_child_scope;
-    ChildScope<Stmt> stmt_child_scope;
+    LSInternal::ChildScope<Expr> expr_child_scope;
+    LSInternal::ChildScope<Stmt> stmt_child_scope;
     
     // Map to record the node that defined each scope.
-    DefiningMap defining_map;
+    LSInternal::DefiningMap defining_map;
     
     // The current definition is held for error checking.
     // Checks ensure that the same node cannot be pushed twice in a row
@@ -198,21 +175,87 @@ public:
     inline NodeKey node_key(Stmt stmt) { return NodeKey(current_scope(), stmt); }
 };
 
-/** The main LazyScope class. */
+/** A little class for the keys to the bindings map. */
+class BindingKey {
+public:
+    int scope; // Current scope unique ID
+    std::string name; // Variable name
+    BindingKey(int _scope, std::string _name) : scope(_scope), name(_name) {}
+};
+
+bool operator< (const BindingKey &a, const BindingKey &b) {
+    if (a.scope != b.scope) return a.scope < b.scope;
+    else return a.name < b.name;
+}
+
+// The values of the binding maps are scoped nodes. 
+
+/** A class for the bindings map. */
+class BindingMap : public std::map<BindingKey, ScopedNode> {
+public:
+    // Bind a name to a defining node.  The binding may already exist, in which case the rebinding is redundant.
+    // There is no check whether the binding conflicts with an existing binding.
+    void bind(int scope, std::string name, Expr expr) { (*this)[BindingKey(scope, name)] = ScopedNode(scope, expr); }
+    void bind(int scope, std::string name, Stmt stmt) { (*this)[BindingKey(scope, name)] = ScopedNode(scope, stmt); }
+    
+    // Look up a binding and return the ScopedNode object or NULL if not found.
+    const ScopedNode *lookup(int scope, std::string name) const;
+};
+
+// end namespace LSInternal
+}
+
+/** The main LazyScope class.  This class performs lazy bindings of variables
+ * in Let, LetStmt and For nodes.  It also records target variables encountered
+ * in TargetVar and StmtTargetVar nodes. */
 class LazyScope {
 private:
     // The scope manager is to be shared among any things that need the concept of scope.
     // This is important so that the scope IDs are unique throughout.
-    ScopeManager &scope_manager;
+    LSInternal::ScopeManager scope_manager;
     
+    LSInternal::BindingMap variable_map; // Record the bindings of variables.
+    LSInternal::BindingMap target_map; // Record the TargetVar nodes encountered.
+    
+    // lookup returns a pointer to ScopedNode or NULL if not found.
+    const ScopedNode *lookup(const LSInternal::BindingMap &map, int scope, std::string name);
+
 public:
-    LazyScope(ScopeManager &_scope_manager) : scope_manager(_scope_manager) {}
+    /** Return the current scope ID */
+    inline int current_scope() { return scope_manager.current_scope(); }
     
-    /** Push and pop scope by specifying the defining node. */
+    /** Return the parent scope of a given scope. */
+    inline int parent(int scope) { return scope_manager.parent(scope); }
+    
+    /** Return a node key in the current scope */
+    inline NodeKey node_key(Expr expr) { return NodeKey(current_scope(), expr); }
+    inline NodeKey node_key(Stmt stmt) { return NodeKey(current_scope(), stmt); }
+    
+    /** Push scope by specifying the defining node. */
     inline void push(Expr expr) { scope_manager.push(expr); }
     inline void push(Stmt stmt) { scope_manager.push(stmt); }
+    
+    /** Pop scope by specifying the defining node. */
     inline void pop(Expr expr) { scope_manager.pop(expr); }
     inline void pop(Stmt stmt) { scope_manager.pop(stmt); }
+    
+    /** Bind a variable by specifying the name and defining node.
+     * The binding must be recorded in the parent scope, which is the scope of the defining node.
+     * Note that if the same defining node appears at multiple points in the tree then it
+     * must have the same children; and if it appears in the same scope then it must 
+     * have the same semantics.  For this reason, there is no need to remove bindings. */
+    inline void bind(std::string name, Expr expr) { variable_map.bind(current_scope(), name, expr); }
+    inline void bind(std::string name, Stmt stmt) { variable_map.bind(current_scope(), name, stmt); }
+    
+    /** Record a target by specifying the name and defining node. */
+    inline void target(std::string name, Expr expr) { target_map.bind(current_scope(), name, expr); }
+    inline void target(std::string name, Stmt stmt) { target_map.bind(current_scope(), name, stmt); }
+    
+    /** Search for a bound variable name, or a targetvar, in the enclosing scope or above.
+     * Note that bindings in the current scope are not relevant as they would be bindings defined
+     * at other nodes within the current scope, not defined above the current node. */
+    inline const ScopedNode *find_variable(std::string name) { return lookup(variable_map, current_scope(), name); }
+    inline const ScopedNode *find_target(std::string name) { return lookup(target_map, current_scope(), name); }
 
 # if 0
     /** Call to another scope location and return from that location. */
@@ -220,10 +263,171 @@ public:
     void call(Stmt stmt);
     void ret(Expr expr);
     void ret(Stmt stmt);
-    
-    // find returns a pointer to BindingValue or NULL.
-    const BindingValue *find(int scope, std::string name);
 # endif
+};
+
+namespace LSInternal {
+
+class LazyScopePreBinder : public IRInspector {
+    Expr expr_child;
+    Stmt stmt_child;
+    
+    LazyScope& lazy_scope;
+    
+public:
+    LazyScopePreBinder(LazyScope& _lazy_scope) : lazy_scope(_lazy_scope) {};
+    
+    virtual void process(const Stmt& parent, const Stmt& child) {
+        stmt_child = child;
+        parent.accept(this);
+    }
+    
+    virtual void process(const Stmt& parent, const Expr& child) {
+        expr_child = child;
+        parent.accept(this);
+    }
+    
+    virtual void process(const Expr& parent, const Expr& child) {
+        expr_child = child;
+        parent.accept(this);
+    }
+    
+protected:
+    using IRInspector::visit;
+
+    // Visit a Let node.  Enter a new scope if accessing the body.
+    virtual void visit(Let *op) {
+        // Create the binding of this Let node if it does not exist.
+        lazy_scope.bind(op->name, op);
+        if (op->body.same_as(expr_child)) {
+            // The child node is the body.  It is visited in a new scope.
+            lazy_scope.push(op);
+        }
+    }
+    
+    virtual void visit(LetStmt *op) {
+        lazy_scope.bind(op->name, op);
+        if (op->body.same_as(expr_child)) {
+            lazy_scope.push(op);
+        }
+    }
+    
+    virtual void visit(For *op) {
+        lazy_scope.bind(op->name, op);
+        if (op->body.same_as(stmt_child)) {
+            lazy_scope.push(op);
+        }
+    }
+    
+    virtual void visit(StmtTargetVar *op) {
+        lazy_scope.target(op->var, op);
+        lazy_scope.push(op);
+    }
+    
+    virtual void visit(TargetVar *op) {
+        lazy_scope.target(op->var, op);
+        lazy_scope.push(op);
+    }
+};
+
+class LazyScopePostBinder : public IRInspector {
+    Expr expr_child;
+    Stmt stmt_child;
+    
+    LazyScope& lazy_scope;
+    
+public:
+    LazyScopePostBinder(LazyScope& _lazy_scope) : lazy_scope(_lazy_scope) {};
+    
+    virtual void process(const Stmt& parent, const Stmt& child) {
+        stmt_child = child;
+        parent.accept(this);
+    }
+    
+    virtual void process(const Stmt& parent, const Expr& child) {
+        expr_child = child;
+        parent.accept(this);
+    }
+    
+    virtual void process(const Expr& parent, const Expr& child) {
+        expr_child = child;
+        parent.accept(this);
+    }
+    
+protected:
+    using IRInspector::visit;
+
+    // Visit a Let node.  Enter a new scope if accessing the body.
+    virtual void visit(Let *op) {
+        if (op->body.same_as(expr_child)) {
+            // The child node is the body.  It is visited in a new scope.
+            lazy_scope.pop(op);
+        }
+    }
+    
+    virtual void visit(LetStmt *op) {
+        if (op->body.same_as(expr_child)) {
+            lazy_scope.pop(op);
+        }
+    }
+    
+    virtual void visit(For *op) {
+        if (op->body.same_as(stmt_child)) {
+            lazy_scope.pop(op);
+        }
+    }
+    
+    virtual void visit(StmtTargetVar *op) {
+        lazy_scope.pop(op);
+    }
+    
+    virtual void visit(TargetVar *op) {
+        lazy_scope.pop(op);
+    }
+};
+
+// end namespace LSInternal
+}
+
+/** A class for capturing nodes that bind variables and set up
+ * scopes.  There can be many such templates; each will use its own
+ * LazyScope-like class.  A pass over the tree must consistently used only
+ * one LazyScope-like class, and its corresponding binding class must be used
+ * universally.
+ * This template is a wrapper: wrap it around other tree walkers to capture
+ * bindings into the LazyScope. 
+ * e.g. trivially:  
+ *     LazyScope
+ *     LazyScopeBinder<IRVisitor> binder;*/
+template<typename Wrapped>
+class LazyScopeBinder : public Wrapped {
+    // The prebinder gets called before the wrapped class's process method,
+    // and the postbinder gets called after the wrapped class's process method.
+    LSInternal::LazyScopePreBinder pre_binder;
+    LSInternal::LazyScopePostBinder post_binder;
+    
+public:
+    LazyScopeBinder(LazyScope &lazy_scope) : pre_binder(lazy_scope), post_binder(lazy_scope) {}
+    
+protected:
+    virtual void process(const Stmt& parent, const Stmt& child) {
+        pre_binder.process(parent, child);
+        Wrapped::process(parent, child);
+        post_binder.process(parent, child);
+    }
+    
+    virtual void process(const Stmt& parent, const Expr& child) {
+        pre_binder.process(parent, child);
+        Wrapped::process(parent, child);
+        post_binder.process(parent, child);
+    }
+    
+    virtual void process(const Expr& parent, const Expr& child) {
+        pre_binder.process(parent, child);
+        Wrapped::process(parent, child);
+        post_binder.process(parent, child);
+    }
+    
 };
 
 
