@@ -339,10 +339,22 @@ public:
     
     void visit(const TargetVar *op) {
         const TargetVar *target = expr.as<TargetVar>();
-        if (result && target && (target->e.defined() == op->e.defined()) && (target->var == op->var)) {
-            if (target->e.defined()) {
-                expr = target->e;
-                op->e.accept(this);
+        if (result && target && (target->body.defined() == op->body.defined()) && (target->name == op->name)) {
+            if (target->body.defined()) {
+                expr = target->body;
+                op->body.accept(this);
+            }
+        } else {
+            result = false;
+        }
+    }
+    
+    void visit(const StmtTargetVar *op) {
+        const StmtTargetVar *target = stmt.as<StmtTargetVar>();
+        if (result && target && (target->body.defined() == op->body.defined()) && (target->name == op->name)) {
+            if (target->body.defined()) {
+                stmt = target->body;
+                op->body.accept(this);
             }
         } else {
             result = false;

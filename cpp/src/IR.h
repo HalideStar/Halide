@@ -889,22 +889,22 @@ struct Solve : public ExprNode<Solve> {
 };
 
 struct TargetVar : public ExprNode<TargetVar> {
-    std::string var;
-    Expr e;
+    std::string name;
+    Expr body;
     Expr source; // Not a child node - records the source expression
     
-    TargetVar(std::string _v, Expr _e, Expr _source) : ExprNode<TargetVar>(_e.type()), var(_v), e(_e), source(_source) {}
-    TargetVar(const TargetVar *op, Expr _e) : ExprNode<TargetVar>(_e.type()), var(op->var), e(_e), source(op->source) {}
+    TargetVar(std::string _v, Expr _e, Expr _source) : ExprNode<TargetVar>(_e.type()), name(_v), body(_e), source(_source) {}
+    TargetVar(const TargetVar *op, Expr _e) : ExprNode<TargetVar>(_e.type()), name(op->name), body(_e), source(op->source) {}
 };
 
 struct StmtTargetVar : public StmtNode<StmtTargetVar> {
-    std::string var;
-    Stmt s;
+    std::string name;
+    Stmt body;
     Stmt source; // Not a child node - records the source statement
     
-    StmtTargetVar(std::string _v, Stmt _s, Stmt _source) : var(_v), s(_s), source(_source) {}
-    // Constructor for use by mutators that want to mutate the Stmt s.
-    StmtTargetVar(const StmtTargetVar *op, Stmt _s) : var(op->var), s(_s), source(op->source) {}
+    StmtTargetVar(std::string _v, Stmt _s, Stmt _source) : name(_v), body(_s), source(_source) {}
+    // Constructor for use by mutators that want to mutate the Stmt body.
+    StmtTargetVar(const StmtTargetVar *op, Stmt _s) : name(op->name), body(_s), source(op->source) {}
 };
 
 /** Infinity node is useful for interval analysis and solver.  It represents an undefined

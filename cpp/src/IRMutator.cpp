@@ -304,15 +304,15 @@ void IRMutator::visit(const Solve *op) {
 }
 
 void IRMutator::visit(const TargetVar *op) {
-    Expr e = mutate(op->e);
-    if (e.same_as(op->e)) expr = op;
-    else expr = new TargetVar(op, e);
+    Expr body = mutate(op->body);
+    if (body.same_as(op->body)) expr = op;
+    else expr = new TargetVar(op, body);
 }
 
 void IRMutator::visit(const StmtTargetVar *op) {
-    Stmt s = mutate(op->s);
-    if (s.same_as(op->s)) stmt = op;
-    else stmt = new StmtTargetVar(op, s);
+    Stmt body = mutate(op->body);
+    if (body.same_as(op->body)) stmt = op;
+    else stmt = new StmtTargetVar(op, body);
 }
 
 void IRMutator::visit(const Infinity *op) {

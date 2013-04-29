@@ -1,5 +1,7 @@
 #include "IRVisitor.h"
 #include "IR.h"
+#include "IRPrinter.h"
+#include <ostream>
 
 namespace Halide { 
 namespace Internal {
@@ -11,16 +13,14 @@ IRVisitor::IRVisitor() {
 IRVisitor::~IRVisitor() {
 }
 
-void IRVisitor::process(const Stmt& parent, const Stmt& child) {
-    child.accept(this);
+void IRVisitor::process(const Stmt &stmt) {
+    std::cout << "IRVisitor process " << stmt << "\n";
+    stmt.accept(this);
 }
 
-void IRVisitor::process(const Stmt& parent, const Expr& child) {
-    child.accept(this);
-}
-
-void IRVisitor::process(const Expr& parent, const Expr& child) {
-    child.accept(this);
+void IRVisitor::process(const Expr& expr) {
+    std::cout << "IRVisitor process " << expr << "\n";
+    expr.accept(this);
 }
 
 void IRVisitor::visit(const IntImm *) {
@@ -283,12 +283,12 @@ void IRVisitor::visit(const Solve *op) {
     
 void IRVisitor::visit(const TargetVar *op) {
     defaulted = true;
-    op->e.accept(this);
+    op->body.accept(this);
 }
     
 void IRVisitor::visit(const StmtTargetVar *op) {
     defaulted = true;
-    op->s.accept(this);
+    op->body.accept(this);
 }
     
 void IRVisitor::visit(const Infinity *op) {

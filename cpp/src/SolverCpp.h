@@ -180,12 +180,12 @@ public:
     Expr track(IRCacheMutator *mutator, const TargetVar *op) {
         // Target variable named in the node is added to the targets.
         mutator->push_context(Expr(op));
-        targets.push_back(op->var);
+        targets.push_back(op->name);
         expr_sources.push_back(op->source);
         stmt_sources.push_back(Stmt());
-        Expr e = mutator->mutate(op->e);
+        Expr body = mutator->mutate(op->body);
         Expr expr;
-        if (! e.same_as(op->e)) expr = new TargetVar(op, e);
+        if (! body.same_as(op->body)) expr = new TargetVar(op, body);
         else expr = op;
         stmt_sources.pop_back();
         expr_sources.pop_back();
@@ -197,12 +197,12 @@ public:
     Stmt track(IRCacheMutator *mutator, const StmtTargetVar *op) {
         // Target variable named in the node is added to the targets.
         mutator->push_context(Stmt(op));
-        targets.push_back(op->var);
+        targets.push_back(op->name);
         expr_sources.push_back(Expr());
         stmt_sources.push_back(op->source);
-        Stmt s = mutator->mutate(op->s);
+        Stmt body = mutator->mutate(op->body);
         Stmt stmt;
-        if (! s.same_as(op->s)) stmt = new StmtTargetVar(op, s);
+        if (! body.same_as(op->body)) stmt = new StmtTargetVar(op, body);
         else stmt = op;
         stmt_sources.pop_back();
         expr_sources.pop_back();
