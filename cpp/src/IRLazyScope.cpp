@@ -57,9 +57,11 @@ void IRLazyScopeBase::leave(const IRHandle &node) {
 }
 
 const DefiningNode *IRLazyScopeBase::call(int context) {
-    assert(context != current_context() && "Call to current context");
+    //assert(context != current_context() && "Call to current context");
     call_stack.push_back(IRLazyScopeInternal::CallEnter(context, current_context()));
+# if TRACE_CONTEXT
     std::cout << "Call " << context << " from " << current_context() << "\n";
+# endif
     return context_mgr.go(context);
 }
 
@@ -69,7 +71,9 @@ void IRLazyScopeBase::ret(int context) {
     assert(call.was_call && "Ret after enter");
     assert(call.context == context && "Mismatch of call and ret");
     call_stack.pop_back();
+# if TRACE_CONTEXT
     std::cout << "Ret " << call.return_context << " from " << current_context() << "\n";
+# endif
     context_mgr.go(call.return_context);
     return;
 }
