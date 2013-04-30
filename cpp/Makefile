@@ -26,8 +26,8 @@ SOURCE_FILES = CodeGen.cpp CodeGen_X86.cpp CodeGen_Posix.cpp CodeGen_ARM.cpp IR.
 HEADER_FILES = Util.h Type.h Argument.h Bounds.h BoundsInference.h Buffer.h buffer_t.h CodeGen_C.h CodeGen.h CodeGen_X86.h Deinterleave.h Derivative.h Extern.h Func.h Function.h Image.h InlineReductions.h integer_division_table.h IntrusivePtr.h IREquality.h IR.h IRMatch.h IRMutator.h IROperator.h IRPrinter.h IRVisitor.h JITCompiledModule.h Lambda.h Log.h Lower.h MainPage.h ModulusRemainder.h Parameter.h Param.h RDom.h Reduction.h RemoveDeadLets.h RemoveTrivialForLoops.h Schedule.h Scope.h Simplify.h SlidingWindow.h StmtCompiler.h StorageFlattening.h StorageFolding.h Substitute.h Tracing.h UnrollLoops.h Var.h VectorizeLoops.h CodeGen_Posix.h CodeGen_ARM.h DebugToFile.h
 
 #LH: List extensions separately to support automatic merging.
-LH_SOURCE_FILES = Border.cpp Clamp.cpp DomainInference.cpp LowerClamp.cpp LoopPartition.cpp IRRewriter.cpp IntervalAnalysis.cpp Options.cpp Interval.cpp InlineLet.cpp IRCacheMutator.cpp Statistics.cpp CodeLogger.cpp IRLazyScope.cpp Context.cpp
-LH_HEADER_FILES = Border.h Clamp.h DomainInference.h LowerClamp.h LoopPartition.h IRRewriter.h IntervalAnalysis.h Options.h Interval.h Solver.h InlineLet.h IRCacheMutator.h Statistics.h CodeLogger.h IRLazyScope.h Context.h
+LH_SOURCE_FILES = Border.cpp Clamp.cpp DomainInference.cpp LowerClamp.cpp LoopPartition.cpp IRRewriter.cpp IntervalAnalysis.cpp Options.cpp Interval.cpp InlineLet.cpp IRCacheMutator.cpp Statistics.cpp CodeLogger.cpp IRLazyScope.cpp Context.cpp IRProcess.cpp
+LH_HEADER_FILES = Border.h Clamp.h DomainInference.h LowerClamp.h LoopPartition.h IRRewriter.h IntervalAnalysis.h Options.h Interval.h Solver.h InlineLet.h IRCacheMutator.h Statistics.h CodeLogger.h IRLazyScope.h Context.h IRProcess.h
 
 SOURCES = $(LH_SOURCE_FILES:%.cpp=src/%.cpp) $(SOURCE_FILES:%.cpp=src/%.cpp)
 OBJECTS = $(LH_SOURCE_FILES:%.cpp=build/%.o) $(SOURCE_FILES:%.cpp=build/%.o)

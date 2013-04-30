@@ -175,10 +175,10 @@ class ContextManager {
 public:
     // context 0 is invalid.  context 1 is the initial context.
     // See also ChildContext class definition.
-    ContextManager() : my_current_context(1) { }
+    ContextManager();
     
-    /** reset the context manager to commence a pass with all cached information discarded. */
-    void reset();
+    /** clear the context manager to commence a pass with all cached information discarded. */
+    void clear();
     
     /** return the current context ID */
     inline int current_context() const { return my_current_context; }
@@ -186,17 +186,27 @@ public:
     /** Return the parent context of a given context. */
     int parent(int context) const;
     
-    /** Push and pop context by specifying the defining node. If not already defined, it becomes defined. */
+    /** Push and pop context by specifying the defining node.
+     * If there is no context defined, a new context will be defined
+     * for the defining node in the current context.
+     * push enters the context for the defining node.
+     * pop returns to the parent context. */
+    // push has to know whether the node is Expr or Stmt to set up the DefiningNode object.
+    // pop does not need to know.
     void push(Expr node);
     void push(Stmt node);
     void pop(IRHandle node);
     
-    /** Enter a context if it is defined.  Returns boolean to indicate whether or not it entered. */
+    /** Enter the context for a node if one is defined.  
+     * Returns boolean to indicate whether or not a context is entered. */
     bool enter(IRHandle node);
     /** Leave context if the entered flag indicates that context was entered. */
     void leave(bool entered, IRHandle node) { if (entered) pop(node); }
     
-    /** Go to another context and return the DefiningNode. */
+    /** Go to another context and return the DefiningNode of that context.
+     * After this call, the context will be the context for working within the defining node.
+     * However, it may be that you need to enter another context to work with a child of
+     * that node. */
     const DefiningNode *go(int context);
     
     /** Return a node key in the current context.  Use this to cache information

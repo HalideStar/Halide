@@ -61,6 +61,9 @@ const DefiningNode *DefiningMap::lookup(int _context) const {
 // end namespace ContextInternal
 }
 
+ContextManager::ContextManager() : my_current_context(1) {
+    clear();
+}
 
 void ContextManager::set_parent(int _context, int _parent) {
     while((int) (parent_vector.size()) <= _context) {
@@ -71,16 +74,21 @@ void ContextManager::set_parent(int _context, int _parent) {
 }
 
 int ContextManager::parent(int _context) const {
-    assert(_context > 0 && _context < (int) parent_vector.size() && "No parent for context.");
+    if (_context <= 0 || _context >= (int) parent_vector.size()) {
+        std::cerr << "Error: No parent for context " << _context << "\n";
+        assert(0 && "No parent for context");
+    }
     return parent_vector[_context];
 }
 
-void ContextManager::reset() {
+void ContextManager::clear() {
     current_definition = DefiningNode();
     my_current_context = 1;
     child_context.clear();
     defining_map.clear();
     parent_vector.clear();
+    set_parent(1, 0);
+    defining_map.set(1, current_definition);
 }
 
 template<typename Node>
@@ -125,8 +133,13 @@ void ContextManager::pop(IRHandle node) {
     // When the context is popped, we restore the current defining node so that
     // it again becomes valid to reenter the context that we have left.
     const DefiningNode *def_node = defining_map.lookup(_parent);
-    assert(def_node && "Cannot find defining node for popped context");
+    if (! def_node) {
+        std::cerr << "Popping from context " << _child << " to " << _parent << " failed\n";
+        assert(def_node && "Cannot find defining node for popped context");
+    }
     current_definition = *def_node;
+    
+    //std::cout << "[" << _parent << "] Popped from " << _child << "\n";
     
     // Switch to the parent context.
     my_current_context = _parent;
@@ -134,6 +147,10 @@ void ContextManager::pop(IRHandle node) {
 
 bool ContextManager::enter(IRHandle node) {
     int _child = child_context.lookup(current_context(), node);
+    if (_child == current_context()) {
+        std::cerr << "Error: Child context is the same as current context " << _child << "\n";
+        assert(0 && "Child context the same as current context");
+    }
     if (_child != 0) {
         // A child context is defined for this node in the current context.
         // Enter that context and return true.
@@ -149,9 +166,10 @@ bool ContextManager::enter(IRHandle node) {
 }
 
 const DefiningNode *ContextManager::go(int context) {
+    // Fetch the defining node for the target context.
     const DefiningNode *node = defining_node(context);
     assert(node && "Attempt to go to undefined context");
-    my_current_context = node->context();
+    my_current_context = context;
     current_definition = *node;
     return node;
 }

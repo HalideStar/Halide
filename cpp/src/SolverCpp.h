@@ -232,7 +232,7 @@ public:
 
     virtual void visit(const Solve *op) {
         log(3) << depth << " Solve simplify " << Expr(op) << "\n";
-        Expr e = mutate(op->e);
+        Expr e = mutate(op->body);
         
         log(3) << depth << " Solve using " << e << "\n";
         //const Solve *solve_e = e.as<Solve>();
@@ -279,7 +279,7 @@ public:
         } else if (max_e && is_constant_expr(max_e->b)) {
             // solve(max(v,k)) on (a,b) --> max(solve(v),k). 
             expr = mutate(new Max(solve(max_e->a, v_apply(inverseMax, op->v, max_e->b)), max_e->b));
-        } else if (e.same_as(op->e)) {
+        } else if (e.same_as(op->body)) {
             expr = op; // Nothing more to do.
         } else {
             expr = solve(e, op->v);
@@ -571,11 +571,11 @@ protected:
 
     // Extract solution from a Solve node.
     virtual void visit(const Solve *op) {
-        Expr e = mutate(op->e);
+        Expr e = mutate(op->body);
         
         // In case of nested Solve nodes, walk through them.
         while (const Solve *solve = e.as<Solve>()) {
-            e = solve->e;
+            e = solve->body;
         }
         
         // We extract a solution only if the expression is a simple variable.

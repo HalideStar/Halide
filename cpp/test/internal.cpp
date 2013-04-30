@@ -46,7 +46,7 @@ int main(int argc, const char **argv) {
     interval_analysis_test();
     solver_test();
     loop_partition_test();
-    //lazy_scope_test();
+    lazy_scope_test();
     
     std::cout << "Compiler Statistics:\n";
     std::cout << global_statistics;

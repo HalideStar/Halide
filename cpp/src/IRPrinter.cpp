@@ -642,7 +642,7 @@ void IRPrinter::visit(const Solve *op) {
     stream << "solve(";
     stream << op->v;
     stream << ": ";
-    print(op->e);
+    print(op->body);
     stream << ")";
 }
 

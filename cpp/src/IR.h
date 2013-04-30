@@ -877,15 +877,15 @@ struct Variable : public ExprNode<Variable> {
  * TargetVar represents a target variable to be solved for in the enclosed scope.
  */
 struct Solve : public ExprNode<Solve> {
-    Expr e;
+    Expr body;
     std::vector<Interval> v;
     
     // Solve over a vector of Interval.
-    Solve(Expr _e, std::vector<Interval> _v) : ExprNode<Solve>(_e.type()), e(_e), v(_v) {}
+    Solve(Expr _e, std::vector<Interval> _v) : ExprNode<Solve>(_e.type()), body(_e), v(_v) {}
     // Solve over one Interval
-    Solve(Expr _e, Interval _i) : ExprNode<Solve>(_e.type()), e(_e), v(vec(_i)) {}
+    Solve(Expr _e, Interval _i) : ExprNode<Solve>(_e.type()), body(_e), v(vec(_i)) {}
     // Solve over two Intervals
-    Solve(Expr _e, Interval _i, Interval _j) : ExprNode<Solve>(_e.type()), e(_e), v(vec(_i, _j)) {}
+    Solve(Expr _e, Interval _i, Interval _j) : ExprNode<Solve>(_e.type()), body(_e), v(vec(_i, _j)) {}
 };
 
 struct TargetVar : public ExprNode<TargetVar> {

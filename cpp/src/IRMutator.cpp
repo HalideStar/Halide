@@ -298,9 +298,9 @@ void IRMutator::visit(const Block *op) {
 }
 
 void IRMutator::visit(const Solve *op) {
-    Expr e = mutate(op->e);
-    if (e.same_as(op->e)) expr = op;
-    else expr = new Solve(e, op->v);
+    Expr body = mutate(op->body);
+    if (body.same_as(op->body)) expr = op;
+    else expr = new Solve(body, op->v);
 }
 
 void IRMutator::visit(const TargetVar *op) {

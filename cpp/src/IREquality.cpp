@@ -312,10 +312,10 @@ public:
     
     void visit(const Solve *op) {
         const Solve *solve = expr.as<Solve>();
-        if (result && solve && (solve->e.defined() == op->e.defined()) && (solve->v.size() == op->v.size())) {
-            if (solve->e.defined()) {
-                expr = solve->e;
-                op->e.accept(this);
+        if (result && solve && (solve->body.defined() == op->body.defined()) && (solve->v.size() == op->v.size())) {
+            if (solve->body.defined()) {
+                expr = solve->body;
+                op->body.accept(this);
             }
             // Check that all the intervals match up
             for (size_t i = 0; i < op->v.size(); i++) {

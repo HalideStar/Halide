@@ -1,80 +1,32 @@
-#ifndef HALIDE_IR_VISITOR_H
-#define HALIDE_IR_VISITOR_H
+#ifndef HALIDE_IR_PROCESS_H
+#define HALIDE_IR_PROCESS_H
+
+#include "IRVisitor.h"
 
 /** \file
- * Defines the base class for things that recursively walk over the IR
+ * Defines a base class for recursively waling over the tree with
+ * process method for high-level logic and visit methods for detail.
+ * The process methods are called first, and then the visit methods.
+ * This means that a base class can use the process method to
+ * intercept tree nodes before a derived class accesses them with
+ * visit.
  */
 
 namespace Halide {
-
-struct Expr;
-
 namespace Internal {
-
-struct Stmt;
-struct IntImm;
-struct FloatImm;
-struct Cast;
-struct Variable;
-struct BitAnd; //LH
-struct BitOr; //LH
-struct BitXor; //LH
-struct SignFill; //LH
-struct Clamp; //LH
-struct Add;
-struct Sub;
-struct Mul;
-struct Div;
-struct Mod;
-struct Min;
-struct Max;
-struct EQ;
-struct NE;
-struct LT;
-struct LE;
-struct GT;
-struct GE;
-struct And;
-struct Or;
-struct Not;
-struct Select;
-struct Load;
-struct Ramp;
-struct Broadcast;
-struct Call;
-struct Let;
-struct LetStmt;
-struct PrintStmt;
-struct AssertStmt;
-struct Pipeline;
-struct For;
-struct Store;
-struct Provide;
-struct Allocate;
-struct Realize;
-struct Block;
-
-struct Solve;
-struct TargetVar;
-struct StmtTargetVar;
-struct Infinity;
 
 /** A base class for algorithms that need to recursively walk over the
  * IR. The default implementations just recursively walk over the
  * children. Override the ones you care about.
+ * Walking is done by calling process instead of explicitly calling
+ * node.accept(this).  By calling process, an override can happen before
+ * the nodes are visited.
  */
-class IRVisitor {
+class IRProcess : public IRVisitor {
 public:
-    // Sometimes, you need to know if IRVisitor has adopted
-    // the default behaviour of visiting all the children
-    // of a node for which no explicit visit method is defined.
-    // Boolean defaulted is set to true so the caller can detect that
-    // this has happened and take some action.
-    // Of course, if the derived class uses the base class to visit the
-    // children then that will also set defaulted to true.
-    bool defaulted;
-    IRVisitor();
-    virtual ~IRVisitor();
+    virtual void process(const Stmt &stmt);
+    virtual void process(const Expr &expr);
+    
     virtual void visit(const IntImm *);
     virtual void visit(const FloatImm *);
     virtual void visit(const Cast *);
