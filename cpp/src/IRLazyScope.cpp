@@ -7,6 +7,11 @@
 // For the test code...
 #include "IROperator.h"
 
+// Set to true if nodes can create a context for their body node.
+// If set to false, there is an assumption that a Let, LetStmt or For
+// node cannot use the variable that it is defining within the definition.
+# define BODY_CONTEXT 0
+
 namespace Halide { 
 namespace Internal {
 
@@ -28,8 +33,12 @@ bool IRLazyScopeBase::fast_enter(const IRHandle &node) {
     node.accept(&make_context);
     // Did we push into a new context?  If so, flag as entered.
     bool entered = context_mgr.current_context() != original_context;
-    // If not entered already, try to enter a previously defined context.
-    if (! entered) entered = context_mgr.enter(node);
+    
+#   if BODY_CONTEXT
+        // If not entered already, try to enter a previously defined context.
+        if (! entered) entered = context_mgr.enter(node);
+#   endif
+
     //if (entered) std::cout << "fast_enter " << original_context << " --> " << current_context() << " by " << node.ptr << "\n";
     return entered;
 }
@@ -125,33 +134,45 @@ void MakeContext::visit(const Let *op) {
     //std::cout << "[" << context_mgr.current_context() << "] MakeContext Let:\n" << Expr(op);
     context_mgr.push(op);
     int defining_context = context_mgr.current_context();
-    context_mgr.push(op->body);
+#   if BODY_CONTEXT
+        context_mgr.push(op->body);
+#   endif
     //std::cout << "[" << context_mgr.current_context() << "] Bind " << op->name << " to " << defining_context << "\n";
     lazy_scope->bind(op->name, defining_context);
     lazy_scope->target(op->name, 0);
-    context_mgr.pop(op->body);
+#   if BODY_CONTEXT
+        context_mgr.pop(op->body);
+#   endif
 }
 
 void MakeContext::visit(const LetStmt *op) {
     //std::cout << "[" << context_mgr.current_context() << "] MakeContext LetStmt:\n" << Stmt(op);
     context_mgr.push(op);
     int defining_context = context_mgr.current_context();
-    context_mgr.push(op->body);
+#   if BODY_CONTEXT
+        context_mgr.push(op->body);
+#   endif
     //std::cout << "[" << context_mgr.current_context() << "] Bind " << op->name << " to " << defining_context << "\n";
     lazy_scope->bind(op->name, defining_context);
     lazy_scope->target(op->name, 0);
-    context_mgr.pop(op->body);
+#   if BODY_CONTEXT
+        context_mgr.pop(op->body);
+#   endif
 }
 
 void MakeContext::visit(const For *op) {
     //std::cout << "[" << context_mgr.current_context() << "] MakeContext For:\n" << Stmt(op);
     context_mgr.push(op);
     int defining_context = context_mgr.current_context();
-    context_mgr.push(op->body);
+#   if BODY_CONTEXT
+        context_mgr.push(op->body);
+#   endif
     //std::cout << "[" << context_mgr.current_context() << "] Bind " << op->name << " to " << defining_context << "\n";
     lazy_scope->bind(op->name, defining_context);
     lazy_scope->target(op->name, 0); // Mark this as not being a target.
-    context_mgr.pop(op->body);
+#   if BODY_CONTEXT
+        context_mgr.pop(op->body);
+#   endif
 }
 
 // TargetVar and StmtTargetVar do not normally appear in the tree.
