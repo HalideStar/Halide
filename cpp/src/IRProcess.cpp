@@ -7,7 +7,7 @@ namespace Halide {
 namespace Internal {
 
 void IRProcess::process(const Stmt &stmt) { stmt.accept(this); }
-void IRProcess::process(const Expr &expr) { expr.accept(this); }
+void IRProcess::process(const Expr &expr) { /*std::cout << "IRProcess::process " << expr << "\n";*/ expr.accept(this); }
 
 void IRProcess::visit(const IntImm *) {
 }
@@ -20,7 +20,7 @@ void IRProcess::visit(const Cast *op) {
 }
     
 void IRProcess::visit(const Variable *op) {
-    std::cout << "IRProcess visit " << Expr(op) << "\n";
+    //std::cout << "IRProcess visit " << Expr(op) << "\n";
 }
 
 //LH

@@ -46,6 +46,9 @@ public:
 	// interval_analysis_simplify: If true, simplify loop contents using interval analysis.
 	bool interval_analysis_simplify;
     
+    // mutator_depth_limit: Limit on depth of recursive mutate calls.
+    int mutator_depth_limit;
+    
     // mutator_cache: If true, enable caching in IRCacheMutator.  If false, no caching is done.
     bool mutator_cache;
     // mutator_cache_check: If true, verify cached data by recomputing the result and comparing.

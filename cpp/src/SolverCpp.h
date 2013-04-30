@@ -26,6 +26,7 @@ using std::string;
 
 
 
+// TO BE DEPRECATED...
 // HasVariable walks an argument expression and determines
 // whether the expression contains any of the listed variables.
 
@@ -93,6 +94,40 @@ bool is_constant_expr(std::vector<std::string> varlist, Expr e) {
     return ! hasvar.result;
 }
 
+
+// HasTarget walks an expression and determines whether it contains any 
+// of the current target variables.  Call the method is_constant_expr() to get
+// your answer.
+
+class HasTarget : public IRLazyScopeProcess {
+private:
+    int search_context;
+
+public:
+    bool result;
+    HasTarget() : search_context(0), result(false) {}
+    
+    bool is_constant_expr(Expr e) {
+        result = false;
+        search_context = current_context();
+        process(e);
+        return ! result;
+    }
+    
+private:
+    using IRLazyScope::visit;
+    
+    // Override the process methods so that search can be terminated once successful.
+    virtual void process(const Stmt &stmt) { if (result) return; IRLazyScope::process(stmt); }
+    virtual void process(const Expr &expr) { if (result) return; IRLazyScope::process(expr); }
+    
+    void visit(const Variable *op) {
+        if (result) return; // Once one is found, no need to find more.
+        // Check whether variable name is in the list of known names.
+        result = is_target(op->name, search_context);
+    }
+};
+
 namespace {
 // Convenience methods for building solve nodes.
 Expr solve(Expr e, Interval i) {
@@ -150,86 +185,19 @@ Interval inverseMax(Interval v, Expr k) {
 // end anonymous namespace
 }
 
-/** A base class that adds tracking of target variables to a mutator.
- * You need to call track() methods from corresponding visit() methods. */
- // TIDINESS: This could be a template class, with visit methods incorporated
-class TargetTracker {
-public:
-    
-    // The target variables for solving. (A scope-like thing)
-    std::vector<std::string> targets;
-    // The source nodes corresponding to the target variables.
-    std::vector<Expr> expr_sources;
-    std::vector<Stmt> stmt_sources;
-    
-    // EFFICIENCY: is_constant_expr is an attribute and could be cached.
-    // Need access to context, so best done as part of a template class.
-    bool is_constant_expr(Expr e) {
-        return Halide::Internal::is_constant_expr(targets, e);
-    }
-    
-    int find_target(std::string var) {
-        for (int i = ((int)(targets.size()))-1; i >= 0; i--) {
-            if (targets[i] == var) {
-                return i;
-            }
-        }
-        return -1; // Not found.
-    }
-    
-    Expr track(IRCacheMutator *mutator, const TargetVar *op) {
-        // Target variable named in the node is added to the targets.
-        mutator->push_context(Expr(op));
-        targets.push_back(op->name);
-        expr_sources.push_back(op->source);
-        stmt_sources.push_back(Stmt());
-        Expr body = mutator->mutate(op->body);
-        Expr expr;
-        if (! body.same_as(op->body)) expr = new TargetVar(op, body);
-        else expr = op;
-        stmt_sources.pop_back();
-        expr_sources.pop_back();
-        targets.pop_back(); // Remove the target for processing above
-        mutator->pop_context(Expr(op));
-        return expr;
-    }
-    
-    Stmt track(IRCacheMutator *mutator, const StmtTargetVar *op) {
-        // Target variable named in the node is added to the targets.
-        mutator->push_context(Stmt(op));
-        targets.push_back(op->name);
-        expr_sources.push_back(Expr());
-        stmt_sources.push_back(op->source);
-        Stmt body = mutator->mutate(op->body);
-        Stmt stmt;
-        if (! body.same_as(op->body)) stmt = new StmtTargetVar(op, body);
-        else stmt = op;
-        stmt_sources.pop_back();
-        expr_sources.pop_back();
-        targets.pop_back(); // Remove the target for processing above
-        mutator->pop_context(Stmt(op));
-        return stmt;
-    }
-    
-};
-
-class Solver : public Simplify, public TargetTracker {
+class Solver : public Simplify {
 
     // using parent::visit indicates that
     // methods of the base class with different parameters
     // but the same name are not hidden, they are overloaded.
     using Simplify::visit;
     
+    HasTarget has_target;
+    
+    bool is_constant_expr(Expr e) { return has_target.is_constant_expr(e); }
+    
 public:
     
-    virtual void visit(const TargetVar *op) {
-        expr = track(this, op);
-    }
-    
-    virtual void visit(const StmtTargetVar *op) {
-        stmt = track(this, op);
-    }
-
     virtual void visit(const Solve *op) {
         log(3) << depth << " Solve simplify " << Expr(op) << "\n";
         Expr e = mutate(op->body);
@@ -545,8 +513,8 @@ Expr solver(Expr e) {
 
 
 
-class ExtractSolutions : public IRCacheMutator, public TargetTracker {
-    using IRMutator::visit;
+class ExtractSolutions : public IRLazyScopeProcess {
+    using IRLazyScopeProcess::visit;
 public:
 
     std::vector<Solution> solutions;
@@ -561,26 +529,21 @@ public:
         var(_var), expr_source(expr_s), stmt_source(stmt_s) {}
 
 protected:
-    virtual void visit(const TargetVar *op) {
-        expr = track(this, op);
-    }
-    
-    virtual void visit(const StmtTargetVar *op) {
-        stmt = track(this, op);
-    }
 
     // Extract solution from a Solve node.
     virtual void visit(const Solve *op) {
-        Expr e = mutate(op->body);
+        process(op->body);
         
-        // In case of nested Solve nodes, walk through them.
-        while (const Solve *solve = e.as<Solve>()) {
-            e = solve->body;
+        // In case of nested Solve nodes, walk through them to find the variable.
+        Expr body = op->body;
+        while (const Solve *solve = body.as<Solve>()) {
+            body = solve->body;
         }
         
         // We extract a solution only if the expression is a simple variable.
-        const Variable *variable = e.as<Variable>();
+        const Variable *variable = body.as<Variable>();
         if (variable) {
+# if 0
             // Find the variable among the list of target variables.
             int found = find_target(variable->name);
             if (found >= 0) {
@@ -592,22 +555,34 @@ protected:
                     solutions.push_back(Solution(targets[found], expr_sources[found], stmt_sources[found], op->v));
                 }
             }
+# else
+            // Check whether the variable is the one we are seeking.
+            if (variable->name == var) {
+                // The name matches.  Now ensure that the source matches.
+                int found = find_target(variable->name); // Find the defining context.
+                const DefiningNode *node = call(found); // Call to the defining context.
+                const TargetVar *tvar = node->node().as<TargetVar>();
+                const StmtTargetVar *svar = node->node().as<StmtTargetVar>();
+                if (tvar) {
+                } else if (svar) {
+                }
+                ret(found);
+            }
+#endif
         }
-        
-        expr = op; // Actually does not do any mutation.
     }
 };
 
 // Extract solutions where the variable name matches var and the source node is source.
 std::vector<Solution> extract_solutions(std::string var, Stmt source, Stmt solved) {
     ExtractSolutions extract(var, Expr(), source);
-    extract.mutate(solved);
+    extract.process(solved);
     return extract.solutions;
 }
 
 std::vector<Solution> extract_solutions(std::string var, Expr source, Expr solved) {
     ExtractSolutions extract(var, source, Stmt());
-    extract.mutate(solved);
+    extract.process(solved);
     return extract.solutions;
 }
 
@@ -616,8 +591,8 @@ namespace {
 // This is the core class, simplifying expressions that include Target and Solve.
 void checkSolver(Expr a, Expr b) {
     Solver s;
-    s.targets.push_back("x");
-    s.targets.push_back("y");
+    a = new TargetVar("x", new TargetVar("y", a, Expr()), Expr());
+    b = new TargetVar("x", new TargetVar("y", b, Expr()), Expr());
     Expr r = s.mutate(a);
     if (!equal(b, r)) {
         std::cout << std::endl << "Solve failure: " << std::endl;

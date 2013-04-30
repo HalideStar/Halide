@@ -22,6 +22,7 @@ Options::Options() {
     loop_partition_letbind = true;
     lift_let = true;
 	interval_analysis_simplify = true;
+    mutator_depth_limit = 10000;
     mutator_cache = true;
     mutator_cache_check = false;
     mutator_cache_check_limit = 10000000;

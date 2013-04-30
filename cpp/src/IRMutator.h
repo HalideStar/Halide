@@ -5,7 +5,7 @@
  * Defines a base class for passes over the IR that modify it 
  */
 
-#include "IRVisitor.h"
+#include "IRProcess.h"
 #include "IR.h"
 
 #include <vector>
@@ -26,12 +26,13 @@ namespace Internal {
  * the appropriate visit method and then return the value of expr or
  * stmt after the call to visit.
  */
-class IRMutator : public IRVisitor {
+class IRMutator : public IRProcess {
 public:
 
     /** This is the main interface for using a mutator. Also call
      * these in your subclass to mutate sub-expressions and
      * sub-statements.
+     * For compatibility with IRProcess, mutate() methods call process() methods.
      */
     virtual Expr mutate(Expr expr);
     virtual Stmt mutate(Stmt stmt);

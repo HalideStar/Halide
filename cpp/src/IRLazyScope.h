@@ -14,7 +14,7 @@
 namespace Halide {
 namespace Internal {
 
-class IRLazyScope;
+class IRLazyScopeBase;
 
 namespace IRLazyScopeInternal {
 
@@ -44,7 +44,7 @@ public:
     
     // Set the lazy_scope pointer so that this MakeContext class
     // can access the lazy_scope to bind variables etc.
-    IRLazyScope *lazy_scope;
+    IRLazyScopeBase *lazy_scope;
 };
 
 /** A little class for the keys to the bindings map. The context is the context in which the variable
@@ -97,7 +97,7 @@ struct CallEnter {
  * This ensures that the context manipulations and variable bindings
  * are handled before the visit methods of outer classes are invoked.
  */
-class IRLazyScope : public IRProcess {
+class IRLazyScopeBase {
     // Allow MakeContext access to private members.
     friend class IRLazyScopeInternal::MakeContext;
     
@@ -129,28 +129,27 @@ class IRLazyScope : public IRProcess {
     
     // Method to look for a variable in the current context in one of the maps.
     // The map is not a const argument because it can be updated for efficiency.
-    int lookup(IRLazyScopeInternal::BindingMap &map, std::string name);
+    int lookup(IRLazyScopeInternal::BindingMap &map, std::string name, int context);
 
     // Local class object used to detect nodes requiring new context(s).
     IRLazyScopeInternal::MakeContext make_context;
-    
+
+protected:
     // Methods to enter and leave context associated with a node;
     // These methods are faster than the ones that use the local stack.
     // Enter will create new context(s) if appropriate to the node type,
     // or enter an existing context if one is defined.
     // Leave will leave the context if entered says one was entered.
-    // These methods are for internal use in this class, so do not employ a stack of state.
+    // These methods are for internal use in the LazyScope template class, so do not
+    // employ the stack.
     bool fast_enter(const IRHandle &node);
-    inline void fast_leave(bool entered, const IRHandle &node) { context_mgr.leave(entered, node); }
+    void fast_leave(bool entered, const IRHandle &node);
 
 public:
-    IRLazyScope() : make_context(context_mgr) { make_context.lazy_scope = this; }
+    IRLazyScopeBase() : make_context(context_mgr) { make_context.lazy_scope = this; }
     
     /** Clear the lazy scope.  Also resets the shared context manager. */
     void clear();
-    
-    virtual void process(const Stmt &stmt);
-    virtual void process(const Expr &expr);
     
     // IRLazyScope does not override any of the visit methods.
     // Such an override would be too late because a derived class
@@ -161,8 +160,13 @@ public:
 
     /** Search for a bound variable name, or a targetvar, in the current context or above. Returns the
      * context of the defining node. */
-    int find_variable(std::string name) { return lookup(variable_map, name); }
-    int find_target(std::string name) { return lookup(target_map, name); }
+    int find_variable(std::string name) { return lookup(variable_map, name, current_context()); }
+    int find_target(std::string name) { return lookup(target_map, name, current_context()); }
+    
+    /** Determine whether a given variable in the current context is one of the targets
+     * in a specified search context. If the variable has been redefined below the search context,
+     * then it is not a target. */
+    bool is_target(std::string name, int search_context);
     
     /** Call a context: Go to the context and return the defining node.
      * A stack is maintained locally. */
@@ -181,6 +185,30 @@ public:
     inline NodeKey node_key(IRHandle node) const { return NodeKey(current_context(), node); }
 };
 
+
+template<typename IRSuper>
+class IRLazyScope : public IRSuper, public IRLazyScopeBase {
+public:
+
+    virtual void process(const Stmt &stmt) {
+        //std::cout << "[" << current_context() << "] IRLazyScope process:\n" << stmt << "\n";
+        bool entered = fast_enter(stmt);
+        IRSuper::process(stmt);
+        fast_leave(entered, stmt);
+    }
+
+    virtual void process(const Expr& expr) {
+        //std::cout << "[" << current_context() << "] IRLazyScope process: " << expr << "\n";
+        //std::cout << "IRLazyScope::process(" << expr.ptr << ") in " << current_context() << "\n";
+        bool entered = fast_enter(expr);
+        IRSuper::process(expr);
+        fast_leave(entered, expr);
+        //std::cout << "IRLazyScope done with " << expr.ptr << " in " << current_context() << "\n";
+    }
+};
+
+class IRLazyScopeProcess : public IRLazyScope<IRProcess> {
+};
 
 void lazy_scope_test();
 

@@ -8,65 +8,30 @@
 namespace Halide {
 namespace Internal {
 
-using std::vector;
-
-template <typename Node>
-void ContextCache<Node>::push(ContextInfo &info, Node node) {
-    assert (node.defined() && "Context push with undefined");
-    info.context_stack.push_back(info.context()); // Push current context onto the stack.
-    CacheKey<Node> key(info.context(), node); // Key to search for previous push result.
-    typename ContextCacheMap<Node>::iterator found = cache.find(key); // Need typename keyword
-    if (found == cache.end()) {
-        // Not found in the cache. Create a new context and add it to the cache.
-        cache[key] = info.new_context();
-    } else {
-        // Found in the cache.  Use the cached result.
-        info.set_context(found->second);
-    }
+IRCacheMutator::IRCacheMutator() {
 }
 
-template <typename Node>
-void ContextCache<Node>::pop(ContextInfo &info, Node node) {
-    assert (info.context_stack.size() > 0 && "Context pop with empty stack");
-    int old_context = info.context_stack.back(); // Get the last context on the stack
-    // Check that the node that we are popping was indeed the one pushed.
-    CacheKey<Node> key(old_context, node);
-    typename ContextCacheMap<Node>::iterator found = cache.find(key);
-    assert (found != cache.end() && "Context pop not matching to last context push");
-    info.set_context(old_context); // Set to the context that was on the stack
-    info.context_stack.pop_back();
-}
-
-void IRCacheMutator::push_context(Expr expr) {
-    expr_context_cache.push(context_info, expr);
-}
-void IRCacheMutator::push_context(Stmt stmt) {
-    stmt_context_cache.push(context_info, stmt);
-}
-
-void IRCacheMutator::pop_context(Expr expr) {
-    expr_context_cache.pop(context_info, expr);
-}
-void IRCacheMutator::pop_context(Stmt stmt) {
-    stmt_context_cache.pop(context_info, stmt);
-}
-
-Expr IRCacheMutator::mutate(Expr e) {
+template<typename Node>
+Node IRCacheMutator::mutate(Node node, Node &result) {
+    //std::cerr << depth << " Mutate " << node << "\n";
     if (global_options.mutator_cache) {
         // First check to see whether there is a result in the cache.
-        CacheKey<Expr> key(context(), e);
-        typename CacheMap<Expr>::iterator found = expr_cache.find(key);
-        if (found != expr_cache.end()) {
+        // Since we have not yet processed the node (i.e. we have not entered
+        // the process method), the context is the enclosing context
+        // of the node, and this yields an appropriate key for looking up the node.
+        NodeKey key = node_key(node);
+        typename CacheMap::iterator found = cache.find(key);
+        if (found != cache.end()) {
             global_statistics.mutator_cache_hits++;
             if (global_options.mutator_cache_check && 
                 global_statistics.mutator_cache_hits + global_statistics.mutator_cache_misses + 
                 global_statistics.mutator_cache_savings < global_options.mutator_cache_check_limit) {
                 int misses = global_statistics.mutator_cache_misses;
                 int hits = global_statistics.mutator_cache_hits;
-                //std::cout << "Cache[" << context() << "] " << e << " --> " << found->second << "\n";
+                //std::cout << "Cache[" << context() << "] " << node << " --> " << found->second << "\n";
                 // Check the cache for correctness by recomputing.
-                Expr result = IRMutator::mutate(e);
-                assert (equal(result, found->second) && "Cache error.  Do callers of IRCacheMutator contain push_context and pop_context?");
+                Node temp = Super::mutate(node);
+                assert (equal(temp, found->second) && "Cache error.");
                 // After checking, there will be additional misses.  These are the saved misses.
                 // In addition, there may be additional hits which are also savings.
                 global_statistics.mutator_cache_savings += global_statistics.mutator_cache_misses - misses;
@@ -74,53 +39,39 @@ Expr IRCacheMutator::mutate(Expr e) {
                 global_statistics.mutator_cache_savings += global_statistics.mutator_cache_hits - hits;
                 global_statistics.mutator_cache_hits = hits;
             }
-            return found->second;
+            result = found->second;
+            return result;
         } else {
             global_statistics.mutator_cache_misses++;
-            //std::cout << "Mutate: " << e << "\n";
-            Expr result = IRMutator::mutate(e);
-            expr_cache[key] = result;
+            //std::cout << "Mutate: " << node << "\n";
+            result = Super::mutate(node);
+            cache[key] = CachedNode(result);
             return result;
         }
     } else {
         global_statistics.mutator_cache_misses++;
-        return IRMutator::mutate(e);
+        result = Super::mutate(node);
+        //std::cerr << depth << " Result " << result << "\n";
+        return result;
     }
 }
 
-Stmt IRCacheMutator::mutate(Stmt s) {
-    if (global_options.mutator_cache) {
-        // First check to see whether there is a result in the cache.
-        CacheKey<Stmt> key(context(), s);
-        typename CacheMap<Stmt>::iterator found = stmt_cache.find(key);
-        if (found != stmt_cache.end()) {
-            global_statistics.mutator_cache_hits++;
-            if (global_options.mutator_cache_check && 
-                global_statistics.mutator_cache_hits + global_statistics.mutator_cache_misses + 
-                global_statistics.mutator_cache_savings < global_options.mutator_cache_check_limit) {
-                int misses = global_statistics.mutator_cache_misses;
-                int hits = global_statistics.mutator_cache_hits;
-                //std::cout << "Cache[" << context() << "] " << s << " --> " << found->second << "\n";
-                // Check the cache for correctness by recomputing.
-                Stmt result = IRMutator::mutate(s);
-                assert (equal(result, found->second) && "Cache error.  Do callers of IRCacheMutator contain push_context and pop_context?");
-                global_statistics.mutator_cache_savings += global_statistics.mutator_cache_misses - misses;
-                global_statistics.mutator_cache_misses = misses;
-                global_statistics.mutator_cache_savings += global_statistics.mutator_cache_hits - hits;
-                global_statistics.mutator_cache_hits = hits;
-            }
-            return found->second;
-        } else {
-            global_statistics.mutator_cache_misses++;
-            //std::cout << "Mutate: " << s << "\n";
-            Stmt result = IRMutator::mutate(s);
-            stmt_cache[key] = result;
-            return result;
-        }
-    } else {
-        global_statistics.mutator_cache_misses++;
-        return IRMutator::mutate(s);
+Expr IRCacheMutator::mutate(Expr e) {
+    stmt = Stmt();
+    if (! e.defined()) {
+        expr = Expr();
+        return expr;
     }
+    return IRCacheMutator::mutate(e, expr);
+}
+
+Stmt IRCacheMutator::mutate(Stmt s) {
+    expr = Expr();
+    if (! s.defined()) {
+        stmt = Stmt();
+        return stmt;
+    }
+    return IRCacheMutator::mutate(s, stmt);
 }
 
 // end namespace Internal

@@ -1,13 +1,14 @@
 #include "IRMutator.h"
 #include "Log.h"
 #include "IRPrinter.h"
+#include "Options.h"
 
 namespace Halide {
 namespace Internal {
 
 using std::vector;
 
-IRMutator::IRMutator() : depth(0), maxdepth(1000), failing(false) {
+IRMutator::IRMutator() : depth(0), maxdepth(global_options.mutator_depth_limit), failing(false) {
 }
 
 Expr IRMutator::mutate(Expr e) {
@@ -20,10 +21,14 @@ Expr IRMutator::mutate(Expr e) {
         return e;
     } 
     if (failing) {
+        expr = e;
+        stmt = Stmt();
         return e;
     }
     if (e.defined()) {
-        e.accept(this);
+        //std::cout << depth << " IRMutator::mutate " << e << "\n";
+        process(e);
+        //std::cout << depth << " IRMutator result  " << expr << "\n";
     } else {
         expr = Expr();
     }
@@ -45,11 +50,14 @@ Stmt IRMutator::mutate(Stmt s) {
         log(0) << "  in statement: " << s << "\n";
         maxdepth = maxdepth * 10;
         failing = true;
-    } else {
-        failing = false;
+    }
+    if (failing) {
+        stmt = s;
+        expr = Expr();
+        return s;
     }
     if (s.defined()) {
-        s.accept(this);
+        process(s);
     } else {
         stmt = Stmt();
     }
@@ -71,7 +79,7 @@ void mutate_binary_operator(IRMutator *mutator, const T *op, Expr *expr, Stmt *s
 
 void IRMutator::visit(const IntImm *op)   {expr = op;}
 void IRMutator::visit(const FloatImm *op) {expr = op;}
-void IRMutator::visit(const Variable *op) {expr = op;}
+void IRMutator::visit(const Variable *op) { /*std::cout << "Variable mutate\n";*/ expr = op;}
 
 void IRMutator::visit(const Cast *op) {
     Expr value = mutate(op->value);

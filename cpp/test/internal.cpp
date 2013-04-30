@@ -19,12 +19,15 @@
 #include "Statistics.h"
 #include "Interval.h"
 #include "IRLazyScope.h"
+#include "Options.h"
 
 using namespace Halide;
 using namespace Halide::Internal;
 
 int main(int argc, const char **argv) {
     IRPrinter::test();
+    
+    global_options.mutator_cache = false;
 
     #ifdef __i386__
     CodeGen_X86::test();

@@ -32,6 +32,9 @@
 //#include <utility>
 #include <map>
 
+# define TRACE_CONTEXT 0
+# define CHECK_CONTEXT 1
+
 namespace Halide { 
 namespace Internal {
 
@@ -77,7 +80,12 @@ public:
         assert(! is_expr() && "stmt applied to non-Stmt defining node"); 
         return Stmt((BaseStmtNode *) my_node.ptr); 
     }
+    
+    // To obtain Expr or Stmt by type conversion.
+    operator Expr() const { return expr(); }
+    operator Stmt() const { return stmt(); }
 };
+
 
 // Suppport classes are hidden in their own namespace
 namespace ContextInternal {

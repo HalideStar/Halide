@@ -10,33 +10,19 @@
 namespace Halide { 
 namespace Internal {
 
-ContextManager IRLazyScope::context_mgr;
-IRLazyScopeInternal::BindingMap IRLazyScope::variable_map;
-IRLazyScopeInternal::BindingMap IRLazyScope::target_map;
+ContextManager IRLazyScopeBase::context_mgr;
+IRLazyScopeInternal::BindingMap IRLazyScopeBase::variable_map;
+IRLazyScopeInternal::BindingMap IRLazyScopeBase::target_map;
 
-void IRLazyScope::clear() {
+void IRLazyScopeBase::clear() {
     context_mgr.clear();
     variable_map.clear();
     target_map.clear();
     call_stack.clear();
 }
 
-void IRLazyScope::process(const Stmt& stmt) {
-    std::cout << "[" << current_context() << "] IRLazyScope process:\n" << stmt << "\n";
-    bool entered = fast_enter(stmt);
-    Super::process(stmt);
-    fast_leave(entered, stmt);
-}
-
-void IRLazyScope::process(const Expr& expr) {
-    std::cout << "[" << current_context() << "] IRLazyScope process: " << expr << "\n";
-    bool entered = fast_enter(expr);
-    Super::process(expr);
-    fast_leave(entered, expr);
-}
-
-bool IRLazyScope::fast_enter(const IRHandle &node) {
-    //std::cout << "[" << current_context() << "] IRLazyScope call make_context\n";
+bool IRLazyScopeBase::fast_enter(const IRHandle &node) {
+    //std::cout << "[" << current_context() << "] IRLazyScopeBase call make_context\n";
     // First see whether a new context is required.
     int original_context = context_mgr.current_context();
     node.accept(&make_context);
@@ -44,17 +30,22 @@ bool IRLazyScope::fast_enter(const IRHandle &node) {
     bool entered = context_mgr.current_context() != original_context;
     // If not entered already, try to enter a previously defined context.
     if (! entered) entered = context_mgr.enter(node);
+    //if (entered) std::cout << "fast_enter " << original_context << " --> " << current_context() << " by " << node.ptr << "\n";
     return entered;
 }
 
-void IRLazyScope::enter(const IRHandle &node) {
+void IRLazyScopeBase::fast_leave(bool entered, const IRHandle &node) { 
+    //if (entered) std::cout << "fast leave " << current_context() << " by " << node.ptr << "\n";
+    context_mgr.leave(entered, node); }
+
+void IRLazyScopeBase::enter(const IRHandle &node) {
     int original_context = current_context();
     bool entered = fast_enter(node);
     call_stack.push_back(IRLazyScopeInternal::CallEnter(node, entered, original_context));
     return;
 }
 
-void IRLazyScope::leave(const IRHandle &node) {
+void IRLazyScopeBase::leave(const IRHandle &node) {
     assert(call_stack.size() > 0 && "Attempt to leave with empty context call stack");
     IRLazyScopeInternal::CallEnter entry = call_stack.back();
     assert(! entry.was_call && "Leave after call");
@@ -65,40 +56,56 @@ void IRLazyScope::leave(const IRHandle &node) {
     return;
 }
 
-const DefiningNode *IRLazyScope::call(int context) {
+const DefiningNode *IRLazyScopeBase::call(int context) {
+    assert(context != current_context() && "Call to current context");
     call_stack.push_back(IRLazyScopeInternal::CallEnter(context, current_context()));
+    std::cout << "Call " << context << " from " << current_context() << "\n";
     return context_mgr.go(context);
 }
 
-void IRLazyScope::ret(int context) {
+void IRLazyScopeBase::ret(int context) {
     assert(call_stack.size() > 0 && "Attempt to ret with empty context call stack");
     IRLazyScopeInternal::CallEnter call = call_stack.back();
     assert(call.was_call && "Ret after enter");
     assert(call.context == context && "Mismatch of call and ret");
     call_stack.pop_back();
+    std::cout << "Ret " << call.return_context << " from " << current_context() << "\n";
     context_mgr.go(call.return_context);
     return;
 }
 
-int IRLazyScope::lookup(IRLazyScopeInternal::BindingMap &map, std::string name) {
-    int context = current_context();
-    
+int IRLazyScopeBase::lookup(IRLazyScopeInternal::BindingMap &map, std::string name, int search_context) {
+    int context = search_context;
     while (context != 0) {
         int result = map.lookup(context, name);
         if (result >= 0) {
             // A result value of 0 means unbound.  It can be cached in the map for efficiency.
-            if (context != current_context()) {
-                // The result was found in another context.  Add it to the current context.
-                map.bind(current_context(), name, result);
+            if (context != search_context) {
+                // The result was found in another context.  Add it to the search context.
+                map.bind(search_context, name, result);
             }
             return result;
         }
         context = context_mgr.parent(context);
     }
     // The variable was not bound. result is 0.
-    // Add the unbound result to the map in the current context.
-    map.bind(current_context(), name, 0); 
+    // Add the unbound result to the map in the search context.
+    map.bind(search_context, name, 0); 
     return 0;
+}
+
+bool IRLazyScopeBase::is_target(std::string name, int search_context) {
+    // Determine whether named variable is actually a variable that is a target in
+    // the specified context.
+    // Firstly, is the variable a target in the search context?
+    // If not, then it is not a target.
+    int found = lookup(target_map, name, search_context);
+    if (! found) return false;
+    // It is a target in the search context, but it could have been redefined.
+    int current = lookup(target_map, name, current_context());
+    // If the current context has a different target mapping then it has been redefined.
+    if (current != found) return false;
+    return true;
 }
 
 namespace IRLazyScopeInternal {
@@ -115,8 +122,9 @@ void MakeContext::visit(const Let *op) {
     context_mgr.push(op);
     int defining_context = context_mgr.current_context();
     context_mgr.push(op->body);
-    std::cout << "[" << context_mgr.current_context() << "] Bind " << op->name << " to " << defining_context << "\n";
+    //std::cout << "[" << context_mgr.current_context() << "] Bind " << op->name << " to " << defining_context << "\n";
     lazy_scope->bind(op->name, defining_context);
+    lazy_scope->target(op->name, 0);
     context_mgr.pop(op->body);
 }
 
@@ -125,8 +133,9 @@ void MakeContext::visit(const LetStmt *op) {
     context_mgr.push(op);
     int defining_context = context_mgr.current_context();
     context_mgr.push(op->body);
-    std::cout << "[" << context_mgr.current_context() << "] Bind " << op->name << " to " << defining_context << "\n";
+    //std::cout << "[" << context_mgr.current_context() << "] Bind " << op->name << " to " << defining_context << "\n";
     lazy_scope->bind(op->name, defining_context);
+    lazy_scope->target(op->name, 0);
     context_mgr.pop(op->body);
 }
 
@@ -135,8 +144,9 @@ void MakeContext::visit(const For *op) {
     context_mgr.push(op);
     int defining_context = context_mgr.current_context();
     context_mgr.push(op->body);
-    std::cout << "[" << context_mgr.current_context() << "] Bind " << op->name << " to " << defining_context << "\n";
+    //std::cout << "[" << context_mgr.current_context() << "] Bind " << op->name << " to " << defining_context << "\n";
     lazy_scope->bind(op->name, defining_context);
+    lazy_scope->target(op->name, 0); // Mark this as not being a target.
     context_mgr.pop(op->body);
 }
 
@@ -148,12 +158,12 @@ void MakeContext::visit(const For *op) {
 // node itself.
 void MakeContext::visit(const TargetVar *op) {
     context_mgr.push(op);
-    lazy_scope->bind(op->name, context_mgr.current_context());
+    lazy_scope->target(op->name, context_mgr.current_context());
 }
 
 void MakeContext::visit(const StmtTargetVar *op) {
     context_mgr.push(op);
-    lazy_scope->bind(op->name, context_mgr.current_context());
+    lazy_scope->target(op->name, context_mgr.current_context());
 }
 
 
@@ -179,12 +189,12 @@ int BindingMap::lookup(int context, std::string name) const {
 
 namespace {
     // A simple tree walker runs over the tree.
-    class Walker : public IRLazyScope {
+    class Walker : public IRLazyScopeProcess {
     public:
-        using IRLazyScope::visit;
-        using IRLazyScope::process;
+        using IRLazyScopeProcess::visit;
+        using IRLazyScopeProcess::process;
         
-        //virtual void process(const Expr &expr) { std::cout << "Walker process " << expr << "\n"; IRLazyScope::process(expr); }
+        //virtual void process(const Expr &expr) { std::cout << "Walker process " << expr << "\n"; IRLazyScopeBase::process(expr); }
         
         // Walk the tree.
         virtual void visit(const Variable *op) {
@@ -205,7 +215,7 @@ namespace {
                     std::cout << op->name << " bound to:\n" << Stmt(letstmt);
                 }
                 ret(found);
-                std::cout << "[" << current_context() << "] Current context\n";
+                //std::cout << "[" << current_context() << "] Current context\n";
             } else {
                 std::cout << "Could not find " << op->name << " in context " << current_context() << "\n";
             }

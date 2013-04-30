@@ -2,7 +2,7 @@
 #include "IROperator.h"
 #include "IREquality.h"
 #include "IRPrinter.h"
-#include "IRMutator.h"
+#include "IRCacheMutator.h"
 #include "IRCacheMutator.h"
 #include "Scope.h"
 #include "Var.h"
@@ -45,14 +45,14 @@ protected:
 
     Scope<ModulusRemainder> alignment_info;
 
-    using IRMutator::visit;
+    using IRCacheMutator::visit;
 
     virtual void visit(const IntImm *op) {
-        IRMutator::visit(op);
+        IRCacheMutator::visit(op);
     }
 
     virtual void visit(const FloatImm *op) {
-        IRMutator::visit(op);
+        IRCacheMutator::visit(op);
     }
 
     bool const_float(Expr e, float *f) {
@@ -127,7 +127,7 @@ protected:
     }
 
     virtual void visit(const Cast *op) {
-        Expr value = mutate(op->value);        
+        Expr value = mutate(op->value);  
         const Cast *cast = value.as<Cast>();
         float f;
         int i;
@@ -156,6 +156,7 @@ protected:
     }
 
     virtual void visit(const Variable *op) {
+        //std::cout << "Simplify " << Expr(op) << "\n";
         if (scope.contains(op->name)) {
             Expr replacement = scope.get(op->name);
 
@@ -1346,28 +1347,26 @@ protected:
     }
 
     virtual void visit(const Load *op) {
-        IRMutator::visit(op);
+        IRCacheMutator::visit(op);
     }
 
     virtual void visit(const Ramp *op) {
-        IRMutator::visit(op);
+        IRCacheMutator::visit(op);
     }
 
     virtual void visit(const Broadcast *op) {
-        IRMutator::visit(op);
+        IRCacheMutator::visit(op);
     }
 
     virtual void visit(const Call *op) {
-        IRMutator::visit(op);
+        IRCacheMutator::visit(op);
     }
 
     template<typename T, typename Body> 
-    Body simplify_let(const T *op, Scope<Expr> &scope, IRMutator *mutator) {
+    Body simplify_let(const T *op, Scope<Expr> &scope, IRCacheMutator *mutator) {
         // If the value is trivial, make a note of it in the scope so
         // we can subs it in later
         Expr value = mutator->mutate(op->value);
-        
-        push_context(Body(op));
         
         Body body = op->body;
         assert(value.defined());
@@ -1446,8 +1445,6 @@ protected:
 
         scope.pop(op->name);
         
-        pop_context(Body(op));
-
         if (wrapper_value.defined()) {
             return new T(wrapper_name, wrapper_value, new T(op->name, value, body));
         } else if (body.same_as(op->body) && value.same_as(op->value)) {
@@ -1467,15 +1464,15 @@ protected:
     }
 
     virtual void visit(const PrintStmt *op) {
-        IRMutator::visit(op);
+        IRCacheMutator::visit(op);
     }
 
     virtual void visit(const AssertStmt *op) {
-        IRMutator::visit(op);
+        IRCacheMutator::visit(op);
     }
 
     virtual void visit(const Pipeline *op) {
-        IRMutator::visit(op);
+        IRCacheMutator::visit(op);
     }
 
     virtual void visit(const For *op) {
@@ -1493,27 +1490,27 @@ protected:
                 return;
             }
         }
-        IRMutator::visit(op);
+        IRCacheMutator::visit(op);
     }
 
     virtual void visit(const Store *op) {
-        IRMutator::visit(op);
+        IRCacheMutator::visit(op);
     }
 
     virtual void visit(const Provide *op) {
-        IRMutator::visit(op);
+        IRCacheMutator::visit(op);
     }
 
     virtual void visit(const Allocate *op) {
-        IRMutator::visit(op);
+        IRCacheMutator::visit(op);
     }
 
     virtual void visit(const Realize *op) {
-        IRMutator::visit(op);
+        IRCacheMutator::visit(op);
     }
 
     virtual void visit(const Block *op) {        
-        IRMutator::visit(op);
+        IRCacheMutator::visit(op);
     }    
 };
 

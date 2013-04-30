@@ -108,6 +108,10 @@ inline void ContextManager::push_node(Node node) {
     
     // Remember the parent relationship between contexts.
     set_parent(_child, _parent);
+
+# if TRACE_CONTEXT
+    std::cout << "push " << _parent << " --> " << _child << " by " << node.ptr << "\n";
+# endif
     
     // Switch to the child context.
     my_current_context = _child; 
@@ -125,11 +129,20 @@ void ContextManager::pop(IRHandle node) {
     // Look for the parent of the current context.
     int _parent = parent(current_context());
     assert(_parent != 0 && "Undefined parent of current context");
-    
+
+# if TRACE_CONTEXT
+    std::cout << "pop " << current_context() << " --> " << _parent << " by " << node.ptr << "\n";
+# endif
+
+# if CHECK_CONTEXT
     // Verify that the node in the parent context actually maps to the current context.
     int _child = child_context.lookup(_parent, node);
-    assert(_child == current_context() && "Context pop does not match push");
-    
+    if (_child != current_context()) {
+        std::cerr << "Error: Context pop from " << current_context() << " by " << node.ptr << " yields " << _parent << " with child " << _child << "\n";
+        assert(0 && "Context pop does not match push");
+    }
+#endif
+
     // When the context is popped, we restore the current defining node so that
     // it again becomes valid to reenter the context that we have left.
     const DefiningNode *def_node = defining_map.lookup(_parent);
@@ -138,8 +151,6 @@ void ContextManager::pop(IRHandle node) {
         assert(def_node && "Cannot find defining node for popped context");
     }
     current_definition = *def_node;
-    
-    //std::cout << "[" << _parent << "] Popped from " << _child << "\n";
     
     // Switch to the parent context.
     my_current_context = _parent;
@@ -152,6 +163,10 @@ bool ContextManager::enter(IRHandle node) {
         assert(0 && "Child context the same as current context");
     }
     if (_child != 0) {
+# if TRACE_CONTEXT
+        std::cout << "enter " << current_context() << " --> " << _child << " by " << node.ptr << "\n";
+# endif
+
         // A child context is defined for this node in the current context.
         // Enter that context and return true.
         // Fetch the defining node as required for error checking.
@@ -171,6 +186,9 @@ const DefiningNode *ContextManager::go(int context) {
     assert(node && "Attempt to go to undefined context");
     my_current_context = context;
     current_definition = *node;
+# if TRACE_CONTEXT
+    std::cout << "Go to context " << context << "\n";
+# endif
     return node;
 }
 
