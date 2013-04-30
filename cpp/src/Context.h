@@ -110,6 +110,8 @@ public:
     
     // lookup methods returns 0 if the definition is not already found.  Use this for verification.
     int lookup(int current_context, const IRHandle &node);
+    
+    int context_count() { return next_context - 2; }
 };
 
 /** A little class to build a map that records the defining node and its enclosing context for each context.
@@ -150,6 +152,9 @@ class ContextManager {
     // (without an intervening pop).
     DefiningNode current_definition;
     
+    // Count of user classes.
+    int user_count;
+    
     
     // Structures that record relationships.
     // -------------------------------------
@@ -184,6 +189,11 @@ public:
     // context 0 is invalid.  context 1 is the initial context.
     // See also ChildContext class definition.
     ContextManager();
+    
+    // Track the number of users.  When it returns to zero, clear the context information.
+    // All classes using a shared context manager must employ add_user() and remove_user().
+    void add_user();
+    void remove_user();
     
     /** clear the context manager to commence a pass with all cached information discarded. */
     void clear();

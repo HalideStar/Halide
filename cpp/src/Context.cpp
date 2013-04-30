@@ -17,50 +17,6 @@ bool operator< (const NodeKey &a, const NodeKey &b) {
     else return a.node.ptr < b.node.ptr;
 }
 
-namespace ContextInternal {
-
-int ChildContext::lookup_define(int current_context, const IRHandle &node) {
-    int context;
-    assert (node.defined() && "Context push with undefined");
-    NodeKey key(current_context, node); // Key to search for previous push result.
-    typename ChildContext::iterator found = find(key); // Needs typename keyword?
-    if (found == this->end()) {
-        // Not found in the map. Create a new context and add it to the map.
-        (*this)[key] = context = next_context++;
-    } else {
-        // Found in the map.  Use the map result.
-        context = found->second;
-    }
-    return context;
-}
-
-// lookup method that does not define a new context.
-// used only for verification when returning to parent context.
-int ChildContext::lookup(int current_context, const IRHandle &node) {
-    assert (node.defined() && "ChildContext lookup with undefined");
-    NodeKey key(current_context, node); // Key to search for previous push result.
-    typename ChildContext::iterator found = find(key); // Needs typename keyword?
-    if (found == this->end()) {
-        return 0;
-    } else {
-        // Found in the map.  Use the map result.
-        return found->second;
-    }
-}
-        
-
-const DefiningNode *DefiningMap::lookup(int _context) const {
-    typename DefiningMap::const_iterator found = find(_context);
-    if (found == end()) {
-        return NULL;
-    } else {
-        return &(found->second);
-    }
-}
-
-// end namespace ContextInternal
-}
-
 ContextManager::ContextManager() : my_current_context(1) {
     clear();
 }
@@ -89,6 +45,22 @@ void ContextManager::clear() {
     parent_vector.clear();
     set_parent(1, 0);
     defining_map.set(1, current_definition);
+    user_count = 0;
+}
+
+void ContextManager::add_user() {
+    user_count++;
+}
+
+void ContextManager::remove_user() {
+    user_count--;
+    assert(user_count >= 0 && "Negative user count for ContextManager");
+    if (user_count == 0) {
+        //std::cout << "Clear context manager\n";
+        if (child_context.context_count() > 1000000) {
+            clear();
+        }
+    }
 }
 
 template<typename Node>
@@ -190,6 +162,51 @@ const DefiningNode *ContextManager::go(int context) {
     std::cout << "Go to context " << context << "\n";
 # endif
     return node;
+}
+
+
+namespace ContextInternal {
+
+int ChildContext::lookup_define(int current_context, const IRHandle &node) {
+    int context;
+    assert (node.defined() && "Context push with undefined");
+    NodeKey key(current_context, node); // Key to search for previous push result.
+    typename ChildContext::iterator found = find(key); // Needs typename keyword?
+    if (found == this->end()) {
+        // Not found in the map. Create a new context and add it to the map.
+        (*this)[key] = context = next_context++;
+    } else {
+        // Found in the map.  Use the map result.
+        context = found->second;
+    }
+    return context;
+}
+
+// lookup method that does not define a new context.
+// used only for verification when returning to parent context.
+int ChildContext::lookup(int current_context, const IRHandle &node) {
+    assert (node.defined() && "ChildContext lookup with undefined");
+    NodeKey key(current_context, node); // Key to search for previous push result.
+    typename ChildContext::iterator found = find(key); // Needs typename keyword?
+    if (found == this->end()) {
+        return 0;
+    } else {
+        // Found in the map.  Use the map result.
+        return found->second;
+    }
+}
+        
+
+const DefiningNode *DefiningMap::lookup(int _context) const {
+    typename DefiningMap::const_iterator found = find(_context);
+    if (found == end()) {
+        return NULL;
+    } else {
+        return &(found->second);
+    }
+}
+
+// end namespace ContextInternal
 }
 
 }

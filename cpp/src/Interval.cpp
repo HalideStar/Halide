@@ -117,6 +117,69 @@ int Interval::imax() {
     return ival;
 }
 
+
+// ---------------------------------------
+// Operators on pairs of intervals.
+
+Interval operator+(Interval u, Interval v) {
+    return Interval(simplify(u.min + v.min), simplify(u.max + v.max));
+}
+
+Interval operator-(Interval u, Interval v) {
+    return Interval(simplify(u.min - v.max), simplify(u.max - v.min));
+}
+
+Interval operator*(Interval u, Interval v) {
+    // Special-case optimizations to generate less work for the constant-folder
+    if (is_const(u.min) && equal(u.min, u.max)) {
+        if (is_negative_const(u.min)) std::swap(v.min, v.max);
+        return Interval(simplify(v.min * u.min), simplify(v.max * u.min));
+    } else if (is_const(v.min) && equal(v.min, v.max)) {
+        if (is_negative_const(v.min)) std::swap(u.min, u.max);
+        return Interval(simplify(u.min * v.min), simplify(u.max * v.min));           
+    } else {
+        Expr a = u.min * v.min;
+        Expr b = u.min * v.max;
+        Expr c = u.max * v.min;
+        Expr d = u.max * v.max;
+        
+        Expr rmin = min(min(a, b), min(c, d));
+        Expr rmax = max(max(a, b), max(c, d));
+        return Interval(simplify(rmin), simplify(rmax));
+    }
+}
+
+Interval operator/(Interval u, Interval v) {
+    if (is_const(v.min) && equal(v.min, v.max)) {
+        if (is_negative_const(v.min)) std::swap(u.min, u.max); 
+        return Interval(simplify(u.min / v.min), simplify(u.max / v.min));
+    } else {
+        // if we can't statically prove that the divisor can't span zero, then we're unbounded
+        bool min_v_is_positive = proved(v.min > Internal::make_zero(v.min.type()));
+        bool max_v_is_negative = proved(v.max < Internal::make_zero(v.max.type()));
+        if (! min_v_is_positive && ! max_v_is_negative) {
+            return Interval(Expr(new Internal::Infinity(-1)), Expr(new Internal::Infinity(1)));
+        } else {
+            Expr a = u.min / v.min;
+            Expr b = u.min / v.max;
+            Expr c = u.max / v.min;
+            Expr d = u.max / v.max;
+            
+            Expr rmin = min(min(a, b), min(c, d));
+            Expr rmax = max(max(a, b), max(c, d));
+            return Interval(simplify(rmin), simplify(rmax));
+        }
+    }
+}
+
+Interval max(Interval u, Interval v) {
+    return Interval(simplify(max(u.min, v.min)), simplify(max(u.max, v.max)));
+}
+
+Interval min(Interval u, Interval v) {
+    return Interval(simplify(min(u.min, v.min)), simplify(min(u.max, v.max)));
+}
+
 namespace Internal {
 
 namespace {

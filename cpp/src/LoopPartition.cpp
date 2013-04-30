@@ -61,6 +61,7 @@ class LoopPreSolver : public InlineLet {
             varlist.pop_back();
             stmt = new For(forloop, forloop->min, forloop->extent, body);
         } else {
+# if 0
             // It is a real horrible hack but for now we try
             // converting a vector or unrolled for loop into
             // a LetStmt with a clamp representing the range of values.
@@ -70,6 +71,11 @@ class LoopPreSolver : public InlineLet {
             Expr value = clamp(unknownvar, op->min, op->min + (op->extent-1));
             Stmt letstmt = new LetStmt(op->name, value, body);
             mutate(letstmt);
+# endif
+            // Treat the unrolled or vectorised loop as a constant - it will be
+            // an interval when solved.
+            // Mutate the children including inlining of Let expressions.
+            InlineLet::visit(op); 
         }
     }
     

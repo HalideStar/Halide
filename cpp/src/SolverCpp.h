@@ -1,4 +1,5 @@
 #include "Solver.h"
+#include "Interval.h"
 
 namespace Halide { 
 namespace Internal {
@@ -111,6 +112,8 @@ public:
         result = false;
         search_context = current_context();
         process(e);
+        //if (result) std::cout << "Expression is not constant: " << e << "\n";
+        //else std::cout << "Expression is constant: " << e << "\n";
         return ! result;
     }
     
@@ -125,6 +128,7 @@ private:
         if (result) return; // Once one is found, no need to find more.
         // Check whether variable name is in the list of known names.
         result = is_target(op->name, search_context);
+        //if (result) std::cout << "Expression is not constant: " << op->name << "\n";
     }
 };
 
@@ -185,6 +189,64 @@ Interval inverseMax(Interval v, Expr k) {
 // end anonymous namespace
 }
 
+class NewIntervalAnalysis : public IRLazyScope<IRInspector> {
+    Interval interval;
+    
+    using IRLazyScope<IRInspector>::visit;
+    
+    virtual void visit(const Variable *op) {
+        // Encountered a variable.  Try interval analysis on it.
+        int found = find_variable(op->name);
+        if (found) {
+            const DefiningNode *def = call(found);
+            // Now we are in the defining node context.
+            const For *def_for = def->node().as<For>();
+            const Let *def_let = def->node().as<Let>();
+            const LetStmt *def_letstmt = def->node().as<LetStmt>();
+            if (def_for) {
+                // Defined as a For loop.  The interval is easily determined.
+                interval = Interval(def_for->min, def_for->min + def_for->extent - 1);
+            } else if (def_let) {
+                interval = interval_analysis(def_let->value);
+            } else if (def_letstmt) {
+                interval = interval_analysis(def_letstmt->value);
+            } else {
+                interval = Interval(new Infinity(-1), new Infinity(1));
+            }
+            ret(found);
+        }
+    }
+    
+    virtual void visit(const Add *op) {
+        interval = interval_analysis(op->a) + interval_analysis(op->b);
+    }
+    
+    virtual void visit(const Sub *op) {
+        interval = interval_analysis(op->a) - interval_analysis(op->b);
+    }
+    
+    virtual void visit(const Mul *op) {
+        interval = interval_analysis(op->a) * interval_analysis(op->b);
+    }
+    
+    virtual void visit(const Div *op) {
+        interval = interval_analysis(op->a) / interval_analysis(op->b);
+    }
+    
+    virtual void visit(const Min *op) {
+        interval = min(interval_analysis(op->a), interval_analysis(op->b));
+    }
+    
+    virtual void visit(const Max *op) {
+        interval = max(interval_analysis(op->a), interval_analysis(op->b));
+    }
+    
+public:
+    Interval interval_analysis(Expr e) { 
+        // Insert caching here once it is working correctly.
+        e.accept(this); return interval; }
+};
+
 class Solver : public Simplify {
 
     // using parent::visit indicates that
@@ -197,7 +259,7 @@ class Solver : public Simplify {
     bool is_constant_expr(Expr e) { return has_target.is_constant_expr(e); }
     
 public:
-    
+
     virtual void visit(const Solve *op) {
         log(3) << depth << " Solve simplify " << Expr(op) << "\n";
         Expr e = mutate(op->body);
@@ -564,7 +626,10 @@ protected:
                 const TargetVar *tvar = node->node().as<TargetVar>();
                 const StmtTargetVar *svar = node->node().as<StmtTargetVar>();
                 if (tvar) {
+                    // This is defined by a TargetVar.
+                    solutions.push_back(Solution(variable->name, tvar->source, Stmt(), op->v));
                 } else if (svar) {
+                    solutions.push_back(Solution(variable->name, Expr(), svar->source, op->v));
                 }
                 ret(found);
             }

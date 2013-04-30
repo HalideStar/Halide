@@ -146,7 +146,8 @@ protected:
     void fast_leave(bool entered, const IRHandle &node);
 
 public:
-    IRLazyScopeBase() : make_context(context_mgr) { make_context.lazy_scope = this; }
+    IRLazyScopeBase() : make_context(context_mgr) { make_context.lazy_scope = this; context_mgr.add_user(); }
+    ~IRLazyScopeBase() { context_mgr.remove_user(); }
     
     /** Clear the lazy scope.  Also resets the shared context manager. */
     void clear();

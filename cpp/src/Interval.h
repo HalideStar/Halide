@@ -53,6 +53,14 @@ EXPORT Interval unzoom(Interval v, Expr b);
 EXPORT Interval operator%(Interval v, Expr b);
 EXPORT Interval intersection(Interval u, Interval v);
 
+/** Operators on two intervals */
+EXPORT Interval operator+(Interval u, Interval v);
+EXPORT Interval operator-(Interval u, Interval v);
+EXPORT Interval operator*(Interval u, Interval v);
+EXPORT Interval operator/(Interval u, Interval v);
+EXPORT Interval min(Interval u, Interval v);
+EXPORT Interval max(Interval u, Interval v);
+
 namespace Internal {
 EXPORT void interval_test();
 }

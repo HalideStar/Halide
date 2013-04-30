@@ -145,14 +145,14 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
     Interval xpart(xlo, xhi);
     Interval ypart(ylo, yhi);
 
-# if 1
+# if 0
     Func norm_nobound(prefix + "norm_nobound"), part_nobound(prefix + "part_nobound");
     norm_nobound(x,y) = e;
     part_nobound(x,y) = e;
     part_nobound.partition(x, xpart).partition(y, ypart);
     compare(prefix + "_simple no bound", norm_nobound, part_nobound);
 #endif
-#if 1
+#if 0
     Func norm_simple(prefix + "norm_simple"), part_simple(prefix + "part_simple");
     norm_simple(x,y) = e;
     part_simple(x,y) = e;
@@ -160,18 +160,25 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
     part_simple.bound(x,0,WIDTH).bound(y,0,HEIGHT).partition(x, xpart).partition(y, ypart);
     compare(prefix + "_simple", norm_simple, part_simple);
 #endif
-#if 1
+#if 0
     Func norm_vec8(prefix + "norm_vec8"), part_vec8(prefix + "part_vec8");
     norm_vec8(x,y) = e;
     part_vec8(x,y) = e;
     norm_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8);
     //part_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8).partition(x, (xlo+7)/8*8, (xhi+7)/8*8).partition(y, ypart);
     //part_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8).partition(x, unzoom(xpart, 8)).partition(y, ypart);
-    //part_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).partition(x, xpart).partition(y, ypart).vectorize(x,8);
-    part_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8).partition(x, true).partition(y, true);
+    part_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).partition(x, xpart).partition(y, ypart).vectorize(x,8);
     compare(prefix + "_vector(8)", norm_vec8, part_vec8);
 #endif
-#if 1  
+#if 1
+    Func norm_vec8_2(prefix + "norm_vec8_2"), auto_vec8(prefix + "auto_vec8");
+    norm_vec8_2(x,y) = e;
+    auto_vec8(x,y) = e;
+    norm_vec8_2.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8);
+    auto_vec8.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8).partition(x, true).partition(y, true);
+    compare(prefix + "_vector_auto(8)", norm_vec8_2, auto_vec8);
+#endif
+#if 0  
     Func norm_par(prefix + "norm_par"), part_par(prefix + "part_par");
     norm_par(x,y) = e;
     part_par(x,y) = e;
@@ -187,7 +194,7 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
     part_par4.bound(x,0,WIDTH).bound(y,0,HEIGHT).partition(x, xpart).partition(y, ypart).split(y,y,yi,4).parallel(y);
     compare(prefix + "_parallel(4)", norm_par4, part_par4);
 #endif
-#if 1
+#if 0
     Func norm_par8(prefix + "norm_par8"), part_par8(prefix + "part_par8");
     norm_par8(x,y) = e;
     part_par8(x,y) = e;
@@ -202,7 +209,7 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
     part_par16.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,16).parallel(y).partition(x, xpart).partition(y, ypart);
     compare(prefix + "_parallel(16)", norm_par16, part_par16);
 #endif
-#if 1
+#if 0
     Func norm_par_u2(prefix + "norm_par_u2"), part_par_u2(prefix + "part_par_u2");
     norm_par_u2(x,y) = e;
     part_par_u2(x,y) = e;

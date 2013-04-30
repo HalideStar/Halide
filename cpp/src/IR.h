@@ -916,6 +916,9 @@ struct Infinity : public ExprNode<Infinity> {
     int count; // Count of infinity. >0 means +ve infinity, <0 means negative infinity.
     
     Infinity(Type t, int _c) : ExprNode<Infinity>(t), count(_c) {}
+    
+    // Convenience constructor when you dont know what type to use.  Be careful.
+    Infinity(int _c) : ExprNode<Infinity>(Int(32)), count(_c) {}
 };
 
 #if 0
