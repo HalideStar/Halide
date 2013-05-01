@@ -3,6 +3,7 @@
 
 #include "IR.h"
 #include "Ival.h"
+#include <map>
 
 namespace Halide { 
 namespace Internal {
@@ -25,11 +26,23 @@ using std::string;
 class IntervalAnal : public IRLazyScope<IRProcess> {
     Ival interval;
     
+    // Ideally the interval cache would be static and shared
+    // in the same way as ContextManager.  It would then
+    // want to be reset whenever the context manager is reset.
+    // To do this in a tidy manner is difficult.  The untidy way
+    // is to include it in the context manager.
+    std::map<NodeKey, Ival> interval_cache;
+    
 public:
     Ival interval_analysis(Expr e) { 
         // Insert caching here once it is working correctly.
         NodeKey key = node_key(e);
+        std::map<NodeKey, Ival>::const_iterator found = interval_cache.find(key);
+        if (found != interval_cache.end()) {
+            return found->second;
+        }
         process(e); 
+        interval_cache[key] = interval;
         return interval; 
     }
 
