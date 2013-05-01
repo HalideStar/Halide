@@ -540,87 +540,41 @@ Stmt loop_partition(Stmt s) {
 
 // Test pre processing.
 namespace {
-# define RAW 0
-# define SOLVED 1
-# define PART 2
-
-Stmt code_1 (int stage) {
+Stmt code_1 () {
     Type i32 = Int(32);
     Expr x = new Variable(Int(32), "x");
     Expr y = new Variable(Int(32), "y");
-    Expr x_start = new Variable(Int(32), "x.start");
-    Expr x_end = new Variable(Int(32), "x.end");
-
-    Expr subscript = x - 10;
-    if (stage == SOLVED) subscript = Expr(new Solve(x, Ival(10, 109))) + -10;
-    if (stage == PART) subscript = x + -10;
-    Expr input = new Call(Int(16), "input", vec((subscript) % 100 + 10));
-    
-    Expr compare3 = x > 3;
-    if (stage == SOLVED) compare3 = 3 < Expr(new Solve(x, Ival(4, new Infinity(1))));
-    if (stage == PART) compare3 = 3 < x;
-    
-    Expr compare87 = x < 87;
-    if (stage == SOLVED) compare87 = Expr(new Solve(x, Ival(new Infinity(-1), 86))) < 87;
-    
-    Expr select = new Select(compare3, new Select(compare87, input, new Cast(Int(16), -17)),
+    Expr input = new Call(Int(16), "input", vec((x - 10) % 100 + 10));
+    Expr select = new Select(x > 3, new Select(x < 87, input, new Cast(Int(16), -17)),
                              new Cast(Int(16), -17));
-                             
     Stmt store = new Store("buf", select, x - 1);
-    if (stage == SOLVED || stage == PART) store = new Store("buf", select, x + -1);
-    
-    if (stage == SOLVED) store = new StmtTargetVar("x", store, store);
-    
     PartitionInfo partition(true); // Select auto partitioning.
     Stmt for_loop = new For("x", 0, 100, For::Parallel, partition, store);
-    if (stage == PART) {
-        partition.status = PartitionInfo::Before;
-        Stmt for_loop_1 = new For("x", 0, min((x_start - 0), 100), For::Parallel, partition, store);
-        partition.status = PartitionInfo::Main;
-        Stmt for_loop_2 = new For("x", max(x_start, 0), min(x_end, Expr(0) + 100) - max(x_start, 0), For::Parallel, partition, store);
-        partition.status = PartitionInfo::After;
-        Stmt for_loop_3 = new For("x", x_end, (Expr(0) + 100) - x_end, For::Parallel, partition, store);
-        for_loop = new Block(for_loop_2, for_loop_3);
-        for_loop = new Block(for_loop_1, for_loop);
-        for_loop = new LetStmt("x.end", 87, for_loop);
-        for_loop = new LetStmt("x.start", 10, for_loop);
-    }
-    
-    Expr x0 = x;
-    if (stage == SOLVED) x0 = new Solve(new Solve(x, Ival(new Infinity(-1), 100)), Ival(0, new Infinity(1)));
-    Expr call = new Call(i32, "buf", vec(max(min(x0,100),0)));
-    
-    Expr xm1 = max(min(x-1,100),0);
-    if (stage == SOLVED) xm1 = max(min(new Solve(new Solve(x, Ival(new Infinity(-1), 101)), Ival(1, new Infinity(1))), 101), 1) + -1;
-    if (stage == PART) xm1 = max(min(x, 101), 1) + -1;
-    Expr call2 = new Call(i32, "buf", vec(xm1));
-    
-    Expr xp1 = x + 1;
-    if (stage == SOLVED) xp1 = Expr(new Solve(x, Ival(-1, 99))) + 1;
-    Expr call3 = new Call(i32, "buf", vec(Expr(new Clamp(Clamp::Reflect, xp1, 0, 100))));
+    Expr call = new Call(i32, "buf", vec(max(min(x,100),0)));
+    Expr call2 = new Call(i32, "buf", vec(max(min(x-1,100),0)));
+    Expr call3 = new Call(i32, "buf", vec(Expr(new Clamp(Clamp::Reflect, x+1, 0, 100))));
     Stmt store2 = new Store("out", call + call2 + call3 + 1, x);
-    
-    if (stage == SOLVED) store2 = new StmtTargetVar("x", store2, store2);
-    
     PartitionInfo partition2(Ival(1,99)); // Specify manual partitioning interval.
     Stmt for_loop2 = new For("x", 0, 100, For::Serial, partition2, store2);
-    if (stage == PART) {
-        partition2.status = PartitionInfo::Before;
-        Stmt for_loop_1 = new For("x", 0, min(x_start - 0, 100), For::Serial, partition2, store2);
-        partition2.status = PartitionInfo::Main;
-        Stmt for_loop_2 = new For("x", max(x_start, 0), min(x_end, Expr(0) + 100) - max(x_start, 0), For::Serial, partition2, store2);
-        partition2.status = PartitionInfo::After;
-        Stmt for_loop_3 = new For("x", x_end, (Expr(0) + 100) - x_end, For::Serial, partition2, store2);
-        for_loop2 = new Block(for_loop_2, for_loop_3);
-        for_loop2 = new Block(for_loop_1, for_loop2);
-        for_loop2 = new LetStmt("x.end", 100, for_loop2);
-        for_loop2 = new LetStmt("x.start", 1, for_loop2);
-    }
-    
     Stmt pipeline = new Pipeline("buf", for_loop, Stmt(), for_loop2);
     
     return pipeline;
 }
+
+std::string correct_solved =
+"produce buf {\n"
+"  parallel (x, 0, 100, auto [-infinity, infinity]) {\n"
+"    stmtTargetVar(x) {\n"
+"      buf[(x + -1)] = select((3 < solve([4, infinity]: x)), select((solve([-infinity, 86]: x) < 87), input((((solve([10, 109]: x) + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
+"    }\n"
+"  }\n"
+"} consume {\n"
+"  for (x, 0, 100, [1, 99]) {\n"
+"    stmtTargetVar(x) {\n"
+"      out[x] = (((buf(max(min(solve([0, infinity]: solve([-infinity, 100]: x)), 100), 0)) + buf((max(min(solve([1, infinity]: solve([-infinity, 101]: x)), 101), 1) + -1))) + buf(Clamp::reflect((solve([-1, 99]: x) + 1),0,100,0))) + 1)\n"
+"    }\n"
+"  }\n"
+"}\n";
 
 std::string correct_partitioned = 
 "produce buf {\n"
@@ -687,7 +641,7 @@ void test_loop_partition_1() {
     global_options.loop_partition = true;
     global_options.loop_partition_all = false;
     
-    Stmt pipeline = code_1(RAW);
+    Stmt pipeline = code_1();
     
     //std::cout << "Raw:\n" << pipeline << "\n";
     Stmt simp = simplify(pipeline);
@@ -696,12 +650,7 @@ void test_loop_partition_1() {
     //std::cout << "LoopPreSolver:\n" << pre << "\n";
     
     Stmt solved = solver(pre);
-    if (! equal(solved, code_1(SOLVED))) {
-        std::cerr << "Incorrect results from loop partitioning solver\n";
-        std::cerr << "Solved code:\n" << solved << "\n";
-        std::cerr << "Expected:\n" << code_1(SOLVED) << "\n";
-        assert(0);
-    }
+    code_compare ("loop partition solver", "Solved code:", solved, correct_solved);
     //std::cout << "Solved:\n" << solved << "\n";
     //std::vector<Solution> solutions = extract_solutions("x", Stmt(), solved);
     //for (size_t i = 0; i < solutions.size(); i++) {
