@@ -359,7 +359,7 @@ protected:
         if ((op->for_type == For::Serial || op->for_type == For::Parallel) &&
              (op->partition.status == PartitionInfo::Ordinary)) {
             Ival part;
-            if (op->partition.interval.min.defined() || op->partition.interval.max.defined()) {
+            if (op->partition.interval_defined()) {
                 part = op->partition.interval;
             } else if (op->partition.auto_partition == PartitionInfo::Yes || 
                       (op->partition.auto_partition == PartitionInfo::Undefined && global_options.loop_partition_all)) {
@@ -368,11 +368,11 @@ protected:
                 // Search for solutions related to this particular for loop.
                 std::vector<Solution> solutions = extract_solutions(op->name, op, solved);
                 //std::cout << global_options;
-                //std::cout << "For loop: \n" << Stmt(op);
-                //std::cout << "Solutions: \n";
-                //for (size_t i = 0; i < solutions.size(); i++) {
-                //    std::cout << solutions[i].var << " " << solutions[i].intervals << "\n";
-                //}
+                std::cout << "For loop: \n" << Stmt(op);
+                std::cout << "Solutions: \n";
+                for (size_t i = 0; i < solutions.size(); i++) {
+                    std::cout << solutions[i].var << " " << solutions[i].intervals << "\n";
+                }
                 
                 // Compute loop partition points for each end of the loop.
                 // If the information that we get is purely numeric, then we need to
@@ -385,16 +385,17 @@ protected:
                 
                 std::vector<Expr> starts, ends;
                 partition_points(solutions, starts, ends);
-                log(3) << "Partition start: ";
+# if 1
+                std::cout << "Partition start: ";
                 for (size_t i = 0; i < starts.size(); i++) {
-                    log(3) << starts[i] << " ";
+                    std::cout << starts[i] << " ";
                 }
-                log(3) << "\n" << "Partition end: ";
+                std::cout << "\n" << "Partition end: ";
                 for (size_t i = 0; i < ends.size(); i++) {
-                    log(3) << ends[i] << " ";
+                    std::cout << ends[i] << " ";
                 }
-                log(3) << "\n";
-                
+                std::cout << "\n";
+# endif               
                 // The interval for the main loop is max(starts) to min(ends)-1.
                 // If no partition points are found then the interval has undefined min and/or max.
                 Expr part_start, part_end;

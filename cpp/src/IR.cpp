@@ -88,5 +88,10 @@ const bool PartitionInfo::defined() const {
             ! interval.min.as<Infinity>() && ! interval.max.as<Infinity>()); 
 }
 
+const bool PartitionInfo::interval_defined() const { 
+    return (interval.min.defined() && interval.max.defined() && 
+            ! interval.min.as<Infinity>() && ! interval.max.as<Infinity>()); 
+}
+
 }
 }

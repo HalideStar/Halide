@@ -161,6 +161,15 @@ inline std::vector<Ival> v_apply(Ival (*f)(Ival, Expr), std::vector<Ival> v, Exp
 }
 
 // Apply binary operator to a vector of Ival by applying it to each Ival
+inline std::vector<Ival> v_apply(Ival (*f)(Ival, Ival), std::vector<Ival> v, Ival w) {
+    std::vector<Ival> result;
+    for (size_t i = 0; i < v.size(); i++) {
+        result.push_back((*f)(v[i], w));
+    }
+    return result;
+}
+
+// Apply binary operator to a vector of Ival by applying it to each Ival
 inline std::vector<Ival> v_apply(Ival (*f)(Ival, Ival), std::vector<Ival> u, std::vector<Ival> v) {
     std::vector<Ival> result;
     assert(u.size() == v.size() && "Vectors of intervals of different sizes");
@@ -178,6 +187,14 @@ Ival inverseMin(Ival v, Expr k) {
     return Ival(v.min, simplify(select(v.max >= k, make_infinity(v.max.type(), +1), v.max)));
 }
 
+Ival inverseMin(Ival v, Ival k) {
+    // inverse of min on an interval against constant expression k.
+    // If v.max >= k.max then the Min ensures that the upper bound is in
+    // the target interval, so the new max is +infinity; otherwise
+    // the new max is v.max.
+    return Ival(v.min, simplify(select(v.max >= k.max, make_infinity(v.max.type(), +1), v.max)));
+}
+
 Ival inverseMax(Ival v, Expr k) {
     // inverse of max on an interval against constant expression k.
     // If v.min <= k then the Max ensures that the lower bound is in
@@ -186,13 +203,34 @@ Ival inverseMax(Ival v, Expr k) {
     return Ival(simplify(select(v.min <= k, make_infinity(v.min.type(), -1), v.min)), v.max);
 }
 
+Ival inverseMax(Ival v, Ival k) {
+    // inverse of max on an interval against constant expression k.
+    // If v.min <= k.min then the Max ensures that the lower bound is in
+    // the target interval, so the new min is -infinity; otherwise
+    // the new min is v.min.
+    // The new max is v.max.
+    return Ival(simplify(select(v.min <= k.min, make_infinity(v.min.type(), -1), v.min)), v.max);
+}
+
+Ival inverseAdd(Ival v, Ival k) {
+    // Compute an interval such that adding the interval k always results
+    // in an interval no bigger than v.
+    return Ival(simplify(v.min - k.min), simplify(v.max - k.max));
+}
+
+Ival inverseSub(Ival v, Ival k) {
+    // Compute an interval such that adding the interval k always results
+    // in an interval no bigger than v.
+    return Ival(simplify(v.min + k.min), simplify(v.max + k.max));
+}
+
 // end anonymous namespace
 }
 
-class NewIntervalAnalysis : public IRLazyScope<IRInspector> {
+class NewIntervalAnalysis : public IRLazyScope<IRProcess> {
     Ival interval;
     
-    using IRLazyScope<IRInspector>::visit;
+    using IRLazyScope<IRProcess>::visit;
     
     Ival bounds_of_type(Type t) {
         if (t.is_uint()) {
@@ -251,6 +289,8 @@ class NewIntervalAnalysis : public IRLazyScope<IRInspector> {
                 interval = Ival(new Infinity(-1), new Infinity(1));
             }
             ret(found);
+        } else {
+            interval = Ival(op, op); // In the absence of a definition, keep the variable name.
         }
     }
     
@@ -436,10 +476,78 @@ class NewIntervalAnalysis : public IRLazyScope<IRInspector> {
         interval = Ival(new Broadcast(value.min, op->width), new Broadcast(value.max, op->width));
     }
 
+    virtual void visit(const Solve *op) {
+        interval = interval_analysis(op->body);
+    }
+
+    virtual void visit(const TargetVar *op) {
+        interval = interval_analysis(op->body);
+    }
+
+    void visit(const Call *op) {
+
+        // Could surely do better than simply take the bounds of the type.
+        // The full solution for interval analysis of the current
+        // expression involves interval analysis on the called function.
+        interval = bounds_of_type(op->type);
+    }
+
+    void visit(const Let *op) {
+        interval = interval_analysis(op->body);
+    }
+    
+    void visit(const LetStmt *op) {
+        interval = Ival(); 
+    }
+
+    void visit(const PrintStmt *op) {
+        interval = Ival(); 
+    }
+
+    void visit(const AssertStmt *op) {
+        interval = Ival(); 
+    }
+
+    void visit(const Pipeline *op) {
+        interval = Ival(); 
+    }
+
+    void visit(const For *op) {
+        interval = Ival(); 
+    }
+
+    void visit(const Store *op) {
+        interval = Ival(); 
+    }
+
+    void visit(const Provide *op) {
+        interval = Ival(); 
+    }
+
+    void visit(const Allocate *op) {
+        interval = Ival(); 
+    }
+
+    void visit(const Realize *op) {
+        interval = Ival(); 
+    }
+
+    virtual void visit(const Block *op) {
+        interval = Ival(); 
+    }
+    
+    virtual void visit(const StmtTargetVar *op) {
+        interval = Ival(); 
+    }
+    
+    virtual void visit(const Infinity *op) {
+        assert(0 && "Infinity node found in parse tree by interval analysis"); 
+    }
+    
 public:
     Ival interval_analysis(Expr e) { 
         // Insert caching here once it is working correctly.
-        e.accept(this); return interval; }
+        process(e); return interval; }
 };
 
 class Solver : public Simplify {
@@ -450,6 +558,8 @@ class Solver : public Simplify {
     using Simplify::visit;
     
     HasTarget has_target;
+    
+    NewIntervalAnalysis ia;
     
     bool is_constant_expr(Expr e) { return has_target.is_constant_expr(e); }
     
@@ -475,9 +585,11 @@ public:
             //expr = mutate(solve(solve_e->e, v_apply(intersection, op->v, solve_e->v)));
         //} else 
         if (add_e && is_constant_expr(add_e->b)) {
-            expr = mutate(solve(add_e->a, v_apply(operator-, op->v, add_e->b)) + add_e->b);
+            //expr = mutate(solve(add_e->a, v_apply(operator-, op->v, add_e->b)) + add_e->b);
+            expr = mutate(solve(add_e->a, v_apply(inverseAdd, op->v, ia.interval_analysis(add_e->b))) + add_e->b);
         } else if (sub_e && is_constant_expr(sub_e->b)) {
-            expr = mutate(solve(sub_e->a, v_apply(operator+, op->v, sub_e->b)) - sub_e->b);
+            //expr = mutate(solve(sub_e->a, v_apply(operator+, op->v, sub_e->b)) - sub_e->b);
+            expr = mutate(solve(sub_e->a, v_apply(inverseSub, op->v, ia.interval_analysis(sub_e->b))) - sub_e->b);
         } else if (sub_e && is_constant_expr(sub_e->a)) {
             // solve(k - v) --> -solve(v - k) with interval negated
             expr = mutate(-solve(sub_e->b - sub_e->a, v_apply(operator-, op->v)));
@@ -494,16 +606,16 @@ public:
         } else if (min_e && is_constant_expr(min_e->a)) {
             // Min, Max: push outside of Solve nodes.
             // solve(min(k,v)) on (a,b) --> min(k,solve(v)). 
-            expr = mutate(new Min(min_e->a, solve(min_e->b, v_apply(inverseMin, op->v, min_e->a))));
+            expr = mutate(new Min(min_e->a, solve(min_e->b, v_apply(inverseMin, op->v, ia.interval_analysis(min_e->a)))));
         } else if (min_e && is_constant_expr(min_e->b)) {
             // solve(min(v,k)) on (a,b) --> min(solve(v),k). 
-            expr = mutate(new Min(solve(min_e->a, v_apply(inverseMin, op->v, min_e->b)), min_e->b));
+            expr = mutate(new Min(solve(min_e->a, v_apply(inverseMin, op->v, ia.interval_analysis(min_e->b))), min_e->b));
         } else if (max_e && is_constant_expr(max_e->a)) {
             // solve(max(k,v)) on (a,b) --> max(k,solve(v)). 
-            expr = mutate(new Max(max_e->a, solve(max_e->b, v_apply(inverseMax, op->v, max_e->a))));
+            expr = mutate(new Max(max_e->a, solve(max_e->b, v_apply(inverseMax, op->v, ia.interval_analysis(max_e->a)))));
         } else if (max_e && is_constant_expr(max_e->b)) {
             // solve(max(v,k)) on (a,b) --> max(solve(v),k). 
-            expr = mutate(new Max(solve(max_e->a, v_apply(inverseMax, op->v, max_e->b)), max_e->b));
+            expr = mutate(new Max(solve(max_e->a, v_apply(inverseMax, op->v, ia.interval_analysis(max_e->b))), max_e->b));
         } else if (e.same_as(op->body)) {
             expr = op; // Nothing more to do.
         } else {

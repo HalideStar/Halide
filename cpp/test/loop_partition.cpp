@@ -144,6 +144,8 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
     Var x("x"), y("y"), yi("yi");
     Interval xpart(xlo, xhi);
     Interval ypart(ylo, yhi);
+    
+    std::cout << global_options;
 
 # if 0
     Func norm_nobound(prefix + "norm_nobound"), part_nobound(prefix + "part_nobound");

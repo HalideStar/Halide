@@ -613,6 +613,7 @@ namespace Internal {
         }
         
         const bool defined() const;
+        const bool interval_defined() const;
     };
         
 /** A for loop. Execute the 'body' statement for all values of the
