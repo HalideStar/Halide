@@ -7,6 +7,46 @@
 namespace Halide {
 
 /** Implementation of manipulation of intervals. */
+
+Interval operator*(Interval v, Expr b) { 
+    bool def_min = v.min.defined(), def_max = v.max.defined();
+    Expr rmin, rmax;
+    
+    if (proved(b >= 0)) {
+        if (def_min) rmin = v.min * b;
+        if (def_max) rmax = v.max * b;
+    } else if (proved(b <= 0)) {
+        if (def_max) rmin = v.max * b;
+        if (def_min) rmax = v.min * b;
+    } else if (def_min && def_max) {
+        rmin = select(b >= 0, v.min * b, v.max * b);
+        rmax = select(b >= 0, v.max * b, v.min * b);
+    }
+    return Interval(simplify(rmin), simplify(rmax));
+}
+
+Interval operator/(Interval v, Expr b) { 
+    bool def_min = v.min.defined(), def_max = v.max.defined();
+    Expr rmin, rmax;
+    
+    b = simplify(b);
+    
+    if (is_zero(b)) {
+        return Interval(rmin, rmax); // Division by zero is unbounded.
+    } else if (proved(b > 0)) {
+        if (def_min) rmin = v.min / b;
+        if (def_max) rmax = v.max / b;
+    } else if (proved(b < 0)) {
+        if (def_max) rmin = v.max / b;
+        if (def_min) rmax = v.min / b;
+    } else if (def_min && def_max) {
+        rmin = select(b > 0, v.min / b, v.max / b);
+        rmax = select(b > 0, v.max / b, v.min / b);
+    }
+    return Interval(simplify(rmin), simplify(rmax));
+}
+
+# if 0
 Interval operator+(Interval v, Expr b) { 
     return Interval(simplify(v.min + b), simplify(v.max + b)); 
 }
@@ -19,13 +59,11 @@ Interval operator-(Interval v) {
     return Interval(simplify(-v.max), simplify(-v.min)); 
 }
 
-Interval operator*(Interval v, Expr b) { 
-    return Interval(simplify(select(b >= 0, v.min * b, v.max * b)), simplify(select(b >= 0, v.max * b, v.min * b))); 
-}
 
-Interval operator/(Interval v, Expr b) { 
-    return Interval(simplify(select(b >= 0, v.min / b, v.max / b)), simplify(select(b >= 0, v.max / b, v.min / b))); 
+Interval operator%(Interval v, Expr b) { 
+    return Interval(simplify(v.min % b), simplify(v.max % b)); 
 }
+# endif
 
 Interval zoom(Interval v, Expr b) { 
     // Multiplying an interval (by an integer other than zero).
@@ -35,42 +73,52 @@ Interval zoom(Interval v, Expr b) {
     // Other definitions could be used - this definition always appends the
     // additional space to the top end of the interval.
     
-    if (! v.min.defined() && ! v.max.defined()) return v; // Undefined result.
-    
-    // Convert an undefined end of the interval to infinity.
-    if (! v.min.defined()) v.min = new Internal::Infinity(v.max.type(), -1);
-    else if (! v.max.defined()) v.max = new Internal::Infinity(v.min.type(), 1);
+    bool def_min = v.min.defined(), def_max = v.max.defined();
+    Expr rmin, rmax;
     
     if (b.type().is_float() || v.min.type().is_float() || v.max.type().is_float()) {
         // Result will be floating type, not integer.  zoom degenerates to multiply.
-        return Interval(simplify(v.min * b), simplify(v.max * b));
+        return v * b;
     }
 
-    Expr newmin = select(b >= 0, v.min * b, v.max * b);
-    Expr newmax = select(b >= 0, v.max * b + (b-1), v.min * b - (b+1));
-    return Interval(simplify(newmin), simplify(newmax)); 
+    if (proved(b >= 0)) {
+        if (def_min) rmin = v.min * b;
+        if (def_max) rmax = v.max * b + (b - 1);
+    } else if (proved(b <= 0)) {
+        if (def_max) rmin = v.max * b;
+        if (def_min) rmax = v.min * b - (b + 1);
+    } else if (def_min && def_max) {
+        rmin = select(b >= 0, v.min * b, v.max * b);
+        rmax = select(b >= 0, v.max * b + (b-1), v.min * b - (b+1));
+    }
+    return Interval(simplify(rmin), simplify(rmax));
 }
 
 Interval decimate(Interval v, Expr b) { 
     // Decimate an interval.  Get every element of v
-    // that is a multiple of b, and then divide them by b.
+    // which is a multiple of b, and then divide them by b.
     
-    if (! v.min.defined() && ! v.max.defined()) return v; // Undefined result.
-    
-    // Convert an undefined end of the interval to infinity.
-    if (! v.min.defined()) v.min = new Internal::Infinity(v.max.type(), -1);
-    else if (! v.max.defined()) v.max = new Internal::Infinity(v.min.type(), 1);
+    bool def_min = v.min.defined(), def_max = v.max.defined();
+    Expr rmin, rmax;
     
     if (b.type().is_float() || v.min.type().is_float() || v.max.type().is_float()) {
         // Result will be floating type, not integer.  decimate degenerates to division.
-        return Interval(simplify(v.min / b), simplify(v.max / b));
+        return v / b;
     }
 
     // (x - 1) / b + 1 is ceiling for positive b.
     // (x + 1) / b + 1 is ceiling for negative b.
-    Expr newmin = select(b >= 0, (v.min - 1) / b + 1, (v.max + 1) / b + 1);
-    Expr newmax = select(b >= 0, v.max / b, (v.min) / b);
-    return Interval(simplify(newmin), simplify(newmax));
+    if (proved(b >= 0)) {
+        if (def_min) rmin = (v.min - 1) / b + 1;
+        if (def_max) rmax = v.max / b;
+    } else if (proved(b <= 0)) {
+        if (def_max) rmin = (v.max + 1) / b + 1;
+        if (def_min) rmax = v.min / b;
+    } else if (def_min && def_max) {
+        rmin = select(b >= 0, (v.min - 1) / b + 1, (v.max + 1) / b + 1);
+        rmax = select(b >= 0, v.max / b, v.min / b);
+    }
+    return Interval(simplify(rmin), simplify(rmax));
 }
 
 Interval unzoom(Interval v, Expr b) { 
@@ -78,31 +126,25 @@ Interval unzoom(Interval v, Expr b) {
     // result should be such that if you zoom the interval
     // up again then it will not exceed the original interval.
     
-    // Halide division is floor.  To get ceiling for a positive divisor,
-    // compute (x - 1) / b + 1.  For a negative divisor: (x + 1) / b + 1.
+    bool def_min = v.min.defined(), def_max = v.max.defined();
+    Expr rmin, rmax;
     
-    if (! v.min.defined() && ! v.max.defined()) return v; // Undefined result.
-    
-    // Convert an undefined end of the interval to infinity.
-    if (! v.min.defined()) v.min = new Internal::Infinity(v.max.type(), -1);
-    else if (! v.max.defined()) v.max = new Internal::Infinity(v.min.type(), 1);
-
     if (b.type().is_float() || v.min.type().is_float() || v.max.type().is_float()) {
         // Result will be floating type, not integer.  unzoom degenerates to division.
-        return Interval(simplify(v.min / b), simplify(v.max / b));
+        return v / b;
     }
-
-    Expr newmin = select(b >= 0, (v.min - 1) / b + 1, (v.max + 2) / b + 2);
-    Expr newmax = select(b >= 0, (v.max + 1) / b - 1, (v.min) / b);
-    return Interval(simplify(newmin), simplify(newmax));
-}
-
-Interval operator%(Interval v, Expr b) { 
-    return Interval(simplify(v.min % b), simplify(v.max % b)); 
-}
-
-Interval intersection(Interval u, Interval v) {
-    return Interval(simplify(max(u.min, v.min)), simplify(min(u.max, v.max)));
+    
+    if (proved(b >= 0)) {
+        if (def_min) rmin = (v.min - 1) / b + 1;
+        if (def_max) rmax = (v.max + 1) / b - 1;
+    } else if (proved(b <= 0)) {
+        if (def_max) rmin = (v.max + 2) / b + 2;
+        if (def_min) rmax = v.min / b;
+    } else if (def_min && def_max) {
+        rmin = select(b >= 0, (v.min - 1) / b + 1, (v.max + 2) / b + 2);
+        rmax = select(b >= 0, (v.max + 1) / b - 1, (v.min) / b);
+    }
+    return Interval(simplify(rmin), simplify(rmax));
 }
 
 int Interval::imin() {
@@ -118,6 +160,7 @@ int Interval::imax() {
 }
 
 
+# if 0
 // ---------------------------------------
 // Operators on pairs of intervals.
 
@@ -172,12 +215,51 @@ Interval operator/(Interval u, Interval v) {
     }
 }
 
+Interval operator%(Interval u, Interval v) {
+    // If we can prove that u is in the range of mod v then interval u is the result. 
+    if (proved(u.min >= 0) && proved(u.max < v.min)) {
+        // u is a positive interval and so is v.
+        return u;
+    } else if (proved(u.max <= 0) && proved(u.min > v.max)) {
+        // u is a negative interval and so is v.
+        return u;
+    } else {
+        Expr rmin = Internal::make_zero(u.min.type());
+        Expr rmax;
+        if (v.max.type().is_float()) {
+            rmax = v.max;
+        } else {
+            rmax = v.max - 1;
+        }
+        return Interval(simplify(rmin), simplify(rmax));
+    }
+}
+
 Interval max(Interval u, Interval v) {
     return Interval(simplify(max(u.min, v.min)), simplify(max(u.max, v.max)));
 }
 
 Interval min(Interval u, Interval v) {
     return Interval(simplify(min(u.min, v.min)), simplify(min(u.max, v.max)));
+}
+# endif
+
+Interval intersection(Interval u, Interval v) {
+    Expr rmin, rmax;
+    if (! u.min.defined()) rmin = v.min;
+    else if (! v.min.defined()) rmin = u.min;
+    else rmin = simplify(max(u.min, v.min));
+    if (! u.max.defined()) rmax = v.max;
+    else if (! v.max.defined()) rmax = u.max;
+    else rmax = simplify(min(u.max, v.max));
+    return Interval(rmin, rmax);
+}
+
+Interval interval_union(Interval u, Interval v) {
+    Expr rmin, rmax;
+    if (u.min.defined() && v.min.defined()) rmin = simplify(min(u.min, v.min));
+    if (u.max.defined() && v.max.defined()) rmax = simplify(max(u.max, v.max));
+    return Interval(rmin, rmax);
 }
 
 namespace Internal {

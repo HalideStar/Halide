@@ -388,6 +388,8 @@ Interval bounds_of_expr_in_scope(Expr expr, const Scope<Interval> &scope) {
     return Interval(b.min, b.max);
 }
 
+# if 0
+// Now defined in Interval.cpp
 Interval interval_union(const Interval &a, const Interval &b) {    
     Expr max, min;
     log(3) << "Interval union of " << a.min << ", " << a.max << ",  " << b.min << ", " << b.max << "\n";
@@ -395,6 +397,7 @@ Interval interval_union(const Interval &a, const Interval &b) {
     if (a.min.defined() && b.min.defined()) min = new Min(a.min, b.min);
     return Interval(min, max);
 }
+# endif
 
 Region region_union(const Region &a, const Region &b) {
     assert(a.size() == b.size() && "Mismatched dimensionality in region union");
@@ -639,6 +642,7 @@ void bounds_test() {
     r = regions_called(loop);
     assert(r.find("output") == r.end());
     assert(r.find("input") != r.end());
+    std::cout << r["input"][0].min << " " << r["input"][0].extent << "\n";
     assert(equal(r["input"][0].min, 6));
     assert(equal(r["input"][0].extent, 20));
     r = regions_provided(loop);

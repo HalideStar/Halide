@@ -43,10 +43,10 @@ public:
     Stmt stmt_source;
     
     // Intervals that define the individual solutions.
-    std::vector<Interval> intervals;
+    std::vector<Ival> intervals;
     
     Solution() {}
-    Solution(std::string _var, Expr expr_s, Stmt stmt_s, std::vector<Interval> _intervals) : 
+    Solution(std::string _var, Expr expr_s, Stmt stmt_s, std::vector<Ival> _intervals) : 
         var(_var), expr_source(expr_s), stmt_source(stmt_s), intervals(_intervals) {}
 };
     

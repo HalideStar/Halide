@@ -1,5 +1,5 @@
 #include "Solver.h"
-#include "Interval.h"
+#include "Ival.h"
 
 namespace Halide { 
 namespace Internal {
@@ -134,35 +134,35 @@ private:
 
 namespace {
 // Convenience methods for building solve nodes.
-Expr solve(Expr e, Interval i) {
+Expr solve(Expr e, Ival i) {
     return new Solve(e, i);
 }
 
-Expr solve(Expr e, std::vector<Interval> i) {
+Expr solve(Expr e, std::vector<Ival> i) {
     return new Solve(e, i);
 }
 
-// Apply unary operator to a vector of Interval by applying it to each Interval
-inline std::vector<Interval> v_apply(Interval (*f)(Interval), std::vector<Interval> v) {
-    std::vector<Interval> result;
+// Apply unary operator to a vector of Ival by applying it to each Ival
+inline std::vector<Ival> v_apply(Ival (*f)(Ival), std::vector<Ival> v) {
+    std::vector<Ival> result;
     for (size_t i = 0; i < v.size(); i++) {
         result.push_back((*f)(v[i]));
     }
     return result;
 }
 
-// Apply binary operator to a vector of Interval by applying it to each Interval
-inline std::vector<Interval> v_apply(Interval (*f)(Interval, Expr), std::vector<Interval> v, Expr b) {
-    std::vector<Interval> result;
+// Apply binary operator to a vector of Ival by applying it to each Ival
+inline std::vector<Ival> v_apply(Ival (*f)(Ival, Expr), std::vector<Ival> v, Expr b) {
+    std::vector<Ival> result;
     for (size_t i = 0; i < v.size(); i++) {
         result.push_back((*f)(v[i], b));
     }
     return result;
 }
 
-// Apply binary operator to a vector of Interval by applying it to each Interval
-inline std::vector<Interval> v_apply(Interval (*f)(Interval, Interval), std::vector<Interval> u, std::vector<Interval> v) {
-    std::vector<Interval> result;
+// Apply binary operator to a vector of Ival by applying it to each Ival
+inline std::vector<Ival> v_apply(Ival (*f)(Ival, Ival), std::vector<Ival> u, std::vector<Ival> v) {
+    std::vector<Ival> result;
     assert(u.size() == v.size() && "Vectors of intervals of different sizes");
     for (size_t i = 0; i < v.size(); i++) {
         result.push_back((*f)(u[i], v[i]));
@@ -170,30 +170,67 @@ inline std::vector<Interval> v_apply(Interval (*f)(Interval, Interval), std::vec
     return result;
 }
 
-Interval inverseMin(Interval v, Expr k) {
+Ival inverseMin(Ival v, Expr k) {
     // inverse of min on an interval against constant expression k.
     // If v.max >= k then the Min ensures that the upper bound is in
     // the target interval, so the new max is +infinity; otherwise
     // the new max is v.max.
-    return Interval(v.min, simplify(select(v.max >= k, make_infinity(v.max.type(), +1), v.max)));
+    return Ival(v.min, simplify(select(v.max >= k, make_infinity(v.max.type(), +1), v.max)));
 }
 
-Interval inverseMax(Interval v, Expr k) {
+Ival inverseMax(Ival v, Expr k) {
     // inverse of max on an interval against constant expression k.
     // If v.min <= k then the Max ensures that the lower bound is in
     // the target interval, so the new min is -infinity; otherwise
     // the new min is v.min.
-    return Interval(simplify(select(v.min <= k, make_infinity(v.min.type(), -1), v.min)), v.max);
+    return Ival(simplify(select(v.min <= k, make_infinity(v.min.type(), -1), v.min)), v.max);
 }
 
 // end anonymous namespace
 }
 
 class NewIntervalAnalysis : public IRLazyScope<IRInspector> {
-    Interval interval;
+    Ival interval;
     
     using IRLazyScope<IRInspector>::visit;
     
+    Ival bounds_of_type(Type t) {
+        if (t.is_uint()) {
+            if (t.bits <= 31) { // Previously, more than 16 bits was unbounded, but in practice that meant 32
+                return Ival(t.min(), t.max());
+            } else {
+                // Hack: Treat 32 bit unsigned int as unbounded.
+                // Previously, min was undef, but zero is sensible.
+                return Ival(t.min(), new Infinity(t, 1));
+            }
+        } else if (t.is_int()) {
+            if (t.bits <= 31) { // Previously, more than 16 bbits was unbounded, but in practice that meant 32
+                return Ival(t.min(), t.max());
+            } else {
+                // Hack: Treat 32 bit signed integer as unbounded.
+                return Ival(new Infinity(t, -1), new Infinity(t, 1));
+            }
+            
+        } else {
+            // Floating point types are treated as unbounded for analysis
+            return Ival(new Infinity(t, -1), new Infinity(t, 1));
+        }        
+    }
+
+    virtual void visit(const IntImm *op) {
+        interval = Ival(op, op);
+    }
+    
+    virtual void visit(const FloatImm *op) {
+        interval = Ival(op, op);
+    }
+
+    virtual void visit(const Cast *op) {
+        // Assume no overflow
+        Ival value = interval_analysis(op->value);
+        interval = Ival(new Cast(op->type, value.min), new Cast(op->type, value.max));
+    }
+
     virtual void visit(const Variable *op) {
         // Encountered a variable.  Try interval analysis on it.
         int found = find_variable(op->name);
@@ -205,13 +242,13 @@ class NewIntervalAnalysis : public IRLazyScope<IRInspector> {
             const LetStmt *def_letstmt = def->node().as<LetStmt>();
             if (def_for) {
                 // Defined as a For loop.  The interval is easily determined.
-                interval = Interval(def_for->min, def_for->min + def_for->extent - 1);
+                interval = Ival(def_for->min, def_for->min + def_for->extent - 1);
             } else if (def_let) {
                 interval = interval_analysis(def_let->value);
             } else if (def_letstmt) {
                 interval = interval_analysis(def_letstmt->value);
             } else {
-                interval = Interval(new Infinity(-1), new Infinity(1));
+                interval = Ival(new Infinity(-1), new Infinity(1));
             }
             ret(found);
         }
@@ -233,6 +270,10 @@ class NewIntervalAnalysis : public IRLazyScope<IRInspector> {
         interval = interval_analysis(op->a) / interval_analysis(op->b);
     }
     
+    virtual void visit(const Mod *op) {
+        interval = interval_analysis(op->a) % interval_analysis(op->b);
+    }
+    
     virtual void visit(const Min *op) {
         interval = min(interval_analysis(op->a), interval_analysis(op->b));
     }
@@ -241,8 +282,162 @@ class NewIntervalAnalysis : public IRLazyScope<IRInspector> {
         interval = max(interval_analysis(op->a), interval_analysis(op->b));
     }
     
+    virtual void visit(const Clamp *op) {
+        // Expression a is clamped to (op->min, op->max)
+        // The clamping interval is the union of the intervals of op->min and op->max.
+        // The resulting interval is no larger than the clamping interval and also no larger
+        // than the interval of expression a.
+        interval = intersection(interval_analysis(op->a), 
+                                ival_union(interval_analysis(op->min), interval_analysis(op->max)));
+    }
+    
+    virtual void visit(const EQ *op) {
+        Ival a = interval_analysis(op->a);
+        Ival b = interval_analysis(op->b);
+        if (proved(a.max < b.min) || proved(a.min > b.max)) {
+            // The intervals do not overlap. Equality is disproved.
+            interval = Ival(const_false(op->type.width), const_false(op->type.width));
+        } else if (equal(a.min, a.max) && equal(a.min, b.min) && equal(a.min, b.max)) {
+            // Both intervals are unique constants and equal.
+            interval = Ival(const_true(op->type.width), const_true(op->type.width));
+        } else {
+            interval = Ival(const_false(op->type.width), const_true(op->type.width));
+        }
+    }
+    
+    virtual void visit(const NE *op) {
+        interval = interval_analysis(! (op->a == op->b));
+    }
+    
+    virtual void visit(const LT *op) {
+        Ival a = interval_analysis(op->a);
+        Ival b = interval_analysis(op->b);
+        if (proved(a.max < b.min)) {
+            // a is always less than b
+            interval = Ival(const_true(op->type.width), const_true(op->type.width));
+        } else if (proved(a.min >= b.max)) {
+            // a is never less than b.
+            interval = Ival(const_false(op->type.width), const_false(op->type.width));
+        } else {
+            interval = Ival(const_false(op->type.width), const_true(op->type.width));
+        }
+    }
+    
+    virtual void visit(const LE *op) {
+        Ival a = interval_analysis(op->a);
+        Ival b = interval_analysis(op->b);
+        if (proved(a.max <= b.min)) {
+            // a is always <= b
+            interval = Ival(const_true(op->type.width), const_true(op->type.width));
+        } else if (proved(a.min > b.max)) {
+            // a is never <= b.
+            interval = Ival(const_false(op->type.width), const_false(op->type.width));
+        } else {
+            interval = Ival(const_false(op->type.width), const_true(op->type.width));
+        }
+    }
+    
+    virtual void visit(const GT *op) {
+        interval = interval_analysis(op->b < op->a);
+    }
+    
+    virtual void visit(const GE *op) {
+        interval = interval_analysis(op->b <= op->a);
+    }
+    
+    virtual void visit(const And *op) {
+        Ival a = interval_analysis(op->a);
+        Ival b = interval_analysis(op->b);
+        if (is_zero(a.max)) {
+            // If one is proved false, then it is the result
+            interval = a;
+        } else if (is_zero(b.max)) {
+            interval = b;
+        } else if (is_one(a.min)) {
+            // If one is proved true, then the other is the result.
+            interval = b;
+        } else if (is_one(b.min)) {
+            interval = a;
+        } else {
+            // Neither is proved true nor proved false.
+            // The result is uncertain.
+            interval = Ival(const_false(op->type.width), const_true(op->type.width));
+        }
+    }
+    
+    virtual void visit(const Or *op) {
+        Ival a = interval_analysis(op->a);
+        Ival b = interval_analysis(op->b);
+        if (is_one(a.min)) {
+            // If one is proved true, then it is the result
+            interval = a;
+        } else if (is_one(b.min)) {
+            interval = b;
+        } else if (is_zero(a.max)) {
+            // If one is proved false, then the other is the result.
+            interval = b;
+        } else if (is_zero(b.max)) {
+            interval = a;
+        } else {
+            // Neither is proved true nor proved false.
+            // The result is uncertain.
+            interval = Ival(const_false(op->type.width), const_true(op->type.width));
+        }
+    }
+    
+    virtual void visit(const Not *op) {
+        Ival a = interval_analysis(op->a);
+        if (is_one(a.min)) {
+            // If a is proved true, then the result is false
+            interval = Ival(const_false(op->type.width), const_false(op->type.width));
+        } else if (is_zero(a.max)) {
+            // If a is proved false, then the result is true.
+            interval = Ival(const_true(op->type.width), const_true(op->type.width));
+        } else {
+            // Neither proved true nor proved false.
+            // The result is uncertain.
+            interval = Ival(const_false(op->type.width), const_true(op->type.width));
+        }
+    }
+    
+    virtual void visit(const Select *op) {
+        Ival condition = interval_analysis(op->condition);
+        if (is_one(condition.min)) {
+            // If condition is proved true, then the result is always the true_value
+            interval = interval_analysis(op->true_value);
+        } else if (is_zero(condition.max)) {
+            // If condition is proved false, then the result is always the false_value
+            interval = interval_analysis(op->false_value);
+        } else {
+            // Neither proved true nor proved false.
+            // The result can be either expressions.
+            interval = ival_union(interval_analysis(op->true_value),
+                                  interval_analysis(op->false_value));
+        }
+    }
+    
+    virtual void visit(const Load *op) {
+        // Here we could do better than the bounds of the type if we know what computed
+        // the data that we are loading - i.e. if it comes from another function.
+        interval = bounds_of_type(op->type);
+    }
+
+    virtual void visit(const Ramp *op) {
+        Ival base = interval_analysis(op->base);
+        Ival stride = interval_analysis(op->stride);
+        
+        // Here we return a ramp representing the interval of values in each position of the
+        // interpreted Ramp node.
+        interval = Ival(new Ramp(base.min, stride.min, op->width), new Ramp(base.max, stride.max, op->width));
+    }
+
+    virtual void visit(const Broadcast *op) {
+        Ival value = interval_analysis(op->value);
+        interval = Ival(new Broadcast(value.min, op->width), new Broadcast(value.max, op->width));
+    }
+
 public:
-    Interval interval_analysis(Expr e) { 
+    Ival interval_analysis(Expr e) { 
         // Insert caching here once it is working correctly.
         e.accept(this); return interval; }
 };
@@ -672,59 +867,59 @@ void checkSolver(Expr a, Expr b) {
 void solver_test() {
     Var x("x"), y("y"), c("c"), d("d");
     
-    checkSolver(solve(x, Interval(0,10)), solve(x, Interval(0,10)));
-    checkSolver(solve(x + 4, Interval(0,10)), solve(x, Interval(-4,6)) + 4);
-    checkSolver(solve(4 + x, Interval(0,10)), solve(x, Interval(-4,6)) + 4);
-    checkSolver(solve(x + 4 + d, Interval(0,10)), solve(x, Interval(-4-d, 6-d)) + d + 4);
-    checkSolver(solve(x - d, Interval(0,10)), solve(x, Interval(d, d+10)) - d);
-    checkSolver(solve(x - (4 - d), Interval(0,10)), solve(x, Interval(4-d, 14-d)) + d + -4);
-    checkSolver(solve(x - 4 - d, Interval(0,10)), solve(x, Interval(d+4, d+14)) - d + -4);
+    checkSolver(solve(x, Ival(0,10)), solve(x, Ival(0,10)));
+    checkSolver(solve(x + 4, Ival(0,10)), solve(x, Ival(-4,6)) + 4);
+    checkSolver(solve(4 + x, Ival(0,10)), solve(x, Ival(-4,6)) + 4);
+    checkSolver(solve(x + 4 + d, Ival(0,10)), solve(x, Ival(-4-d, 6-d)) + d + 4);
+    checkSolver(solve(x - d, Ival(0,10)), solve(x, Ival(d, d+10)) - d);
+    checkSolver(solve(x - (4 - d), Ival(0,10)), solve(x, Ival(4-d, 14-d)) + d + -4);
+    checkSolver(solve(x - 4 - d, Ival(0,10)), solve(x, Ival(d+4, d+14)) - d + -4);
     // Solve 4-x on the interval (0,10).
     // 0 <= 4-x <= 10.
     // -4 <= -x <= 6.  solve(-x) + 4
     // 4 >= x >= -6.   -solve(x) + 4  i.e.  4 - solve(x)
-    checkSolver(solve(4 - x, Interval(0,10)), 4 - solve(x, Interval(-6,4)));
-    checkSolver(solve(4 - d - x, Interval(0,10)), 4 - (solve(x, Interval(-6 - d, 4 - d)) + d));
-    checkSolver(solve(4 - d - x, Interval(0,10)) + 1, 5 - (solve(x, Interval(-6 - d, 4 - d)) + d));
+    checkSolver(solve(4 - x, Ival(0,10)), 4 - solve(x, Ival(-6,4)));
+    checkSolver(solve(4 - d - x, Ival(0,10)), 4 - (solve(x, Ival(-6 - d, 4 - d)) + d));
+    checkSolver(solve(4 - d - x, Ival(0,10)) + 1, 5 - (solve(x, Ival(-6 - d, 4 - d)) + d));
     // Solve c - (x + d) on (0,10).
     // 0 <= c - (x + d) <= 10.
     // -c <= -(x+d) <= 10-c.
     // c >= x+d >= c-10.
     // c-d >= d >= c-d-10.
-    checkSolver(solve(c - (x + d), Interval(0,10)), c - (solve(x, Interval(c-d+-10, c-d)) + d));
+    checkSolver(solve(c - (x + d), Ival(0,10)), c - (solve(x, Ival(c-d+-10, c-d)) + d));
     
-    checkSolver(solve(x * 2, Interval(0,10)), solve(x, Interval(0,5)) * 2);
-    checkSolver(solve(x * 3, Interval(1,17)), solve(x, Interval(1,5)) * 3);
-    checkSolver(solve(x * -3, Interval(1,17)), solve(x, Interval(-5,-1)) * -3);
-    checkSolver(solve((x + 3) * 2, Interval(0,10)), solve(x, Interval(-3, 2)) * 2 + 6);
+    checkSolver(solve(x * 2, Ival(0,10)), solve(x, Ival(0,5)) * 2);
+    checkSolver(solve(x * 3, Ival(1,17)), solve(x, Ival(1,5)) * 3);
+    checkSolver(solve(x * -3, Ival(1,17)), solve(x, Ival(-5,-1)) * -3);
+    checkSolver(solve((x + 3) * 2, Ival(0,10)), solve(x, Ival(-3, 2)) * 2 + 6);
     // Solve 0 <= (x + 4) * 3 <= 10
     // 0 <= (x + 4) <= 3
     // -4 <= x <= -1
-    checkSolver(solve((x + 4) * 3, Interval(0,10)), solve(x, Interval(-4, -1)) * 3 + 12);
+    checkSolver(solve((x + 4) * 3, Ival(0,10)), solve(x, Ival(-4, -1)) * 3 + 12);
     // Solve 0 <= (x + c) * -3 <= 10
     // 0 >= (x + c) >= -3
     // -c >= x >= -3 - c
-    checkSolver(solve((x + c) * -3, Interval(0,10)), (solve(x, Interval(-3 - c, 0 - c)) + c) * -3);
+    checkSolver(solve((x + c) * -3, Ival(0,10)), (solve(x, Ival(-3 - c, 0 - c)) + c) * -3);
     
-    checkSolver(solve(x / 3, Interval(0,10)), solve(x, Interval(0, 32)) / 3);
-    checkSolver(solve(x / -3, Interval(0,10)), solve(x, Interval(-30,2)) / -3);
+    checkSolver(solve(x / 3, Ival(0,10)), solve(x, Ival(0, 32)) / 3);
+    checkSolver(solve(x / -3, Ival(0,10)), solve(x, Ival(-30,2)) / -3);
     // Solve 1 <= (x + c) / 3 <= 17
     // 3 <= (x + c) <= 53
     // 3 - c <= x <= 53 - c
-    checkSolver(solve((x + c) / 3, Interval(1,17)), (solve(x, Interval(3 - c, 53 - c)) + c) / 3);
-    checkSolver(solve((x * d) / d, Interval(1,17)), solve(x, Interval(1,17)));
-    checkSolver(solve((x * d + d) / d, Interval(1,17)), solve(x, Interval(0,16)) + 1);
-    checkSolver(solve((x * d - d) / d, Interval(1,17)), solve(x, Interval(2,18)) + -1);
+    checkSolver(solve((x + c) / 3, Ival(1,17)), (solve(x, Ival(3 - c, 53 - c)) + c) / 3);
+    checkSolver(solve((x * d) / d, Ival(1,17)), solve(x, Ival(1,17)));
+    checkSolver(solve((x * d + d) / d, Ival(1,17)), solve(x, Ival(0,16)) + 1);
+    checkSolver(solve((x * d - d) / d, Ival(1,17)), solve(x, Ival(2,18)) + -1);
     
-    checkSolver(solve(x + 4, Interval(0,new Infinity(Int(32), +1))), solve(x, Interval(-4,new Infinity(Int(32), +1))) + 4);
-    checkSolver(solve(x + 4, Interval(new Infinity(Int(32), -1),10)), solve(x, Interval(new Infinity(Int(32), -1),6)) + 4);
+    checkSolver(solve(x + 4, Ival(0,new Infinity(Int(32), +1))), solve(x, Ival(-4,new Infinity(Int(32), +1))) + 4);
+    checkSolver(solve(x + 4, Ival(new Infinity(Int(32), -1),10)), solve(x, Ival(new Infinity(Int(32), -1),6)) + 4);
     
     // A few complex expressions
-    checkSolver(solve(x + c + 2 * y + d, Interval(0,10)), solve(x + y * 2, Interval(0 - d - c, 10 - d - c)) + c + d);
+    checkSolver(solve(x + c + 2 * y + d, Ival(0,10)), solve(x + y * 2, Ival(0 - d - c, 10 - d - c)) + c + d);
     // Solve 0 <= x + 10 + x + 15 <= 10
     // -25 <= x * 2 <= -15
     // -12 <= x <= -8
-    checkSolver(solve(x + 10 + x + 15, Interval(0,10)), solve(x, Interval(-12, -8)) * 2 + 25);
+    checkSolver(solve(x + 10 + x + 15, Ival(0,10)), solve(x, Ival(-12, -8)) * 2 + 25);
     
     checkSolver(x * x, x * x);
     checkSolver(x * d, x * d);

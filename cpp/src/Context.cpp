@@ -46,6 +46,8 @@ void ContextManager::clear() {
     set_parent(1, 0);
     defining_map.set(1, current_definition);
     user_count = 0;
+    variable_map.clear();
+    target_map.clear();
 }
 
 void ContextManager::add_user() {
@@ -57,11 +59,46 @@ void ContextManager::remove_user() {
     assert(user_count >= 0 && "Negative user count for ContextManager");
     if (user_count == 0) {
         //std::cout << "Clear context manager\n";
-        if (child_context.context_count() > 1000000) {
+        if (child_context.context_count() > 20) {
             clear();
         }
     }
 }
+
+int ContextManager::lookup(ContextInternal::BindingMap &map, std::string name, int search_context) {
+    int context = search_context;
+    while (context != 0) {
+        int result = map.lookup(context, name);
+        if (result >= 0) {
+            // A result value of 0 means unbound.  It can be cached in the map for efficiency.
+            if (context != search_context) {
+                // The result was found in another context.  Add it to the search context.
+                map.bind(search_context, name, result);
+            }
+            return result;
+        }
+        context = parent(context);
+    }
+    // The variable was not bound. result is 0.
+    // Add the unbound result to the map in the search context.
+    map.bind(search_context, name, 0); 
+    return 0;
+}
+
+bool ContextManager::is_target(std::string name, int search_context) {
+    // Determine whether named variable is actually a variable that is a target in
+    // the specified context.
+    // Firstly, is the variable a target in the search context?
+    // If not, then it is not a target.
+    int found = lookup(target_map, name, search_context);
+    if (! found) return false;
+    // It is a target in the search context, but it could have been redefined.
+    int current = lookup(target_map, name, current_context());
+    // If the current context has a different target mapping then it has been redefined.
+    if (current != found) return false;
+    return true;
+}
+
 
 template<typename Node>
 inline void ContextManager::push_node(Node node) { 
@@ -203,6 +240,21 @@ const DefiningNode *DefiningMap::lookup(int _context) const {
         return NULL;
     } else {
         return &(found->second);
+    }
+}
+
+bool operator< (const BindingKey &a, const BindingKey &b) {
+    if (a.context != b.context) return a.context < b.context;
+    else return a.name < b.name;
+}
+
+int BindingMap::lookup(int context, std::string name) const {
+    typename BindingMap::const_iterator found = BindingMap::find(BindingKey(context, name));
+    if (found == end()) {
+        // Return -1 for not found, because 0 means not bound and that can be stored in the map.
+        return -1;
+    } else {
+        return found->second;
     }
 }
 

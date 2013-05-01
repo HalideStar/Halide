@@ -78,5 +78,15 @@ void check_same_type(std::string opname, Expr a, Expr b) {
     assert(0 && "Mismatched types");
 }
 
+// Partition information is defined if auto_partition has been set or if
+// a partition interval has been specified.  Since the interval is an Ival,
+// it should not contain undefined() expressions, but Infinity means undefined
+// in this case.
+const bool PartitionInfo::defined() const { 
+    return auto_partition != Undefined || 
+           (interval.min.defined() && interval.max.defined() && 
+            ! interval.min.as<Infinity>() && ! interval.max.as<Infinity>()); 
+}
+
 }
 }

@@ -18,10 +18,10 @@ class IRLazyScopeBase;
 
 namespace IRLazyScopeInternal {
 
-// A class that inspects a node and decides whether it needs to have a new context,
-// and creates the required context(s). It leaves the context set inside the new
-// context applied to the current node, even though it may also create a new context
-// for a child node.
+/** A class that inspects a node and decides whether it needs to have a new context,
+ * then creates the required context(s). It leaves the current context inside the new
+ * context applied to the current node, even though it may also create a new context
+ * for a child node. */
 class MakeContext : public IRInspector {
     // process methods are not required.
     
@@ -45,32 +45,6 @@ public:
     // Set the lazy_scope pointer so that this MakeContext class
     // can access the lazy_scope to bind variables etc.
     IRLazyScopeBase *lazy_scope;
-};
-
-/** A little class for the keys to the bindings map. The context is the context in which the variable
- * is bound to the new value.  The name is, of course, the variable name string. */
-class BindingKey {
-public:
-    int context; // Bound context unique ID
-    std::string name; // Variable name
-    BindingKey(int _context, std::string _name) : context(_context), name(_name) {}
-};
-
-bool operator< (const BindingKey &a, const BindingKey &b);
-
-// The values of the binding maps are simply the context associated with the defining node. 
-
-/** A class for the bindings map. This map translates context ID and variable name string
- * into context ID of the defining node. You can then go to that context and gain access to the
- * defining node. */
-class BindingMap : public std::map<BindingKey, int> {
-public:
-    // Bind a name to a defining context.  The binding may already exist, in which case the rebinding is redundant.
-    // There is no check whether the binding conflicts with an existing binding.
-    void bind(int context, std::string name, int defining_context) { (*this)[BindingKey(context, name)] = defining_context; }
-    
-    // Look up a binding and return the defining context, or 0 if not defined in the specified context.
-    int lookup(int context, std::string name) const;
 };
 
 /** A little struct for use by nested call and ret, and by nested enter and leave. */
@@ -100,7 +74,10 @@ struct CallEnter {
 class IRLazyScopeBase {
     // Allow MakeContext access to private members.
     friend class IRLazyScopeInternal::MakeContext;
-    
+
+    // Local class object used to detect nodes requiring new context(s).
+    IRLazyScopeInternal::MakeContext make_context;
+
     // Simplify coding and simplify any change of the base class.
     typedef IRProcess Super;
 
@@ -110,29 +87,6 @@ class IRLazyScopeBase {
     
     // Context call stack used by call and ret methods.
     std::vector<IRLazyScopeInternal::CallEnter> call_stack;
-    
-    // Bindings of variables and targets are shared among all class instances that derive
-    // from IRLazyScope.  This is not multi-thread safe.
-    static IRLazyScopeInternal::BindingMap variable_map; // Record the bindings of variables.
-    static IRLazyScopeInternal::BindingMap target_map; // Record the TargetVar nodes encountered.
-    
-    /* Bind a variable by specifying the name and defining context.
-     * The binding is recorded in the context in which the variable first becomes bound.
-     * Note that if the same defining node appears at multiple points in the tree then it
-     * must have the same children; and if it appears in the same context then it must 
-     * have the same semantics; only then will it have the same bound context
-     * for the variable.  For this reason, there is no need to ever remove bindings. */
-    inline void bind(std::string name, int defining_context) { variable_map.bind(context_mgr.current_context(), name, defining_context); }
-    
-    /* Record a target by specifying the name and defining context. */
-    inline void target(std::string name, int defining_context) { target_map.bind(context_mgr.current_context(), name, defining_context); }
-    
-    // Method to look for a variable in the current context in one of the maps.
-    // The map is not a const argument because it can be updated for efficiency.
-    int lookup(IRLazyScopeInternal::BindingMap &map, std::string name, int context);
-
-    // Local class object used to detect nodes requiring new context(s).
-    IRLazyScopeInternal::MakeContext make_context;
 
 protected:
     // Methods to enter and leave context associated with a node;
@@ -161,13 +115,13 @@ public:
 
     /** Search for a bound variable name, or a targetvar, in the current context or above. Returns the
      * context of the defining node. */
-    int find_variable(std::string name) { return lookup(variable_map, name, current_context()); }
-    int find_target(std::string name) { return lookup(target_map, name, current_context()); }
+    int find_variable(std::string name) { return context_mgr.find_variable(name); }
+    int find_target(std::string name) { return context_mgr.find_target(name); }
     
     /** Determine whether a given variable in the current context is one of the targets
      * in a specified search context. If the variable has been redefined below the search context,
      * then it is not a target. */
-    bool is_target(std::string name, int search_context);
+    bool is_target(std::string name, int search_context) { return context_mgr.is_target(name, search_context); }
     
     /** Call a context: Go to the context and return the defining node.
      * A stack is maintained locally. */

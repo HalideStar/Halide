@@ -123,6 +123,32 @@ public:
     inline void set(int _context, DefiningNode defining) { (*this)[_context] = defining; }
 };
 
+/** A little class for the keys to the bindings map. The context is the context in which the variable
+ * is bound to the new value.  The name is, of course, the variable name string. */
+class BindingKey {
+public:
+    int context; // Bound context unique ID
+    std::string name; // Variable name
+    BindingKey(int _context, std::string _name) : context(_context), name(_name) {}
+};
+
+bool operator< (const BindingKey &a, const BindingKey &b);
+
+// The values of the binding maps are simply the context associated with the defining node. 
+
+/** A class for the bindings map. This map translates context ID and variable name string
+ * into context ID of the defining node. You can then go to that context and gain access to the
+ * defining node. */
+class BindingMap : public std::map<BindingKey, int> {
+public:
+    // Bind a name to a defining context.  The binding may already exist, in which case the rebinding is redundant.
+    // There is no check whether the binding conflicts with an existing binding.
+    void bind(int context, std::string name, int defining_context) { (*this)[BindingKey(context, name)] = defining_context; }
+    
+    // Look up a binding and return the defining context, or 0 if not defined in the specified context.
+    int lookup(int context, std::string name) const;
+};
+
 // end namespace ContextInternal
 }
 
@@ -168,6 +194,10 @@ class ContextManager {
     // Record of the parent of each context.
     std::vector<int> parent_vector;
     
+    // Bindings of variables and targets.
+    ContextInternal::BindingMap variable_map; // Record the bindings of variables.
+    ContextInternal::BindingMap target_map; // Record the TargetVar nodes encountered.
+
     // Private methods.
     // ----------------
     
@@ -185,6 +215,10 @@ class ContextManager {
      * the variable so when you look up that context you can find the variable itself. */
     inline const DefiningNode *defining_node(int context) const { return defining_map.lookup(context); }
     
+    /** Method to look for a variable in the current context in one of the maps.
+     * The map is not a const argument because it can be updated for efficiency. */
+    int lookup(ContextInternal::BindingMap &map, std::string name, int context);
+
 public:
     // context 0 is invalid.  context 1 is the initial context.
     // See also ChildContext class definition.
@@ -230,6 +264,28 @@ public:
     /** Return a node key in the current context.  Use this to cache information
      * relevant to the node in the current context. */
     inline NodeKey node_key(IRHandle node) const { return NodeKey(current_context(), node); }
+    
+    /** Bind a variable by specifying the name and defining context.
+     * The binding should be recorded in the context in which the variable first becomes bound.
+     * Note that if the same defining node appears at multiple points in the tree then it
+     * must have the same children; and if it appears in the same context then it must 
+     * have the same semantics; only then will it have the same bound context
+     * for the variable.  For this reason, there is no need to ever remove bindings. */
+    inline void bind(std::string name, int defining_context) { variable_map.bind(current_context(), name, defining_context); }
+    
+    /** Record a target by specifying the name and defining context. */
+    inline void target(std::string name, int defining_context) { target_map.bind(current_context(), name, defining_context); }
+
+    /** Search for a bound variable name, or a targetvar, in the current context or above. Returns the
+     * context of the defining node. */
+    int find_variable(std::string name) { return lookup(variable_map, name, current_context()); }
+    int find_target(std::string name) { return lookup(target_map, name, current_context()); }
+    
+    /** Determine whether a given variable in the current context is one of the targets
+     * in a specified search context. If the variable has been redefined below the search context,
+     * then it is not a target. The search context here would be the internal context of a specific 
+     * TargetVar or StmtTargetVar that we are solving. */
+    bool is_target(std::string name, int search_context);
 };
 
 }

@@ -571,7 +571,7 @@ struct Pipeline : public StmtNode<Pipeline> {
 }
 }
 
-#include "Interval.h"
+#include "Ival.h"
 
 namespace Halide {
 namespace Internal {
@@ -580,9 +580,9 @@ namespace Internal {
  * It is stored in the Dim portion of the Schedule, and later into the For loops. */
     struct PartitionInfo {
         /** One option is for the user to partition the main loop manually.
-         * Specify an Interval for the loop.  The bounds can be expressions.
+         * Specify an Ival for the loop.  The bounds can be expressions.
          * If not used, the expressions will be undefined. */
-        Interval interval;
+        Ival interval;
         /** Boolean options translate to tristate variables internally because they can
          * be undefined. */
         enum TriState { Undefined, No, Yes };
@@ -597,7 +597,7 @@ namespace Internal {
             auto_partition = do_partition ? Yes : No;
             status = Ordinary;
         }
-        PartitionInfo(Interval _interval) { 
+        PartitionInfo(Ival _interval) { 
             interval = _interval; 
             auto_partition = Undefined; 
             status = Ordinary;
@@ -612,7 +612,7 @@ namespace Internal {
             status = Ordinary;
         }
         
-        const bool defined() const { return auto_partition != Undefined || (interval.min.defined() && interval.max.defined()); }
+        const bool defined() const;
     };
         
 /** A for loop. Execute the 'body' statement for all values of the
@@ -873,19 +873,19 @@ struct Variable : public ExprNode<Variable> {
 };
 
 /** Special nodes that are for use by the solver.
- * Solve represents something to be solved, or a Solve.
+ * Solve represents something to be solved, or a solution.
  * TargetVar represents a target variable to be solved for in the enclosed scope.
  */
 struct Solve : public ExprNode<Solve> {
     Expr body;
-    std::vector<Interval> v;
+    std::vector<Ival> v;
     
-    // Solve over a vector of Interval.
-    Solve(Expr _e, std::vector<Interval> _v) : ExprNode<Solve>(_e.type()), body(_e), v(_v) {}
-    // Solve over one Interval
-    Solve(Expr _e, Interval _i) : ExprNode<Solve>(_e.type()), body(_e), v(vec(_i)) {}
-    // Solve over two Intervals
-    Solve(Expr _e, Interval _i, Interval _j) : ExprNode<Solve>(_e.type()), body(_e), v(vec(_i, _j)) {}
+    // Solve over a vector of Ival.
+    Solve(Expr _e, std::vector<Ival> _v) : ExprNode<Solve>(_e.type()), body(_e), v(_v) {}
+    // Solve over one Ival
+    Solve(Expr _e, Ival _i) : ExprNode<Solve>(_e.type()), body(_e), v(vec(_i)) {}
+    // Solve over two Ival
+    Solve(Expr _e, Ival _i, Ival _j) : ExprNode<Solve>(_e.type()), body(_e), v(vec(_i, _j)) {}
 };
 
 struct TargetVar : public ExprNode<TargetVar> {
@@ -920,21 +920,6 @@ struct Infinity : public ExprNode<Infinity> {
     // Convenience constructor when you dont know what type to use.  Be careful.
     Infinity(int _c) : ExprNode<Infinity>(Int(32)), count(_c) {}
 };
-
-#if 0
-/** ExprInterval node is useful for solver and interval analysis.  It represents in interval
- * from min to max inclusive of both.  The representation is a Halide expression 
- * as an alternative to representing an interval as a separate data object.
- * Similar to Infinity, Interval cannot be code generated because it cannot be evaluated
- * at run time. */
-struct ExprInterval : public ExprNode<Interval> {
-    Expr min, max;
-    
-    Interval(Expr _a, Expr _b) : ExprNode<Interval>(_min.type), min(_a), max(_b) {
-        check_same_type("Interval", min, max);
-    }
-};
-#endif
 
 }
 }

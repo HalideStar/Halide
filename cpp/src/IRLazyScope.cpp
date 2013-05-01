@@ -16,13 +16,9 @@ namespace Halide {
 namespace Internal {
 
 ContextManager IRLazyScopeBase::context_mgr;
-IRLazyScopeInternal::BindingMap IRLazyScopeBase::variable_map;
-IRLazyScopeInternal::BindingMap IRLazyScopeBase::target_map;
 
 void IRLazyScopeBase::clear() {
     context_mgr.clear();
-    variable_map.clear();
-    target_map.clear();
     call_stack.clear();
 }
 
@@ -87,41 +83,8 @@ void IRLazyScopeBase::ret(int context) {
     return;
 }
 
-int IRLazyScopeBase::lookup(IRLazyScopeInternal::BindingMap &map, std::string name, int search_context) {
-    int context = search_context;
-    while (context != 0) {
-        int result = map.lookup(context, name);
-        if (result >= 0) {
-            // A result value of 0 means unbound.  It can be cached in the map for efficiency.
-            if (context != search_context) {
-                // The result was found in another context.  Add it to the search context.
-                map.bind(search_context, name, result);
-            }
-            return result;
-        }
-        context = context_mgr.parent(context);
-    }
-    // The variable was not bound. result is 0.
-    // Add the unbound result to the map in the search context.
-    map.bind(search_context, name, 0); 
-    return 0;
-}
-
-bool IRLazyScopeBase::is_target(std::string name, int search_context) {
-    // Determine whether named variable is actually a variable that is a target in
-    // the specified context.
-    // Firstly, is the variable a target in the search context?
-    // If not, then it is not a target.
-    int found = lookup(target_map, name, search_context);
-    if (! found) return false;
-    // It is a target in the search context, but it could have been redefined.
-    int current = lookup(target_map, name, current_context());
-    // If the current context has a different target mapping then it has been redefined.
-    if (current != found) return false;
-    return true;
-}
-
 namespace IRLazyScopeInternal {
+
 // Let, LetStmt and For nodes have one child
 // where the bound variable has its bound value, and one or more other children where
 // the bound variable is to be interpreted in the parent context.  For this reason,
@@ -138,8 +101,8 @@ void MakeContext::visit(const Let *op) {
         context_mgr.push(op->body);
 #   endif
     //std::cout << "[" << context_mgr.current_context() << "] Bind " << op->name << " to " << defining_context << "\n";
-    lazy_scope->bind(op->name, defining_context);
-    lazy_scope->target(op->name, 0);
+    context_mgr.bind(op->name, defining_context);
+    context_mgr.target(op->name, 0);
 #   if BODY_CONTEXT
         context_mgr.pop(op->body);
 #   endif
@@ -153,8 +116,8 @@ void MakeContext::visit(const LetStmt *op) {
         context_mgr.push(op->body);
 #   endif
     //std::cout << "[" << context_mgr.current_context() << "] Bind " << op->name << " to " << defining_context << "\n";
-    lazy_scope->bind(op->name, defining_context);
-    lazy_scope->target(op->name, 0);
+    context_mgr.bind(op->name, defining_context);
+    context_mgr.target(op->name, 0);
 #   if BODY_CONTEXT
         context_mgr.pop(op->body);
 #   endif
@@ -168,8 +131,8 @@ void MakeContext::visit(const For *op) {
         context_mgr.push(op->body);
 #   endif
     //std::cout << "[" << context_mgr.current_context() << "] Bind " << op->name << " to " << defining_context << "\n";
-    lazy_scope->bind(op->name, defining_context);
-    lazy_scope->target(op->name, 0); // Mark this as not being a target.
+    context_mgr.bind(op->name, defining_context);
+    context_mgr.target(op->name, 0); // Mark this as not being a target.
 #   if BODY_CONTEXT
         context_mgr.pop(op->body);
 #   endif
@@ -183,29 +146,14 @@ void MakeContext::visit(const For *op) {
 // node itself.
 void MakeContext::visit(const TargetVar *op) {
     context_mgr.push(op);
-    lazy_scope->target(op->name, context_mgr.current_context());
+    context_mgr.target(op->name, context_mgr.current_context());
 }
 
 void MakeContext::visit(const StmtTargetVar *op) {
     context_mgr.push(op);
-    lazy_scope->target(op->name, context_mgr.current_context());
+    context_mgr.target(op->name, context_mgr.current_context());
 }
 
-
-bool operator< (const BindingKey &a, const BindingKey &b) {
-    if (a.context != b.context) return a.context < b.context;
-    else return a.name < b.name;
-}
-
-int BindingMap::lookup(int context, std::string name) const {
-    typename BindingMap::const_iterator found = BindingMap::find(BindingKey(context, name));
-    if (found == end()) {
-        // Return -1 for not found, because 0 means not bound and that can be stored in the map.
-        return -1;
-    } else {
-        return found->second;
-    }
-}
 
 
 } // end namespace IRLazyScopeInternal
@@ -276,6 +224,8 @@ void lazy_scope_test() {
     std::cout << "Commence lazy scope test\n";
     walk.process(pipeline);
     std::cout << "Lazy scope test completed\n";
+    
+    std::cout << "Size of LazyScope is " << sizeof(IRLazyScope<IRProcess>) << "\n";
     
     x.accept(&walk);
 }
