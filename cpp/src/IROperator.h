@@ -67,10 +67,10 @@ int EXPORT int_cast_constant(Type t, int val);
 Expr EXPORT make_const(Type t, int val);
 
 /** Construct an infinity of the given type */
-Expr make_infinity(Type t, int count); //LH
+Expr EXPORT make_infinity(Type t, int count); //LH
 
 /** Fetch the value of an integer constant, if it is an integer constant. */
-bool get_int_const(Expr e, int &ival);
+bool EXPORT get_int_const(Expr e, int &ival);//LH
 
 /** Construct a boolean constant from a C++ boolean value.
  * May also be a vector if width is given.
@@ -80,7 +80,7 @@ bool get_int_const(Expr e, int &ival);
  * is that C++ does not have a real bool type - it is in fact
  * close enough to char that C++ does not know how to distinguish them.
  * make_bool is the explicit coercion. */
-Expr make_bool(bool val, int width = 1);
+Expr EXPORT make_bool(bool val, int width = 1); //LH
 
 /** Construct the representation of zero in the given type */
 Expr EXPORT make_zero(Type t);

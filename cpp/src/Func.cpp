@@ -716,7 +716,10 @@ void FuncRefVar::operator/=(Expr e) {
 }
 
 FuncRefVar::operator Expr() const {
-    assert(func.value().defined() && "Can't call function with undefined value");
+    if (! func.value().defined()) { //LH
+        std::cerr << "Attempt to call undefined function " << func.name() << "\n";
+        assert(func.value().defined() && "Can't call function with undefined value");
+    }
     vector<Expr> expr_args(args.size());
     for (size_t i = 0; i < expr_args.size(); i++) {
         expr_args[i] = Var(args[i]);

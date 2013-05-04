@@ -210,7 +210,7 @@ BorderFunc tile(Expr t1, Expr t2);
 BorderFunc tile(Expr t1, Expr t2, Expr t3);
 BorderFunc tile(Expr t1, Expr t2, Expr t3, Expr t4);
 
-}
+} // end namespace Border
 
 // Make BorderFunc visible in the Halide namespace.
 using Border::BorderFunc;
@@ -218,5 +218,6 @@ using Border::BorderFunc;
 namespace Internal{
 void border_test();
 }
-}
+
+} // end namespace Halide
 #endif

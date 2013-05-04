@@ -70,6 +70,11 @@ public:
            std::string zv, bool zpoisoned, Expr zmin, Expr zmax,
            std::string wv, bool wpoisoned, Expr wmin, Expr wmax);
            
+    Domain(Expr xmin, Expr xmax);
+    Domain(Expr xmin, Expr xmax, Expr ymin, Expr ymax);
+    Domain(Expr xmin, Expr xmax, Expr ymin, Expr ymax, Expr zmin, Expr zmax);
+    Domain(Expr xmin, Expr xmax, Expr ymin, Expr ymax, Expr zmin, Expr zmax, Expr wmin, Expr wmax);
+           
     Domain intersection(const Domain other) const;
     
     // Accessors to read information out of the domain using index number.

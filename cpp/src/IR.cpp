@@ -10,6 +10,9 @@ Expr::Expr(int x) : Internal::IRHandle(new Internal::IntImm(x)) {
 Expr::Expr(float x) : Internal::IRHandle(new Internal::FloatImm(x)) {
 }
 
+Expr::Expr(double x) : Internal::IRHandle(new Internal::FloatImm((float)x)) {
+}
+
 namespace Internal {
 
 template<> EXPORT IRNodeType ExprNode<IntImm>::_type_info = {};
@@ -74,7 +77,7 @@ void check_same_type(std::string opname, Expr a, Expr b) {
     }
     if (a.type() == b.type()) return;
     std::cerr << opname << "(" << a << ", " << b << ") has mismatched types " 
-        << a.type() << "and " << b.type() << std::endl;
+        << a.type() << " and " << b.type() << std::endl;
     assert(0 && "Mismatched types");
 }
 

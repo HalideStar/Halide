@@ -155,6 +155,8 @@ struct Expr : public Internal::IRHandle {
 
     /** Make an expression representing a const 32-bit float (i.e. a FloatImm) */
     EXPORT Expr(float);
+    
+    EXPORT Expr(double); //LH
 
     /** Get the type of this expression node */
     Type type() const {

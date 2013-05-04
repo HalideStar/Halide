@@ -54,6 +54,9 @@ public:
             if (t.bits <= 16) {
                 max = cast(t, (1 << (t.bits-1)) - 1);
                 min = cast(t, -(1 << (t.bits-1)));
+            } else {
+                max = Expr();
+                min = Expr();
             }
         } else {
             max = Expr();

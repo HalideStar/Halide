@@ -77,14 +77,40 @@ Domain::Domain() {
     domain_locked = false;
 }
 
+Domain::Domain(Expr xmin, Expr xmax) {
+    intervals = Internal::vec(Internal::VarInterval("x", Internal::const_false(), xmin, xmax));
+    domain_locked = false;
+}
+
+Domain::Domain(Expr xmin, Expr xmax, Expr ymin, Expr ymax) {
+    intervals = Internal::vec(Internal::VarInterval("x", Internal::const_false(), xmin, xmax),
+                    Internal::VarInterval("y", Internal::const_false(), ymin, ymax));
+    domain_locked = false;
+}
+
+Domain::Domain(Expr xmin, Expr xmax, Expr ymin, Expr ymax, Expr zmin, Expr zmax) {
+    intervals = Internal::vec(Internal::VarInterval("x", Internal::const_false(), xmin, xmax),
+                    Internal::VarInterval("y", Internal::const_false(), ymin, ymax),
+                    Internal::VarInterval("z", Internal::const_false(), zmin, zmax));
+    domain_locked = false;
+}
+
+Domain::Domain(Expr xmin, Expr xmax, Expr ymin, Expr ymax, Expr zmin, Expr zmax, Expr wmin, Expr wmax) {
+    intervals = Internal::vec(Internal::VarInterval("x", Internal::const_false(), xmin, xmax),
+                    Internal::VarInterval("y", Internal::const_false(), ymin, ymax),
+                    Internal::VarInterval("z", Internal::const_false(), zmin, zmax),
+                    Internal::VarInterval("z", Internal::const_false(), wmin, wmax));
+    domain_locked = false;
+}
+
 Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax) {
-    intervals = vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax));
+    intervals = Internal::vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax));
     domain_locked = false;
 }
 
 Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
                std::string yvarname, Expr ypoisoned, Expr ymin, Expr ymax) {
-    intervals = vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax),
+    intervals = Internal::vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax),
                     Internal::VarInterval(yvarname, ypoisoned, ymin, ymax));
     domain_locked = false;
 }
@@ -92,7 +118,7 @@ Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
 Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
                std::string yvarname, Expr ypoisoned, Expr ymin, Expr ymax,
                std::string zvarname, Expr zpoisoned, Expr zmin, Expr zmax) {
-    intervals = vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax),
+    intervals = Internal::vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax),
                     Internal::VarInterval(yvarname, ypoisoned, ymin, ymax),
                     Internal::VarInterval(zvarname, zpoisoned, zmin, zmax));
     domain_locked = false;
@@ -102,20 +128,20 @@ Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
                std::string yvarname, Expr ypoisoned, Expr ymin, Expr ymax,
                std::string zvarname, Expr zpoisoned, Expr zmin, Expr zmax,
                std::string wvarname, Expr wpoisoned, Expr wmin, Expr wmax) {
-    intervals = vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax),
+    intervals = Internal::vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax),
                     Internal::VarInterval(yvarname, ypoisoned, ymin, ymax),
                     Internal::VarInterval(zvarname, zpoisoned, zmin, zmax),
                     Internal::VarInterval(wvarname, wpoisoned, wmin, wmax));
 }
 
 Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax) {
-    intervals = vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax));
+    intervals = Internal::vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax));
     domain_locked = false;
 }
 
 Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax,
                std::string yvarname, bool ypoisoned, Expr ymin, Expr ymax) {
-    intervals = vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax),
+    intervals = Internal::vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax),
                     Internal::VarInterval(yvarname, Internal::make_bool(ypoisoned), ymin, ymax));
     domain_locked = false;
 }
@@ -123,7 +149,7 @@ Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax,
 Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax,
                std::string yvarname, bool ypoisoned, Expr ymin, Expr ymax,
                std::string zvarname, bool zpoisoned, Expr zmin, Expr zmax) {
-    intervals = vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax),
+    intervals = Internal::vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax),
                     Internal::VarInterval(yvarname, Internal::make_bool(ypoisoned), ymin, ymax),
                     Internal::VarInterval(zvarname, Internal::make_bool(zpoisoned), zmin, zmax));
     domain_locked = false;
@@ -133,7 +159,7 @@ Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax,
                std::string yvarname, bool ypoisoned, Expr ymin, Expr ymax,
                std::string zvarname, bool zpoisoned, Expr zmin, Expr zmax,
                std::string wvarname, bool wpoisoned, Expr wmin, Expr wmax) {
-    intervals = vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax),
+    intervals = Internal::vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax),
                     Internal::VarInterval(yvarname, Internal::make_bool(ypoisoned), ymin, ymax),
                     Internal::VarInterval(zvarname, Internal::make_bool(zpoisoned), zmin, zmax),
                     Internal::VarInterval(wvarname, Internal::make_bool(wpoisoned), wmin, wmax));
