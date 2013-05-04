@@ -12,49 +12,43 @@ IRMutator::IRMutator() : depth(0), maxdepth(global_options.mutator_depth_limit),
 }
 
 Expr IRMutator::mutate(Expr e) {
-    depth++;
-    if (depth > maxdepth) {
-        log(0) << "Warning: Mutator exceeded recursion depth of " << maxdepth << "\n";
-        log(0) << "  in expression: " << e << "\n";
-        maxdepth = maxdepth * 10;
-        failing = true;
-        return e;
-    } 
     if (failing) {
+        // When depth has been exceeded, dont process new requests.
         expr = e;
         stmt = Stmt();
         return e;
     }
+    depth++;
+    if (depth > maxdepth) {
+        log(0) << "Warning: Mutator exceeded recursion depth of " << maxdepth << "\n";
+        log(0) << "  in expression: " << e << "\n";
+        failing = true;
+        return e;
+    } 
     if (e.defined()) {
-        //std::cout << depth << " IRMutator::mutate " << e << "\n";
         process(e);
-        //std::cout << depth << " IRMutator result  " << expr << "\n";
     } else {
         expr = Expr();
     }
     stmt = Stmt();
-    if (defaulted) {
-        // Debugging: Warn user if the default implementation was used in mutate().
-        log(0) << "Warning: Mutator executed default visitor on " << e << "\n";
-        assert(0 && "IRMutator executed default IRVisitor");
-    }
     depth--;
+    // When depth has been exceeded, recursively print expressions as mutate calls are returning.
     if (failing) log(0) << "  in expression: " << e << "\n";
     return expr;
 }
 
 Stmt IRMutator::mutate(Stmt s) {
+    if (failing) {
+        stmt = s;
+        expr = Expr();
+        return s;
+    }
     depth++;
     if (depth > maxdepth) {
         log(0) << "Warning: Mutator exceeded recursion depth of " << maxdepth << "\n";
         log(0) << "  in statement: " << s << "\n";
         maxdepth = maxdepth * 10;
         failing = true;
-    }
-    if (failing) {
-        stmt = s;
-        expr = Expr();
-        return s;
     }
     if (s.defined()) {
         process(s);

@@ -59,7 +59,7 @@ public:
     Expr mutate(Expr expr);
     Stmt mutate(Stmt stmt);
     
-    IRCacheMutator();
+    IRCacheMutator() {}
 
 protected:
 

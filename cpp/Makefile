@@ -143,6 +143,11 @@ bin/gtest_internal: test/internal.cpp lib/libg$(NAME).a
 
 bin/gtest_%: test/%.cpp lib/libg$(NAME).a include/Halide.h
 	$(CXX) -g $(TEST_CXX_FLAGS) $<  -Iinclude -Llib -lg$(NAME) -lpthread -ldl -o $@	
+    
+test_jit_stress: bin/test_jit_stress
+	@-mkdir -p tmp
+	cd tmp ; HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
+	@-echo
 
 test_%: bin/test_%
 	@-mkdir -p tmp

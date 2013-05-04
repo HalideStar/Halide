@@ -8,19 +8,15 @@
 namespace Halide {
 namespace Internal {
 
-IRCacheMutator::IRCacheMutator() {
-}
-
 template<typename Node>
 Node IRCacheMutator::mutate(Node node, Node &result) {
-    //std::cerr << depth << " Mutate " << node << "\n";
     if (global_options.mutator_cache) {
         // First check to see whether there is a result in the cache.
         // Since we have not yet processed the node (i.e. we have not entered
         // the process method), the context is the enclosing context
         // of the node, and this yields an appropriate key for looking up the node.
         NodeKey key = node_key(node);
-        typename CacheMap::iterator found = cache.find(key);
+        typename CacheMap::const_iterator found = cache.find(key);
         if (found != cache.end()) {
             global_statistics.mutator_cache_hits++;
             if (global_options.mutator_cache_check && 
@@ -28,7 +24,6 @@ Node IRCacheMutator::mutate(Node node, Node &result) {
                 global_statistics.mutator_cache_savings < global_options.mutator_cache_check_limit) {
                 int misses = global_statistics.mutator_cache_misses;
                 int hits = global_statistics.mutator_cache_hits;
-                //std::cout << "Cache[" << context() << "] " << node << " --> " << found->second << "\n";
                 // Check the cache for correctness by recomputing.
                 Node temp = Super::mutate(node);
                 assert (equal(temp, found->second) && "Cache error.");
@@ -43,7 +38,6 @@ Node IRCacheMutator::mutate(Node node, Node &result) {
             return result;
         } else {
             global_statistics.mutator_cache_misses++;
-            //std::cout << "Mutate: " << node << "\n";
             result = Super::mutate(node);
             cache[key] = CachedNode(result);
             return result;
@@ -51,7 +45,6 @@ Node IRCacheMutator::mutate(Node node, Node &result) {
     } else {
         global_statistics.mutator_cache_misses++;
         result = Super::mutate(node);
-        //std::cerr << depth << " Result " << result << "\n";
         return result;
     }
 }

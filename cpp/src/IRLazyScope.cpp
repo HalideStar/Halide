@@ -10,7 +10,7 @@
 // Set to true if nodes can create a context for their body node.
 // If set to false, there is an assumption that a Let, LetStmt or For
 // node cannot use the variable that it is defining within the definition.
-# define BODY_CONTEXT 0
+# define BODY_CONTEXT 1
 
 namespace Halide { 
 namespace Internal {
