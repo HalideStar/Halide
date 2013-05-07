@@ -1,6 +1,8 @@
 #ifndef HALIDE_OPTIONS_H
 #define HALIDE_OPTIONS_H
 
+#define HALIDESTAR 1
+
 #include <iostream>
 
 namespace Halide {

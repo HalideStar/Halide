@@ -3,6 +3,10 @@
 
 #include "IR.h"
 #include "Ival.h"
+#include "IREquality.h"
+#include "IRLazyScope.h"
+#include "IROperator.h"
+#include "Simplify.h"
 #include <map>
 
 namespace Halide { 

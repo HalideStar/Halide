@@ -25,7 +25,7 @@
 
 #include "LowerClamp.h"
 #include "LoopPartition.h"
-#include "IntervalAnalysis.h"
+#include "BoundsSimplify.h"
 #include "Statistics.h"
 #include "CodeLogger.h"
 
@@ -761,11 +761,12 @@ Stmt do_loop_partition(Stmt s, int section) {
     code_logger.section(section + 10);
 	if (global_options.interval_analysis_simplify) {
 		//log::debug_level = 1;
-		log(1) << "Performing interval analysis simplification...\n";
+		log(1) << "Performing bounds analysis simplification...\n";
 		s = simplify(s);
-		s = interval_analysis_simplify(s);
-		log(2) << "IA Simplify:\n" << s << '\n';
-		code_logger.log(s, "IA_simplify");
+        code_logger.log(s, "simplify");
+		s = bounds_simplify(s);
+		log(2) << "Bounds Simplify:\n" << s << '\n';
+		code_logger.log(s, "bounds_simplify");
 		//log::debug_level = 0;
 
 		//log(1) << "Simplifying...\n";
@@ -921,7 +922,7 @@ Stmt lower(Function f) {
     
     Statistics run_statistics = global_statistics;
     run_statistics.Subtract(start_statistics);
-    log(0) << run_statistics;
+    log(1) << run_statistics;
 
     return s;
 } 

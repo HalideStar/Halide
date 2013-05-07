@@ -20,6 +20,7 @@
 #include "Interval.h"
 #include "IRLazyScope.h"
 #include "Options.h"
+#include "BoundsSimplify.h"
 
 using namespace Halide;
 using namespace Halide::Internal;
@@ -50,6 +51,7 @@ int main(int argc, const char **argv) {
     solver_test();
     loop_partition_test();
     lazy_scope_test();
+    bounds_simplify_test();
     
     std::cout << "Compiler Statistics:\n";
     std::cout << global_statistics;

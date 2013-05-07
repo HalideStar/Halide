@@ -26,8 +26,8 @@ SOURCE_FILES = CodeGen.cpp CodeGen_X86.cpp CodeGen_Posix.cpp CodeGen_ARM.cpp IR.
 HEADER_FILES = Util.h Type.h Argument.h Bounds.h BoundsInference.h Buffer.h buffer_t.h CodeGen_C.h CodeGen.h CodeGen_X86.h Deinterleave.h Derivative.h Extern.h Func.h Function.h Image.h InlineReductions.h integer_division_table.h IntrusivePtr.h IREquality.h IR.h IRMatch.h IRMutator.h IROperator.h IRPrinter.h IRVisitor.h JITCompiledModule.h Lambda.h Log.h Lower.h MainPage.h ModulusRemainder.h Parameter.h Param.h RDom.h Reduction.h RemoveDeadLets.h RemoveTrivialForLoops.h Schedule.h Scope.h Simplify.h SlidingWindow.h StmtCompiler.h StorageFlattening.h StorageFolding.h Substitute.h Tracing.h UnrollLoops.h Var.h VectorizeLoops.h CodeGen_Posix.h CodeGen_ARM.h DebugToFile.h
 
 #LH: List extensions separately to support automatic merging.
-LH_SOURCE_FILES = Border.cpp Clamp.cpp DomainInference.cpp LowerClamp.cpp LoopPartition.cpp IRRewriter.cpp IntervalAnalysis.cpp Options.cpp Interval.cpp InlineLet.cpp IRCacheMutator.cpp Statistics.cpp CodeLogger.cpp IRLazyScope.cpp Context.cpp IRProcess.cpp Ival.cpp
-LH_HEADER_FILES = Border.h Clamp.h DomainInference.h LowerClamp.h LoopPartition.h IRRewriter.h IntervalAnalysis.h Options.h Interval.h Solver.h InlineLet.h IRCacheMutator.h Statistics.h CodeLogger.h IRLazyScope.h Context.h IRProcess.h Ival.h IntervalAnal.h
+LH_SOURCE_FILES = Border.cpp Clamp.cpp DomainInference.cpp LowerClamp.cpp LoopPartition.cpp IRRewriter.cpp IntervalAnalysis.cpp Options.cpp Interval.cpp InlineLet.cpp IRCacheMutator.cpp Statistics.cpp CodeLogger.cpp IRLazyScope.cpp Context.cpp IRProcess.cpp Ival.cpp BoundsSimplify.cpp
+LH_HEADER_FILES = Border.h Clamp.h DomainInference.h LowerClamp.h LoopPartition.h IRRewriter.h IntervalAnalysis.h Options.h Interval.h Solver.h InlineLet.h IRCacheMutator.h Statistics.h CodeLogger.h IRLazyScope.h Context.h IRProcess.h Ival.h IntervalAnal.h BoundsSimplify.h
 
 SOURCES = $(LH_SOURCE_FILES:%.cpp=src/%.cpp) $(SOURCE_FILES:%.cpp=src/%.cpp)
 OBJECTS = $(LH_SOURCE_FILES:%.cpp=build/%.o) $(SOURCE_FILES:%.cpp=build/%.o)
@@ -145,6 +145,11 @@ bin/gtest_%: test/%.cpp lib/libg$(NAME).a include/Halide.h
 	$(CXX) -g $(TEST_CXX_FLAGS) $<  -Iinclude -Llib -lg$(NAME) -lpthread -ldl -o $@	
     
 test_jit_stress: bin/test_jit_stress
+	@-mkdir -p tmp
+	cd tmp ; HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
+	@-echo
+
+test_jit_speed: bin/test_jit_speed
 	@-mkdir -p tmp
 	cd tmp ; HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
 	@-echo

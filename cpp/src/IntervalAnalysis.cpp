@@ -1,6 +1,6 @@
 #include "IntervalAnalysis.h"
 #include "IRRewriter.h"
-#include "IRMutator.h"
+#include "IRCacheMutator.h"
 #include "IRVisitor.h"
 #include "IR.h"
 #include "IROperator.h"
@@ -27,6 +27,7 @@ using std::map;
 using std::vector;
 using std::string;
 
+// Cannot use cache mutator because it caches mutation results but does not cache the intervals.
 class IntervalAnalysis : public IRMutator {
 public:
     Expr min, max;
@@ -98,10 +99,11 @@ public:
         //log(0) << "Variable " << op->name << "\n";
         if (scope.contains(op->name)) {
             //log(0) << "Found in scope\n";
+            //std::cerr << "Variable " << op->name << " found in scope\n";
             Interval bounds = scope.get(op->name);
             min = bounds.min;
             max = bounds.max;
-            log(2) << "Variable " << op->name << ": " << bounds << "\n";
+            //log(0) << "Variable " << op->name << ": " << bounds << "\n";
 # if 0
         } else if (op->name.find(".extent.") != std::string::npos) {
             // extent variables are assumed to be non-negative
@@ -112,14 +114,18 @@ public:
             //log(0) << "Not found in scope\n";
             min = op;
             max = op;
+            //log(0) << "Variable " << op->name << " has bounds " << min << "\n";
         }
         rewriter->visit(op);
         expr = rewriter->expr;
     }
 
     void visit(const Add *op) {
+        //std::cerr << Expr(op) << "\n";
         Expr a = mutate(op->a);
+        //std::cerr << "Operand a " << op->a << " " << a << "\n";
         Expr min_a = min, max_a = max;
+        //std::cerr << "min_a max_a: " << min_a << " " << max_a << "\n";
         Expr b = mutate(op->b);
 
         min = (min.defined() && min_a.defined()) ? new Add(min_a, min) : Expr();
@@ -134,6 +140,7 @@ public:
     }
 
     void visit(const Sub *op) {
+        //std::cerr << Expr(op) << "\n";
         Expr a = mutate(op->a);
         Expr min_a = min, max_a = max;
         Expr b = mutate(op->b);
@@ -848,6 +855,7 @@ public:
     }
 
     void visit(const AssertStmt *op) {
+        //std::cerr << Stmt(op) << "\n";
         IRMutator::visit(op);
         
         min = max = Expr();

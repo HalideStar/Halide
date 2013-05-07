@@ -357,12 +357,13 @@ protected:
                 // Search for solutions related to this particular for loop.
                 std::vector<Solution> solutions = extract_solutions(op->name, op, solved);
                 //std::cout << global_options;
+# if 0
                 std::cout << "For loop: \n" << Stmt(op);
                 std::cout << "Solutions: \n";
                 for (size_t i = 0; i < solutions.size(); i++) {
                     std::cout << solutions[i].var << " " << solutions[i].intervals << "\n";
                 }
-                
+# endif               
                 // Compute loop partition points for each end of the loop.
                 // If the information that we get is purely numeric, then we need to
                 // guess what is the beginning and what is the end.
@@ -374,7 +375,7 @@ protected:
                 
                 std::vector<Expr> starts, ends;
                 partition_points(solutions, starts, ends);
-# if 1
+# if 0
                 std::cout << "Partition start: ";
                 for (size_t i = 0; i < starts.size(); i++) {
                     std::cout << starts[i] << " ";
@@ -387,7 +388,7 @@ protected:
 # endif               
                 // The interval for the main loop is max(starts) to min(ends)-1.
                 // If no partition points are found then the interval has undefined min and/or max.
-                Expr part_start, part_end;
+                Expr part_start = make_infinity(Int(32), -1), part_end = make_infinity(Int(32), 1);
                 if (starts.size() > 0) {
                     part_start = starts[0];
                     for (size_t i = 1; i < starts.size(); i++) {
@@ -404,7 +405,7 @@ protected:
                 
                 part = Ival(part_start, part_end);
                 
-                log(0) << "Auto partition: " << op->name << " " << part << "\n";
+                log(1) << "Auto partition: " << op->name << " " << part << "\n";
             }
             
             if ((part.min.defined() && infinity_count(part.min) == 0) || 
