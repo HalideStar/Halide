@@ -48,10 +48,20 @@ public:
 /** A derived class that adds caching of mutation results.
  */
 class IRCacheMutator : public IRLazyScope<IRMutator> {
+public:
+    // Type of the cache
+    typedef std::map<NodeKey,CachedNode> Cache;
+
+private:
     typedef IRLazyScope<IRMutator> Super;
     
+    // A local cache of mutation results, used unless constructed with specified cache.
+    Cache local_cache;
+    
+    // Reference to the cache.
+    Cache &cache;
+    
 public:
-
     /** This is the main interface for using a mutator. Also call
      * these in your subclass to mutate sub-expressions and
      * sub-statements.
@@ -59,14 +69,11 @@ public:
     Expr mutate(Expr expr);
     Stmt mutate(Stmt stmt);
     
-    IRCacheMutator() {}
+    IRCacheMutator() : cache(local_cache) {}
+    IRCacheMutator(IRCacheMutator::Cache &_cache) : cache(_cache) {}
 
 protected:
 
-    // The cache of mutation results
-    typedef std::map<NodeKey,CachedNode> CacheMap;
-    CacheMap cache;
-    
     template<typename Node>
     Node mutate(Node node, Node &result);
 };    

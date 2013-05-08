@@ -562,6 +562,33 @@ Stmt code_1 () {
     return pipeline;
 }
 
+std::string correct_simplified =
+"produce buf {\n"
+"  parallel (x, 0, 100, auto [-infinity, infinity]) {\n"
+"    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
+"  }\n"
+"} consume {\n"
+"  for (x, 0, 100, [1, 99]) {\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"  }\n"
+"}\n";
+
+
+std::string correct_presolver =
+"produce buf {\n"
+"  parallel (x, 0, 100, auto [-infinity, infinity]) {\n"
+"    stmtTargetVar(x) {\n"
+"      buf[(x + -1)] = select((3 < solve([4, infinity]: x)), select((solve([-infinity, 86]: x) < 87), input(((solve([0, 99]: (x + -10)) % 100) + 10)), i16(-17)), i16(-17))\n"
+"    }\n"
+"  }\n"
+"} consume {\n"
+"  for (x, 0, 100, [1, 99]) {\n"
+"    stmtTargetVar(x) {\n"
+"      out[x] = (((buf(max(solve([0, infinity]: min(solve([-infinity, 100]: x), 100)), 0)) + buf(max(solve([0, infinity]: min(solve([-infinity, 100]: (x + -1)), 100)), 0))) + buf(Clamp::reflect(solve([0, 100]: (x + 1)),0,100,0))) + 1)\n"
+"    }\n"
+"  }\n"
+"}\n";
+
 std::string correct_solved =
 "produce buf {\n"
 "  parallel (x, 0, 100, auto [-infinity, infinity]) {\n"
@@ -572,11 +599,13 @@ std::string correct_solved =
 "} consume {\n"
 "  for (x, 0, 100, [1, 99]) {\n"
 "    stmtTargetVar(x) {\n"
-"      out[x] = (((buf(max(min(solve([0, infinity]: solve([-infinity, 100]: x)), 100), 0)) + buf((max(min(solve([1, infinity]: solve([-infinity, 101]: x)), 101), 1) + -1))) + buf(Clamp::reflect((solve([-1, 99]: x) + 1),0,100,0))) + 1)\n"
+"      out[x] = (((buf(max(min(solve([0, infinity]: solve([-infinity, 100]: x)), 100), 0)) + buf(max(min((solve([1, infinity]: solve([-infinity, 101]: x)) + -1), 100), 0))) + buf(Clamp::reflect((solve([-1, 99]: x) + 1),0,100,0))) + 1)\n"
 "    }\n"
 "  }\n"
 "}\n";
 
+// NOTE: The partitioned loop is not yet efficient.  Efficiency is introduced by
+// BoundsSimplify which uses bounds analysis to simplify the min and max expressions.
 std::string correct_partitioned = 
 "produce buf {\n"
 "  let x.start = 10\n"
@@ -594,13 +623,13 @@ std::string correct_partitioned =
 "  let x.start = 1\n"
 "  let x.end = 100\n"
 "  for (x, 0, min((x.start - 0), 100), before) {\n"
-"    out[x] = (((buf(max(min(x, 100), 0)) + buf((max(min(x, 101), 1) + -1))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
 "  }\n"
 "  for (x, max(x.start, 0), (min(x.end, (0 + 100)) - max(x.start, 0)), main [1, 99]) {\n"
-"    out[x] = (((buf(max(min(x, 100), 0)) + buf((max(min(x, 101), 1) + -1))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
 "  }\n"
 "  for (x, x.end, ((0 + 100) - x.end), after) {\n"
-"    out[x] = (((buf(max(min(x, 100), 0)) + buf((max(min(x, 101), 1) + -1))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
 "  }\n"
 "}\n";
 
@@ -618,6 +647,7 @@ void code_compare (std::string long_desc, std::string head, Stmt code, std::stri
                 std::cerr << "Difference at byte " << i << "  line " << line << "  pos " << ch << "\n";
                 std::cerr << head << " " << check.substr(i, 30) << "...\n";
                 std::cerr << "Expected:    " << correct.substr(i, 30) << "...\n";
+                break;
             }
             if (check[i] == '\n') { line++; ch = 0; }
             else { ch++; }
@@ -646,9 +676,11 @@ void test_loop_partition_1() {
     
     //std::cout << "Raw:\n" << pipeline << "\n";
     Stmt simp = simplify(pipeline);
+    code_compare ("simplify called from loop partition", "Simplified code:", simp, correct_simplified);
     //std::cout << "Simplified:\n" << simp << "\n";
     Stmt pre = LoopPreSolver().mutate(simp);
     //std::cout << "LoopPreSolver:\n" << pre << "\n";
+    code_compare ("loop partition pre-solver", "Presolved code:", pre, correct_presolver);
     
     Stmt solved = solver(pre);
     code_compare ("loop partition solver", "Solved code:", solved, correct_solved);

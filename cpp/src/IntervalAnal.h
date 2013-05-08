@@ -5,7 +5,9 @@
 #include "Ival.h"
 #include "IREquality.h"
 #include "IRLazyScope.h"
+#include "IRPrinter.h"
 #include "IROperator.h"
+#include "Log.h"
 #include "Simplify.h"
 #include <map>
 
@@ -40,13 +42,15 @@ class IntervalAnal : public IRLazyScope<IRProcess> {
 public:
     Ival interval_analysis(Expr e) { 
         // Insert caching here once it is working correctly.
+# if 0
         NodeKey key = node_key(e);
         std::map<NodeKey, Ival>::const_iterator found = interval_cache.find(key);
         if (found != interval_cache.end()) {
             return found->second;
         }
+# endif
         process(e); 
-        interval_cache[key] = interval;
+        //interval_cache[key] = interval;
         return interval; 
     }
 
@@ -94,6 +98,7 @@ protected:
     virtual void visit(const Variable *op) {
         // Encountered a variable.  Try interval analysis on it.
         int found = find_variable(op->name);
+        //log(0) << "IA find " << op->name << " in context " << current_context() << ": " << found << "\n";
         if (found) {
             const DefiningNode *def = call(found);
             // Now we are in the defining node context.
@@ -102,17 +107,32 @@ protected:
             const LetStmt *def_letstmt = def->node().as<LetStmt>();
             if (def_for) {
                 // Defined as a For loop.  The interval is easily determined.
-                interval = Ival(def_for->min, def_for->min + def_for->extent - 1);
+                //log(0) << "    for loop in context " << current_context() << "\n";
+                //log(0) << "        interval of " << def_for->min << "\n";
+                Ival formin = interval_analysis(def_for->min);
+                Expr emax = def_for->min + (def_for->extent - 1);
+                //log(0) << "        interval of " << emax << "\n";
+                Ival formax = interval_analysis(emax);
+                //log(0) << "    min: " << formin << " " << def_for->min << "\n";
+                //log(0) << "    max: " << formax << " " << emax << "\n";
+                interval = Ival(formin.min, formax.max);
             } else if (def_let) {
+                //log(0) << "    let\n";
                 interval = interval_analysis(def_let->value);
             } else if (def_letstmt) {
+                //log(0) << "    letstmt " << op->name << "\n";
                 interval = interval_analysis(def_letstmt->value);
+                //log(0) << "    interval of " << def_letstmt->value << " " << interval << "\n";
             } else {
+                assert(0 && "Unknown defining node for variable");
                 interval = Ival(new Infinity(-1), new Infinity(1));
             }
             ret(found);
         } else {
-            interval = Ival(op, op); // In the absence of a definition, keep the variable name.
+            // Keep the variable name in the absence of a definition.
+            // This allows symbolic reasoning (i.e. simplify) to reduce
+            // expressions.
+            interval = Ival(op, op);
         }
     }
     
@@ -156,7 +176,7 @@ protected:
     virtual void visit(const EQ *op) {
         Ival a = interval_analysis(op->a);
         Ival b = interval_analysis(op->b);
-        if (proved(a.max < b.min) || proved(a.min > b.max)) {
+        if (proved_in_context(a.max < b.min) || proved_in_context(a.min > b.max)) {
             // The intervals do not overlap. Equality is disproved.
             interval = Ival(const_false(op->type.width), const_false(op->type.width));
         } else if (equal(a.min, a.max) && equal(a.min, b.min) && equal(a.min, b.max)) {
@@ -174,10 +194,10 @@ protected:
     virtual void visit(const LT *op) {
         Ival a = interval_analysis(op->a);
         Ival b = interval_analysis(op->b);
-        if (proved(a.max < b.min)) {
+        if (proved_in_context(a.max < b.min)) {
             // a is always less than b
             interval = Ival(const_true(op->type.width), const_true(op->type.width));
-        } else if (proved(a.min >= b.max)) {
+        } else if (proved_in_context(a.min >= b.max)) {
             // a is never less than b.
             interval = Ival(const_false(op->type.width), const_false(op->type.width));
         } else {
@@ -188,10 +208,10 @@ protected:
     virtual void visit(const LE *op) {
         Ival a = interval_analysis(op->a);
         Ival b = interval_analysis(op->b);
-        if (proved(a.max <= b.min)) {
+        if (proved_in_context(a.max <= b.min)) {
             // a is always <= b
             interval = Ival(const_true(op->type.width), const_true(op->type.width));
-        } else if (proved(a.min > b.max)) {
+        } else if (proved_in_context(a.min > b.max)) {
             // a is never <= b.
             interval = Ival(const_false(op->type.width), const_false(op->type.width));
         } else {

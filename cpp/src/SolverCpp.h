@@ -242,8 +242,16 @@ class Solver : public Simplify {
     
     bool is_constant_expr(Expr e) { return has_target.is_constant_expr(e); }
     
+    // use our own cache for IRCacheMutator.
+    // Each different mutator must have its own cache.
+    // Simplify uses a shared cache, so we need to override that.
+    IRCacheMutator::Cache solver_cache;
+    
 public:
 
+    Solver() : Simplify(solver_cache) {}
+
+protected:
     virtual void visit(const Solve *op) {
         log(3) << depth << " Solve simplify " << Expr(op) << "\n";
         Expr e = mutate(op->body);
@@ -552,11 +560,11 @@ virtual void visit(const Add *op) {
 };
 
 Stmt solver(Stmt s) {
-    return Solver().mutate(s);
+    return Solver().simplify(s);
 }
 
 Expr solver(Expr e) {
-    return Solver().mutate(e);
+    return Solver().simplify(e);
 }
 
 
@@ -644,7 +652,7 @@ void checkSolver(Expr a, Expr b) {
     Solver s;
     a = new TargetVar("x", new TargetVar("y", a, Expr()), Expr());
     b = new TargetVar("x", new TargetVar("y", b, Expr()), Expr());
-    Expr r = s.mutate(a);
+    Expr r = s.simplify(a);
     if (!equal(b, r)) {
         std::cout << std::endl << "Solve failure: " << std::endl;
         std::cout << "Input: " << a << std::endl;

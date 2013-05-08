@@ -16,7 +16,7 @@ Node IRCacheMutator::mutate(Node node, Node &result) {
         // the process method), the context is the enclosing context
         // of the node, and this yields an appropriate key for looking up the node.
         NodeKey key = node_key(node);
-        typename CacheMap::const_iterator found = cache.find(key);
+        typename Cache::const_iterator found = cache.find(key);
         if (found != cache.end()) {
             global_statistics.mutator_cache_hits++;
             if (global_options.mutator_cache_check && 

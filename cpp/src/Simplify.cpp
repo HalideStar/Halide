@@ -39,7 +39,48 @@ int do_indirect_int_cast(Type t, int x) {
 
 // Implementation of Halide div and mod operators
 
-class Simplify : public IRCacheMutator {
+class Simplify : protected IRCacheMutator {
+    static IRCacheMutator::Cache simplify_cache;
+    
+public:
+    static void clear() {
+        simplify_cache.clear();
+    }
+    
+    // Constructor that uses the shared cache.
+    Simplify() : IRCacheMutator(simplify_cache) {}
+    
+    // Constructor to use in derived classes: do not use the shared cache.
+    Simplify(IRCacheMutator::Cache &_cache) : IRCacheMutator(_cache) {}
+    
+    // Public interface.  mutate() is hidden because it does not handle contexts.
+    // simplify() calls are processed in the root context where no variables are defined.
+    // If there is a need to process them in the current context, would add new interface
+    // routines simplify_in_context().
+    Expr simplify(Expr e) {
+        call(1);
+        Expr r = mutate(e);
+        ret(1);
+        return r;
+    }
+    
+    Stmt simplify(Stmt s) {
+        call(1);
+        Stmt r = mutate(s);
+        ret(1);
+        return r;
+    }
+    
+    Expr simplify_in_context(Expr e) {
+        Expr r = mutate(e);
+        return r;
+    }
+    
+    Stmt simplify_in_context(Stmt s) {
+        Stmt r = mutate(s);
+        return r;
+    }
+    
 protected:
     Scope<Expr> scope;
 
@@ -155,6 +196,7 @@ protected:
         }
     }
 
+# if 1
     virtual void visit(const Variable *op) {
         //std::cout << "Simplify " << Expr(op) << "\n";
         if (scope.contains(op->name)) {
@@ -203,6 +245,60 @@ protected:
             expr = op;
         }
     }
+# else
+    // Use LazyScope to get definition, but do not substitute it
+    // if it is too complex, unless in aggressive inline mode.
+    virtual void visit(const Variable *op) {
+        log(0) << "Simplify " << Expr(op) << "\n";
+        
+        // Look up the definition 
+        if (scope.contains(op->name)) {
+            Expr replacement = scope.get(op->name);
+
+            //std::cout << "Pondering replacing " << op->name << " with " << replacement << std::endl;
+
+            // if expr is defined, we should substitute it in (unless
+            // it's a var that has been hidden by a nested scope).
+            if (replacement.defined()) {
+                //std::cout << "Replacing " << op->name << " of type " << op->type << " with " << replacement << std::endl;
+                assert(replacement.type() == op->type);
+                // If it's a naked var, and the var it refers to
+                // hasn't gone out of scope, just replace it with that
+                // var
+                if (const Variable *v = replacement.as<Variable>()) {
+                    if (scope.contains(v->name)) {
+                        if (scope.depth(v->name) < scope.depth(op->name)) {
+                            expr = replacement;
+                        } else {
+                            // Uh oh, the variable we were going to
+                            // subs in has been hidden by another
+                            // variable of the same name, better not
+                            // do anything.
+                            expr = op;
+                        }
+                    } else {
+                        // It is a variable, but the variable this
+                        // refers to hasn't been encountered. It must
+                        // be a uniform, so it's safe to substitute it
+                        // in.
+                        expr = replacement;
+                    }
+                } else {
+                    // It's not a variable, and a replacement is defined
+                    expr = replacement;
+                }
+            } else {
+                // This expression was not something deemed
+                // substitutable - no replacement is defined.
+                expr = op;
+            }
+        } else {
+            // We never encountered a let that defines this var. Must
+            // be a uniform. Don't touch it.
+            expr = op;
+        }
+    }
+# endif
 
     virtual void visit(const Add *op) {
         log(3) << depth << " Add simplify " << Expr(op) << "\n";
@@ -764,7 +860,8 @@ protected:
             return;
         }
         
-        int ia, ib, ib2, ib3;
+        int ia, ib;
+        int k1, k2, k3, k4;
         float fa, fb;
         const Ramp *ramp_a = a.as<Ramp>();
         const Ramp *ramp_b = b.as<Ramp>();
@@ -777,8 +874,11 @@ protected:
         const Min *min_a_a = min_a ? min_a->a.as<Min>() : NULL;
         const Min *min_a_a_a = min_a_a ? min_a_a->a.as<Min>() : NULL;
         const Min *min_a_a_a_a = min_a_a_a ? min_a_a_a->a.as<Min>() : NULL;
-		const Max *max_a = a.as<Max>();
-		const Min *min_a_max_a = max_a ? max_a->a.as<Min>() : NULL;
+        const Max *max_a = a.as<Max>();
+		const Max *clamp_lower_a = max_a;
+		const Max *clamp_lower_b = b.as<Max>();
+		const Min *clamp_upper_a = clamp_lower_a ? clamp_lower_a->a.as<Min>() : NULL;
+		const Min *clamp_upper_b = clamp_lower_b ? clamp_lower_b->a.as<Min>() : NULL;
 
         // Sometimes we can do bounds analysis to simplify
         // things. Only worth doing for ints
@@ -836,12 +936,20 @@ protected:
         } else if (min_a && is_simple_const(min_a->b) && is_simple_const(b)) {
             // min(min(x, 4), 5) -> min(x, 4)
             expr = new Min(min_a->a, mutate(new Min(min_a->b, b)));
+        } else if (clamp_upper_a && clamp_upper_b && 
+                   const_int(clamp_lower_a->b, &k2) && const_int(clamp_lower_b->b, &k4) && k2 == k4 &&
+                   const_int(clamp_upper_a->b, &k1) && const_int(clamp_upper_b->b, &k3) && k1 == k3) { //LH
+            // min(clamp(e1, k2, k1), clamp(e2, k2, k1)) ==> clamp(min(e1, e2), k2, k1)
+            expr = mutate(new Max(new Min(new Min(clamp_upper_a->a, clamp_upper_b->a), k1), k2));
+# if 0
+        // Disable this rule because it prevents simplifying nested min(...( of clamped expressions.
         } else if (global_options.simplify_nested_clamp && 
 				   add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) { //LH
 			// min(e + k1, k2) -> min(x, k2-k1) + k1   Provided there is no overflow
 			// Pushes additions down where they may combine with others.
 			// (Subtractions e - k are previously converted to e + -k).
 			expr = new Add(new Min(add_a->a, ib - ia), ia);
+# endif
 		} else if (min_a && (equal(min_a->b, b) || equal(min_a->a, b))) {
             // min(min(x, y), y) -> min(x, y)
             expr = a;
@@ -858,19 +966,20 @@ protected:
             // min(min(min(min(min(x, y), z), w), l), y) -> min(min(min(min(x, y), z), w), l)
             expr = a;            
         } else if (global_options.simplify_nested_clamp && 
-				   max_a && const_int(max_a->b, &ib) && const_int(b, &ib2) && ib2 <= ib) { //LH
+				   max_a && const_int(max_a->b, &k1) && const_int(b, &k2) && k1 >= k2) { //LH
 			// min(max(x, k1), k2) -> k2 when k1 >= k2
 			expr = b;
 		} else if (global_options.simplify_nested_clamp && 
-				   min_a_max_a && const_int(b, &ib) && const_int(max_a->b, &ib2) && const_int(min_a_max_a->b, &ib3) &&
-			ib > ib2 && ib2 < ib3) { //LH
+				   clamp_upper_a && const_int(b, &k3) && const_int(clamp_lower_a->b, &k2) && 
+                   const_int(clamp_upper_a->b, &k1) &&
+			       k1 >= k2 && k3 >= k2) { //LH
             // min(max(min(x, k1), k2), k3)
 			// Expression arises from nested clamp expressions due to inlining
 			// k1 <= k2 --> min(k2, k3) to be simplified further.  Max rule should capture that.
 			// k2 >= k3 --> k3 according to rule above.
 			// Otherwise: min(x, k1) limits upper bound to k1 then max(..., k2) limits lower bound to k2 (where k2 < k1)
 			// then min(..., k3) limits upper bound to k3 (where k2 < k3) so overall x is limited to (k2, min(k1,k3))
-            expr = new Min(new Max(min_a_max_a->a, ib2), std::min(ib, ib3));            
+            expr = new Min(new Max(clamp_upper_a->a, k2), std::min(k1, k3));   
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
@@ -899,6 +1008,7 @@ protected:
         }
 
         int ia, ib, ib2, ib3;
+        int k1, k2, k3, k4;
         float fa, fb;
         const Ramp *ramp_a = a.as<Ramp>();
         const Ramp *ramp_b = b.as<Ramp>();
@@ -913,6 +1023,10 @@ protected:
         const Max *max_a_a_a_a = max_a_a_a ? max_a_a_a->a.as<Max>() : NULL;
         const Min *min_a = a.as<Min>();
         const Max *max_a_min_a = min_a ? min_a->a.as<Max>() : NULL;
+		const Max *clamp_lower_a = max_a;
+		const Max *clamp_lower_b = max_b;
+		const Min *clamp_upper_a = clamp_lower_a ? clamp_lower_a->a.as<Min>() : NULL;
+		const Min *clamp_upper_b = clamp_lower_b ? clamp_lower_b->a.as<Min>() : NULL;
 
         if (equal(a, b)) {
             expr = a;
@@ -965,12 +1079,20 @@ protected:
         } else if (max_a && is_simple_const(max_a->b) && is_simple_const(b)) {
             // max(max(x, 4), 5) -> max(x, 5)
             expr = new Max(max_a->a, mutate(new Max(max_a->b, b)));
+        } else if (clamp_upper_a && clamp_upper_b && 
+                   const_int(clamp_lower_a->b, &k2) && const_int(clamp_lower_b->b, &k4) && k2 == k4 &&
+                   const_int(clamp_upper_a->b, &k1) && const_int(clamp_upper_b->b, &k3) && k1 == k3) { //LH
+            // max(clamp(e1, k2, k1), clamp(e2, k2, k1)) ==> clamp(max(e1, e2), k2, k1)
+            expr = mutate(new Max(new Min(new Max(clamp_upper_a->a, clamp_upper_b->a), k1), k2));
+# if 0
+        // Disable this rule because it prevents simplifying chain of max(...( is clamp expressions
         } else if (global_options.simplify_nested_clamp && 
 				   add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) { //LH
 			// max(e + k1, k2) -> max(x, k2-k1) + k1   Provided there is no overflow
 			// Pushes additions down where they may combine with others.
 			// (Subtractions e - k are previously converted to e + -k).
 			expr = new Add(new Max(add_a->a, ib - ia), ia);
+# endif
         } else if (max_a && (equal(max_a->b, b) || equal(max_a->a, b))) {
             // max(max(x, y), y) -> max(x, y)
             expr = a;
@@ -987,11 +1109,12 @@ protected:
             // max(max(max(max(max(x, y), z), w), l), y) -> max(max(max(max(x, y), z), w), l)
             expr = a;            
         } else if (global_options.simplify_nested_clamp && 
-				   min_a && const_int(min_a->b, &ib) && const_int(b, &ib2) && ib2 >= ib) { //LH
+				   min_a && const_int(min_a->b, &k1) && const_int(b, &k2) && k2 >= k1) { //LH
 			// max(min(x, k1), k2) -> k2 when k1 <= k2
 			expr = b;
 		} else if (global_options.simplify_nested_clamp && 
-				   max_a_min_a && const_int(b, &ib) && const_int(min_a->b, &ib2) && const_int(max_a_min_a->b, &ib3) &&
+				   max_a_min_a && const_int(b, &ib) && const_int(min_a->b, &ib2) && 
+                   const_int(max_a_min_a->b, &ib3) &&
 			       ib < ib2 && ib2 > ib3) { //LH
             // max(min(max(x, k1), k2), k3)
 			// Expression arises from nested clamp expressions due to inlining
@@ -1514,12 +1637,15 @@ protected:
     }    
 };
 
+// Declare the shared cache - the one instance of it.
+IRCacheMutator::Cache Simplify::simplify_cache;
+
 Expr simplify(Expr e) {
-    return Simplify().mutate(e);
+    return Simplify().simplify(e);
 }
 
 Stmt simplify(Stmt s) {
-    return Simplify().mutate(s);
+    return Simplify().simplify(s);
 }
 
 Stmt simplify_undef(Stmt s) { 
@@ -1530,7 +1656,7 @@ Expr simplify_undef(Expr e) {
 }
 
 bool proved(Expr e, bool &disproved) {
-    Expr b = Simplify().mutate(e);
+    Expr b = Simplify().simplify(e);
     bool result = is_one(b);
     disproved = is_zero(b);
     log logger(2);
@@ -1544,6 +1670,27 @@ bool proved(Expr e, bool &disproved) {
 bool proved(Expr e) {
     bool dummy;
     return proved(e, dummy);
+}
+
+bool proved_in_context(Expr e, bool &disproved) {
+    Expr b = Simplify().simplify_in_context(e);
+    bool result = is_one(b);
+    disproved = is_zero(b);
+    log logger(2);
+    logger << "Attempt to prove  " << e << "\n  ==>  ";
+    if (equal(e,b)) logger << "same  ==>  ";
+    else logger << b << "\n  ==>  ";
+    logger << (result ? "true" : "false") << "\n";
+    return result;
+}
+
+bool proved_in_context(Expr e) {
+    bool dummy;
+    return proved_in_context(e, dummy);
+}
+
+void simplify_clear() {
+    Simplify::clear();
 }
 
 namespace{

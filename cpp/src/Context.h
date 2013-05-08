@@ -271,10 +271,10 @@ public:
      * must have the same children; and if it appears in the same context then it must 
      * have the same semantics; only then will it have the same bound context
      * for the variable.  For this reason, there is no need to ever remove bindings. */
-    inline void bind(std::string name, int defining_context) { variable_map.bind(current_context(), name, defining_context); }
+    inline void bind(std::string name, int defining_context) { assert(current_context() != 1); variable_map.bind(current_context(), name, defining_context); }
     
     /** Record a target by specifying the name and defining context. */
-    inline void target(std::string name, int defining_context) { target_map.bind(current_context(), name, defining_context); }
+    inline void target(std::string name, int defining_context) { assert(current_context() != 1); target_map.bind(current_context(), name, defining_context); }
 
     /** Search for a bound variable name, or a targetvar, in the current context or above. Returns the
      * context of the defining node. */

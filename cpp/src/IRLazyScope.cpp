@@ -19,7 +19,7 @@ ContextManager IRLazyScopeBase::context_mgr;
 
 void IRLazyScopeBase::clear() {
     context_mgr.clear();
-    call_stack.clear();
+    //call_stack.clear();
 }
 
 bool IRLazyScopeBase::fast_enter(const IRHandle &node) {

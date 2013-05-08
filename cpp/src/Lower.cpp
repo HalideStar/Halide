@@ -5,6 +5,7 @@
 #include "Scope.h"
 #include "Bounds.h"
 #include "Simplify.h"
+#include "IRLazyScope.h"
 #include "IREquality.h"
 #include "IRPrinter.h"
 #include "Log.h"
@@ -744,6 +745,12 @@ Stmt add_image_checks(Stmt s, Function f) {
     return s;
 }
 
+void compiler_clear() {
+    // Clear all shared data objects
+    IRLazyScopeBase::clear();
+    simplify_clear();
+}
+
 Stmt do_loop_partition(Stmt s, int section) {
     code_logger.section(section);
     if (global_options.loop_partition) {
@@ -780,6 +787,7 @@ Stmt do_loop_partition(Stmt s, int section) {
 
 
 Stmt lower(Function f) {
+    compiler_clear();
     Statistics start_statistics = global_statistics;
     
     // Compute an environment

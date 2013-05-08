@@ -4,7 +4,7 @@
 # 'make test_apps' checks some of the apps build and run (but does not check their output)
 
 # Set RUNDEBUG to select debugging options for running test programs
-RUNDEBUG = HL_DEBUG_LOGFILE=2 HL_NUMTHREADS=4
+RUNDEBUG = HL_DEBUG_LOGFILE=2 HL_NUMTHREADS=4 HL_DEBUG_CODEGEN=0
 
 CXX ?= g++
 LLVM_CONFIG ?= llvm-config
@@ -124,13 +124,16 @@ TESTS = $(shell ls test/*.cpp)
 ERROR_TESTS = $(shell ls test/error/*.cpp)
 
 # TODO: move this implementation into Makefile.tests which contains a .NOTPARALLEL rule?
-tests: $(TESTS:test/%.cpp=test_%) $(ERROR_TESTS:test/error/%.cpp=error_%)
+tests: test_jit_speed_fast $(TESTS:test/%.cpp=test_%) $(ERROR_TESTS:test/error/%.cpp=error_%)
 
 bin/test_internal: test/internal.cpp bin/lib$(NAME).so
 	$(CXX) $(CXX_FLAGS)  $< -Isrc -Lbin -l$(NAME) -lpthread -ldl -o $@	
 
 bin/test_%: test/%.cpp bin/lib$(NAME).so include/Halide.h
 	$(CXX) $(TEST_CXX_FLAGS) -O3 $<  -Iinclude -Lbin -l$(NAME) -lpthread -ldl -o $@	
+
+bin/test_jit_speed: test/jit_speed.cpp bin/lib$(NAME).so include/Halide.h
+	$(CXX) $(TEST_CXX_FLAGS) -O3 $<  -DHALIDE_NEW=1 -DHALIDE_VERSION=999999 -Iinclude -Lbin -l$(NAME) -lpthread -ldl -o $@	
 
 bin/error_%: test/error/%.cpp bin/lib$(NAME).so include/Halide.h
 	$(CXX) $(TEST_CXX_FLAGS) -O3 $<  -Iinclude -Lbin -l$(NAME) -lpthread -ldl -o $@	
@@ -149,9 +152,14 @@ test_jit_stress: bin/test_jit_stress
 	cd tmp ; HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
 	@-echo
 
-test_jit_speed: bin/test_jit_speed
+test_jit_speed_fast: bin/test_jit_speed
 	@-mkdir -p tmp
 	cd tmp ; HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
+	@-echo
+
+test_jit_speed: bin/test_jit_speed
+	@-mkdir -p tmp
+	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$< -log 5
 	@-echo
 
 test_%: bin/test_%

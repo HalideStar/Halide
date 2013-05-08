@@ -103,8 +103,8 @@ public:
     IRLazyScopeBase() : make_context(context_mgr) { make_context.lazy_scope = this; context_mgr.add_user(); }
     ~IRLazyScopeBase() { context_mgr.remove_user(); }
     
-    /** Clear the lazy scope.  Also resets the shared context manager. */
-    void clear();
+    /** Clear the shared objects in the lazy scope.  Also clears the shared context manager. */
+    static void clear();
     
     // IRLazyScope does not override any of the visit methods.
     // Such an override would be too late because a derived class

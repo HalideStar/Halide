@@ -5,15 +5,16 @@
 namespace Halide {
 namespace Internal {
 
-int log::debug_level = 0;
+# define HALIDE_NO_LOGGING_LEVEL -1
+int log::debug_level = HALIDE_NO_LOGGING_LEVEL;
 bool log::initialized = false;
 
 std::string log::section_name = "";
-int log::section_debug_level = 0;
+int log::section_debug_level = HALIDE_NO_LOGGING_LEVEL;
 
 std::string log::log_name = "";
 bool log::log_name_env = false; // Set true when HL_LOG_NAME found in environment
-int log::logfile_debug_level = 0;
+int log::logfile_debug_level = HALIDE_NO_LOGGING_LEVEL;
 std::set<std::string> log::known_files; // Initially an empty set of known files
 
 void log::constructor(std::string filename, int verbosity, std::string section) {
@@ -29,7 +30,7 @@ void log::constructor(std::string filename, int verbosity, std::string section) 
         #endif
             debug_level = atoi(lvl);
         } else {
-            debug_level = 0;
+            debug_level = HALIDE_NO_LOGGING_LEVEL;
         }
 
         // Read the log file debug level from the environment
@@ -43,7 +44,7 @@ void log::constructor(std::string filename, int verbosity, std::string section) 
         #endif
             logfile_debug_level = atoi(lvl);
         } else {
-            logfile_debug_level = 0;
+            logfile_debug_level = HALIDE_NO_LOGGING_LEVEL;
         }
 
         // Read the base log file name from the environment if specified.
@@ -77,7 +78,7 @@ void log::constructor(std::string filename, int verbosity, std::string section) 
         #endif
             section_debug_level = atoi(lvl);
         } else {
-            section_debug_level = 0;
+            section_debug_level = HALIDE_NO_LOGGING_LEVEL;
         }
         section_name = section;
     }
