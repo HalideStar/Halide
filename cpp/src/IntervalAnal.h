@@ -42,7 +42,7 @@ class IntervalAnal : public IRLazyScope<IRProcess> {
 public:
     Ival interval_analysis(Expr e) { 
         // Insert caching here once it is working correctly.
-# if 0
+# if 1
         NodeKey key = node_key(e);
         std::map<NodeKey, Ival>::const_iterator found = interval_cache.find(key);
         if (found != interval_cache.end()) {
