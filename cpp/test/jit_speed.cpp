@@ -55,7 +55,7 @@ std::string the_name;
 void alarm_handler(int sig) {
     signal(SIGALRM, SIG_IGN);
     fprintf (stderr, "%s: Timeout\n", the_name.c_str());
-    printf("%s,%s,%s,%.1f,%.1f,0,0\n", model.c_str(), version.c_str(), the_name.c_str(), -1.0, -1.0);
+    printf("%s,%s,%s,%.1f,%.1f,%.1f,0,0\n", model.c_str(), version.c_str(), the_name.c_str(), -1.0, -1.0,-1.0);
     exit(0);
 }
 
@@ -136,7 +136,7 @@ void test(std::string name, Func (*builder)(ImageParam, Image<int>, int, int), i
     
     double stmt = 0.0;
 
-# if HALIDE_VERSION > 130508
+# if HAS_COMPILE_STMT
     t1 = currentTime();
     check = 1;
     for (count = 0; count < (logging ? 1 : 100); count++) {
