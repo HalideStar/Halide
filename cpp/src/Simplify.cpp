@@ -146,7 +146,8 @@ protected:
     /* Recognise Infinity node on one or both sides of a binary operator and
      * return a code. Codes are #define constants where 
      * F represents a finite value, P represents positive infinity and N represents
-     * negative infinity. */
+     * negative infinity. Simplify code tests for infinity patterns by anding
+     * the code with a group of flags representating the equivalent options. */
 #define NN 1
 #define NF 2
 #define NP 4
@@ -196,7 +197,6 @@ protected:
         }
     }
 
-# if 1
     virtual void visit(const Variable *op) {
         //std::cout << "Simplify " << Expr(op) << "\n";
         if (scope.contains(op->name)) {
@@ -245,60 +245,6 @@ protected:
             expr = op;
         }
     }
-# else
-    // Use LazyScope to get definition, but do not substitute it
-    // if it is too complex, unless in aggressive inline mode.
-    virtual void visit(const Variable *op) {
-        log(0) << "Simplify " << Expr(op) << "\n";
-        
-        // Look up the definition 
-        if (scope.contains(op->name)) {
-            Expr replacement = scope.get(op->name);
-
-            //std::cout << "Pondering replacing " << op->name << " with " << replacement << std::endl;
-
-            // if expr is defined, we should substitute it in (unless
-            // it's a var that has been hidden by a nested scope).
-            if (replacement.defined()) {
-                //std::cout << "Replacing " << op->name << " of type " << op->type << " with " << replacement << std::endl;
-                assert(replacement.type() == op->type);
-                // If it's a naked var, and the var it refers to
-                // hasn't gone out of scope, just replace it with that
-                // var
-                if (const Variable *v = replacement.as<Variable>()) {
-                    if (scope.contains(v->name)) {
-                        if (scope.depth(v->name) < scope.depth(op->name)) {
-                            expr = replacement;
-                        } else {
-                            // Uh oh, the variable we were going to
-                            // subs in has been hidden by another
-                            // variable of the same name, better not
-                            // do anything.
-                            expr = op;
-                        }
-                    } else {
-                        // It is a variable, but the variable this
-                        // refers to hasn't been encountered. It must
-                        // be a uniform, so it's safe to substitute it
-                        // in.
-                        expr = replacement;
-                    }
-                } else {
-                    // It's not a variable, and a replacement is defined
-                    expr = replacement;
-                }
-            } else {
-                // This expression was not something deemed
-                // substitutable - no replacement is defined.
-                expr = op;
-            }
-        } else {
-            // We never encountered a let that defines this var. Must
-            // be a uniform. Don't touch it.
-            expr = op;
-        }
-    }
-# endif
 
     virtual void visit(const Add *op) {
         log(3) << depth << " Add simplify " << Expr(op) << "\n";
@@ -1672,6 +1618,9 @@ bool proved(Expr e) {
     return proved(e, dummy);
 }
 
+# if 0
+// proved_in_context can only be supported if Simplify
+// uses IRLazyScope, but it does not do this.
 bool proved_in_context(Expr e, bool &disproved) {
     Expr b = Simplify().simplify_in_context(e);
     bool result = is_one(b);
@@ -1688,6 +1637,7 @@ bool proved_in_context(Expr e) {
     bool dummy;
     return proved_in_context(e, dummy);
 }
+# endif
 
 void simplify_clear() {
     Simplify::clear();

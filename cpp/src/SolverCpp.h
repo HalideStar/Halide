@@ -1,6 +1,6 @@
 #include "Solver.h"
 #include "Ival.h"
-#include "IntervalAnal.h"
+#include "BoundsAnalysis.h"
 
 namespace Halide { 
 namespace Internal {
@@ -238,7 +238,7 @@ class Solver : public Simplify {
     
     HasTarget has_target;
     
-    IntervalAnal ia;
+    BoundsAnalysis bounds;
     
     bool is_constant_expr(Expr e) { return has_target.is_constant_expr(e); }
     
@@ -273,10 +273,10 @@ protected:
         //} else 
         if (add_e && is_constant_expr(add_e->b)) {
             //expr = mutate(solve(add_e->a, v_apply(operator-, op->v, add_e->b)) + add_e->b);
-            expr = mutate(solve(add_e->a, v_apply(inverseAdd, op->v, ia.interval_analysis(add_e->b))) + add_e->b);
+            expr = mutate(solve(add_e->a, v_apply(inverseAdd, op->v, bounds.bounds(add_e->b))) + add_e->b);
         } else if (sub_e && is_constant_expr(sub_e->b)) {
             //expr = mutate(solve(sub_e->a, v_apply(operator+, op->v, sub_e->b)) - sub_e->b);
-            expr = mutate(solve(sub_e->a, v_apply(inverseSub, op->v, ia.interval_analysis(sub_e->b))) - sub_e->b);
+            expr = mutate(solve(sub_e->a, v_apply(inverseSub, op->v, bounds.bounds(sub_e->b))) - sub_e->b);
         } else if (sub_e && is_constant_expr(sub_e->a)) {
             // solve(k - v) --> -solve(v - k) with interval negated
             expr = mutate(-solve(sub_e->b - sub_e->a, v_apply(operator-, op->v)));
@@ -293,16 +293,16 @@ protected:
         } else if (min_e && is_constant_expr(min_e->a)) {
             // Min, Max: push outside of Solve nodes.
             // solve(min(k,v)) on (a,b) --> min(k,solve(v)). 
-            expr = mutate(new Min(min_e->a, solve(min_e->b, v_apply(inverseMin, op->v, ia.interval_analysis(min_e->a)))));
+            expr = mutate(new Min(min_e->a, solve(min_e->b, v_apply(inverseMin, op->v, bounds.bounds(min_e->a)))));
         } else if (min_e && is_constant_expr(min_e->b)) {
             // solve(min(v,k)) on (a,b) --> min(solve(v),k). 
-            expr = mutate(new Min(solve(min_e->a, v_apply(inverseMin, op->v, ia.interval_analysis(min_e->b))), min_e->b));
+            expr = mutate(new Min(solve(min_e->a, v_apply(inverseMin, op->v, bounds.bounds(min_e->b))), min_e->b));
         } else if (max_e && is_constant_expr(max_e->a)) {
             // solve(max(k,v)) on (a,b) --> max(k,solve(v)). 
-            expr = mutate(new Max(max_e->a, solve(max_e->b, v_apply(inverseMax, op->v, ia.interval_analysis(max_e->a)))));
+            expr = mutate(new Max(max_e->a, solve(max_e->b, v_apply(inverseMax, op->v, bounds.bounds(max_e->a)))));
         } else if (max_e && is_constant_expr(max_e->b)) {
             // solve(max(v,k)) on (a,b) --> max(solve(v),k). 
-            expr = mutate(new Max(solve(max_e->a, v_apply(inverseMax, op->v, ia.interval_analysis(max_e->b))), max_e->b));
+            expr = mutate(new Max(solve(max_e->a, v_apply(inverseMax, op->v, bounds.bounds(max_e->b))), max_e->b));
         } else if (e.same_as(op->body)) {
             expr = op; // Nothing more to do.
         } else {

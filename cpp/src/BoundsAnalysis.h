@@ -1,5 +1,5 @@
-#ifndef HALIDE_INTERVALANAL_H
-#define HALIDE_INTERVALANAL_H
+#ifndef HALIDE_BOUNDS_ANALYSIS_H
+#define HALIDE_BOUNDS_ANALYSIS_H
 
 #include "IR.h"
 #include "Ival.h"
@@ -16,12 +16,12 @@ namespace Internal {
 
 using std::string;
 
-/** Class that performs interval analysis using IRLazyScope.
+/** Class that performs bounds analysis using IRLazyScope.
  * This class can be called in the middle of a mutation or
- * other tree walk and will compute the interval analysis result
- * for the current tree node.  Note that this may involve
- * walking the tree, and IRLazyScope will be used to track
- * variable bindings and contexts while the interval analysis
+ * other tree walk and will compute the bounds analysis result
+ * for the passed tree node in the current context.  Note that this 
+ * may involve walking the tree, and IRLazyScope will be used to 
+ * track variable bindings and contexts while the bounds analysis
  * is being performed.  This may result in information being cached,
  * but that it why we use IRLazyScope and the ContextManager.
  *
@@ -29,7 +29,7 @@ using std::string;
  * for unbounded intervals.
  */
 
-class IntervalAnal : public IRLazyScope<IRProcess> {
+class BoundsAnalysis : public IRLazyScope<IRProcess> {
     Ival interval;
     
     // Ideally the interval cache would be static and shared
@@ -40,7 +40,7 @@ class IntervalAnal : public IRLazyScope<IRProcess> {
     std::map<NodeKey, Ival> interval_cache;
     
 public:
-    Ival interval_analysis(Expr e) { 
+    Ival bounds(Expr e) { 
         // Insert caching here once it is working correctly.
 # if 1
         NodeKey key = node_key(e);
@@ -91,7 +91,7 @@ protected:
 
     virtual void visit(const Cast *op) {
         // Assume no overflow
-        Ival value = interval_analysis(op->value);
+        Ival value = bounds(op->value);
         interval = Ival(new Cast(op->type, value.min), new Cast(op->type, value.max));
     }
 
@@ -109,19 +109,19 @@ protected:
                 // Defined as a For loop.  The interval is easily determined.
                 //log(0) << "    for loop in context " << current_context() << "\n";
                 //log(0) << "        interval of " << def_for->min << "\n";
-                Ival formin = interval_analysis(def_for->min);
+                Ival formin = bounds(def_for->min);
                 Expr emax = def_for->min + (def_for->extent - 1);
                 //log(0) << "        interval of " << emax << "\n";
-                Ival formax = interval_analysis(emax);
+                Ival formax = bounds(emax);
                 //log(0) << "    min: " << formin << " " << def_for->min << "\n";
                 //log(0) << "    max: " << formax << " " << emax << "\n";
                 interval = Ival(formin.min, formax.max);
             } else if (def_let) {
                 //log(0) << "    let\n";
-                interval = interval_analysis(def_let->value);
+                interval = bounds(def_let->value);
             } else if (def_letstmt) {
                 //log(0) << "    letstmt " << op->name << "\n";
-                interval = interval_analysis(def_letstmt->value);
+                interval = bounds(def_letstmt->value);
                 //log(0) << "    interval of " << def_letstmt->value << " " << interval << "\n";
             } else {
                 assert(0 && "Unknown defining node for variable");
@@ -137,31 +137,31 @@ protected:
     }
     
     virtual void visit(const Add *op) {
-        interval = interval_analysis(op->a) + interval_analysis(op->b);
+        interval = bounds(op->a) + bounds(op->b);
     }
     
     virtual void visit(const Sub *op) {
-        interval = interval_analysis(op->a) - interval_analysis(op->b);
+        interval = bounds(op->a) - bounds(op->b);
     }
     
     virtual void visit(const Mul *op) {
-        interval = interval_analysis(op->a) * interval_analysis(op->b);
+        interval = bounds(op->a) * bounds(op->b);
     }
     
     virtual void visit(const Div *op) {
-        interval = interval_analysis(op->a) / interval_analysis(op->b);
+        interval = bounds(op->a) / bounds(op->b);
     }
     
     virtual void visit(const Mod *op) {
-        interval = interval_analysis(op->a) % interval_analysis(op->b);
+        interval = bounds(op->a) % bounds(op->b);
     }
     
     virtual void visit(const Min *op) {
-        interval = min(interval_analysis(op->a), interval_analysis(op->b));
+        interval = min(bounds(op->a), bounds(op->b));
     }
     
     virtual void visit(const Max *op) {
-        interval = max(interval_analysis(op->a), interval_analysis(op->b));
+        interval = max(bounds(op->a), bounds(op->b));
     }
     
     virtual void visit(const Clamp *op) {
@@ -169,14 +169,17 @@ protected:
         // The clamping interval is the union of the intervals of op->min and op->max.
         // The resulting interval is no larger than the clamping interval and also no larger
         // than the interval of expression a.
-        interval = intersection(interval_analysis(op->a), 
-                                ival_union(interval_analysis(op->min), interval_analysis(op->max)));
+        interval = intersection(bounds(op->a), 
+                                ival_union(bounds(op->min), bounds(op->max)));
     }
     
     virtual void visit(const EQ *op) {
-        Ival a = interval_analysis(op->a);
-        Ival b = interval_analysis(op->b);
-        if (proved_in_context(a.max < b.min) || proved_in_context(a.min > b.max)) {
+        Ival a = bounds(op->a);
+        Ival b = bounds(op->b);
+        // Any variables in the interval expressions cannot be
+        // further resolved, so there is no need for the current
+        // variable bindings to be used by proved() below.
+        if (proved(a.max < b.min) || proved(a.min > b.max)) {
             // The intervals do not overlap. Equality is disproved.
             interval = Ival(const_false(op->type.width), const_false(op->type.width));
         } else if (equal(a.min, a.max) && equal(a.min, b.min) && equal(a.min, b.max)) {
@@ -188,16 +191,16 @@ protected:
     }
     
     virtual void visit(const NE *op) {
-        interval = interval_analysis(! (op->a == op->b));
+        interval = bounds(! (op->a == op->b));
     }
     
     virtual void visit(const LT *op) {
-        Ival a = interval_analysis(op->a);
-        Ival b = interval_analysis(op->b);
-        if (proved_in_context(a.max < b.min)) {
+        Ival a = bounds(op->a);
+        Ival b = bounds(op->b);
+        if (proved(a.max < b.min)) {
             // a is always less than b
             interval = Ival(const_true(op->type.width), const_true(op->type.width));
-        } else if (proved_in_context(a.min >= b.max)) {
+        } else if (proved(a.min >= b.max)) {
             // a is never less than b.
             interval = Ival(const_false(op->type.width), const_false(op->type.width));
         } else {
@@ -206,12 +209,12 @@ protected:
     }
     
     virtual void visit(const LE *op) {
-        Ival a = interval_analysis(op->a);
-        Ival b = interval_analysis(op->b);
-        if (proved_in_context(a.max <= b.min)) {
+        Ival a = bounds(op->a);
+        Ival b = bounds(op->b);
+        if (proved(a.max <= b.min)) {
             // a is always <= b
             interval = Ival(const_true(op->type.width), const_true(op->type.width));
-        } else if (proved_in_context(a.min > b.max)) {
+        } else if (proved(a.min > b.max)) {
             // a is never <= b.
             interval = Ival(const_false(op->type.width), const_false(op->type.width));
         } else {
@@ -220,16 +223,16 @@ protected:
     }
     
     virtual void visit(const GT *op) {
-        interval = interval_analysis(op->b < op->a);
+        interval = bounds(op->b < op->a);
     }
     
     virtual void visit(const GE *op) {
-        interval = interval_analysis(op->b <= op->a);
+        interval = bounds(op->b <= op->a);
     }
     
     virtual void visit(const And *op) {
-        Ival a = interval_analysis(op->a);
-        Ival b = interval_analysis(op->b);
+        Ival a = bounds(op->a);
+        Ival b = bounds(op->b);
         if (is_zero(a.max)) {
             // If one is proved false, then it is the result
             interval = a;
@@ -248,8 +251,8 @@ protected:
     }
     
     virtual void visit(const Or *op) {
-        Ival a = interval_analysis(op->a);
-        Ival b = interval_analysis(op->b);
+        Ival a = bounds(op->a);
+        Ival b = bounds(op->b);
         if (is_one(a.min)) {
             // If one is proved true, then it is the result
             interval = a;
@@ -268,7 +271,7 @@ protected:
     }
     
     virtual void visit(const Not *op) {
-        Ival a = interval_analysis(op->a);
+        Ival a = bounds(op->a);
         if (is_one(a.min)) {
             // If a is proved true, then the result is false
             interval = Ival(const_false(op->type.width), const_false(op->type.width));
@@ -283,18 +286,18 @@ protected:
     }
     
     virtual void visit(const Select *op) {
-        Ival condition = interval_analysis(op->condition);
+        Ival condition = bounds(op->condition);
         if (is_one(condition.min)) {
             // If condition is proved true, then the result is always the true_value
-            interval = interval_analysis(op->true_value);
+            interval = bounds(op->true_value);
         } else if (is_zero(condition.max)) {
             // If condition is proved false, then the result is always the false_value
-            interval = interval_analysis(op->false_value);
+            interval = bounds(op->false_value);
         } else {
             // Neither proved true nor proved false.
             // The result can be either expressions.
-            interval = ival_union(interval_analysis(op->true_value),
-                                  interval_analysis(op->false_value));
+            interval = ival_union(bounds(op->true_value),
+                                  bounds(op->false_value));
         }
     }
     
@@ -305,8 +308,8 @@ protected:
     }
 
     virtual void visit(const Ramp *op) {
-        Ival base = interval_analysis(op->base);
-        Ival stride = interval_analysis(op->stride);
+        Ival base = bounds(op->base);
+        Ival stride = bounds(op->stride);
         
         // Here we return a ramp representing the interval of values in each position of the
         // interpreted Ramp node.
@@ -314,16 +317,16 @@ protected:
     }
 
     virtual void visit(const Broadcast *op) {
-        Ival value = interval_analysis(op->value);
+        Ival value = bounds(op->value);
         interval = Ival(new Broadcast(value.min, op->width), new Broadcast(value.max, op->width));
     }
 
     virtual void visit(const Solve *op) {
-        interval = interval_analysis(op->body);
+        interval = bounds(op->body);
     }
 
     virtual void visit(const TargetVar *op) {
-        interval = interval_analysis(op->body);
+        interval = bounds(op->body);
     }
 
     virtual void visit(const Call *op) {
@@ -335,7 +338,7 @@ protected:
     }
 
     virtual void visit(const Let *op) {
-        interval = interval_analysis(op->body);
+        interval = bounds(op->body);
     }
     
     virtual void visit(const LetStmt *op) {

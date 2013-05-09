@@ -13,7 +13,6 @@
 #include "DomainInference.h"
 #include "LowerClamp.h"
 #include "Border.h"
-#include "IntervalAnalysis.h"
 #include "Solver.h"
 #include "LoopPartition.h"
 #include "Statistics.h"
@@ -47,7 +46,6 @@ int main(int argc, const char **argv) {
     domain_inference_test();
     lower_clamp_test();
     border_test();
-    interval_analysis_test();
     solver_test();
     loop_partition_test();
     lazy_scope_test();
