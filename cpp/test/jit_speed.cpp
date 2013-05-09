@@ -38,6 +38,7 @@ using namespace Halide;
 // Support for auto partitioning of loops.
 # define HAS_PARTITION (HALIDE_NEW && HALIDE_VERSION > 130422)
 # define HAS_STATISTICS (HALIDE_NEW && HALIDE_VERSION > 130412)
+# define HAS_COMPILE_STMT ((HALIDE_NEW && HALIDE_VERSION >= 130509) || (! HALIDE_NEW))
 
 // Set to true when logging/debugging code generation - each function will only be compiled and executed once.
 int logging = 0;
