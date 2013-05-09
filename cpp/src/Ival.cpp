@@ -232,7 +232,7 @@ namespace {
     }
 }
 
-void Ival_test () {
+void ival_test () {
     Ival v1(5,1282);
     Ival v2(6,1281);
     Ival v3(7,1280); // Just outside the boundaries
@@ -275,7 +275,7 @@ void Ival_test () {
     check("zoom", va, Expr(8), zoom(vb, 8), Ival(-1272, -1));
     check("zoom", va, Expr(8), zoom(va, -8), Ival(-1272, -1));
     check("zoom", va, Expr(8), zoom(vb, -8), Ival(8, 1279));
-    std::cout << "Ival operations test passed";
+    std::cout << "Ival operations test passed\n";
 }
 }
 

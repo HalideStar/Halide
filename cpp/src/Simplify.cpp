@@ -71,16 +71,6 @@ public:
         return r;
     }
     
-    Expr simplify_in_context(Expr e) {
-        Expr r = mutate(e);
-        return r;
-    }
-    
-    Stmt simplify_in_context(Stmt s) {
-        Stmt r = mutate(s);
-        return r;
-    }
-    
 protected:
     Scope<Expr> scope;
 
@@ -1594,13 +1584,6 @@ Stmt simplify(Stmt s) {
     return Simplify().simplify(s);
 }
 
-Stmt simplify_undef(Stmt s) { 
-    return s.defined() ? simplify(s) : s; 
-}
-Expr simplify_undef(Expr e) { 
-    return e.defined() ? simplify(e) : e; 
-}
-
 bool proved(Expr e, bool &disproved) {
     Expr b = Simplify().simplify(e);
     bool result = is_one(b);
@@ -1617,27 +1600,6 @@ bool proved(Expr e) {
     bool dummy;
     return proved(e, dummy);
 }
-
-# if 0
-// proved_in_context can only be supported if Simplify
-// uses IRLazyScope, but it does not do this.
-bool proved_in_context(Expr e, bool &disproved) {
-    Expr b = Simplify().simplify_in_context(e);
-    bool result = is_one(b);
-    disproved = is_zero(b);
-    log logger(2);
-    logger << "Attempt to prove  " << e << "\n  ==>  ";
-    if (equal(e,b)) logger << "same  ==>  ";
-    else logger << b << "\n  ==>  ";
-    logger << (result ? "true" : "false") << "\n";
-    return result;
-}
-
-bool proved_in_context(Expr e) {
-    bool dummy;
-    return proved_in_context(e, dummy);
-}
-# endif
 
 void simplify_clear() {
     Simplify::clear();

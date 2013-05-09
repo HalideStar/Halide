@@ -167,30 +167,39 @@ namespace {
         using IRLazyScopeProcess::visit;
         using IRLazyScopeProcess::process;
         
+        // Count the number of references to variables of each type.
+        int count_let, count_for, count_letstmt, count_notfound;
+        
+        Walker() : count_let(0), count_for(0), count_letstmt(0), count_notfound(0) {}
+        
         //virtual void process(const Expr &expr) { std::cout << "Walker process " << expr << "\n"; IRLazyScopeBase::process(expr); }
         
         // Walk the tree.
         virtual void visit(const Variable *op) {
-            std::cout << "Walker visit Variable\n";
+            //std::cout << "Walker visit Variable\n";
             // Look up to see whether the variable is defined.
             int found = find_variable(op->name);
             if (found) {
-                std::cout << ">>> " << current_context() << " Found " << op->name << "[" << found << "]" << "\n";
+                //std::cout << ">>> " << current_context() << " Found " << op->name << "[" << found << "]" << "\n";
                 const DefiningNode *def = call(found);
                 const For *fornode = def->node().as<For>();
                 const Let *let = def->node().as<Let>();
                 const LetStmt *letstmt = def->node().as<LetStmt>();
                 if (fornode) {
-                    std::cout << op->name << " bound to:\n" << Stmt(fornode);
+                    //std::cout << op->name << " bound to:\n" << Stmt(fornode);
+                    count_for++;
                 } else if (let) {
-                    std::cout << op->name << " bound to:\n" << Expr(let);
+                    //std::cout << op->name << " bound to:\n" << Expr(let);
+                    count_let++;
                 } else if (letstmt) {
-                    std::cout << op->name << " bound to:\n" << Stmt(letstmt);
+                    //std::cout << op->name << " bound to:\n" << Stmt(letstmt);
+                    count_letstmt++;
                 }
                 ret(found);
                 //std::cout << "[" << current_context() << "] Current context\n";
             } else {
-                std::cout << "Could not find " << op->name << " in context " << current_context() << "\n";
+                //std::cout << "Could not find " << op->name << " in context " << current_context() << "\n";
+                count_notfound++;
             }
         }
     };
@@ -205,29 +214,40 @@ void lazy_scope_test() {
     Expr a = new Variable(Int(32), "a");
 
     Expr input = new Call(Int(16), "input", vec((x - 10) % 100 + 10));
-    Expr select = new Select(x > 3, new Select(x < 87, input, new Cast(Int(16), -17)),
+    Expr select = new Select(x > 3, new Select(x < 87, input, new Cast(Int(16), y-17)),
                              new Cast(Int(16), -17));
     Stmt store = new Store("buf", select, x - 1);
     PartitionInfo partition(true);
     Stmt for_loop = new For("x", 0, 100, For::Parallel, partition, store);
-    Stmt letstmt = new LetStmt("y", a * 2 + 5, for_loop);
+    Stmt letstmt = new LetStmt("y", a * 2 + 5, for_loop); //a is undefined here
     Expr call = new Call(i32, "buf", vec(max(min(x,100),0)));
     Expr call2 = new Call(i32, "buf", vec(max(min(x-1,100),0)));
     Expr call3 = new Call(i32, "buf", vec(Expr(new Clamp(Clamp::Reflect, x+1, 0, 100))));
-    Stmt store2 = new Store("out", call + call2 + call3 + 1, x);
+    Stmt store2 = new Store("out", call + call2 + call3 + 1 + y, x); // y is undefined here
     PartitionInfo partition2(Interval(1,99));
     Stmt for_loop2 = new For("x", 0, 100, For::Serial, partition2, store2);
     Stmt pipeline = new Pipeline("buf", letstmt, Stmt(), for_loop2);
     
     Walker walk;
     
-    std::cout << "Commence lazy scope test\n";
+    //std::cout << "Commence lazy scope test\n";
     walk.process(pipeline);
+    const int def_for = 8;
+    const int def_let = 0;
+    const int def_letstmt = 1;
+    const int def_notfound = 2;
+    if (walk.count_for != def_for || walk.count_let != def_let || walk.count_letstmt != def_letstmt || 
+        walk.count_notfound != def_notfound) {
+        std::cout << "Lazy scope test failed.\n";
+        std::cout << "For index variable reference count: " << walk.count_for << "   expected " << def_for << "\n";
+        std::cout << "Let variable reference count: " << walk.count_let << "   expected " << def_let << "\n";
+        std::cout << "LetStmt variable reference count: " << walk.count_letstmt << "   expected " << def_letstmt << "\n";
+        std::cout << "Undefined variable reference count: " << walk.count_notfound << "   expected " << def_notfound << "\n";
+        assert(0 && "Lazy scope test failed\n");
+    }
     std::cout << "Lazy scope test completed\n";
     
-    std::cout << "Size of LazyScope is " << sizeof(IRLazyScope<IRProcess>) << "\n";
-    
-    x.accept(&walk);
+    //std::cout << "Size of LazyScope is " << sizeof(IRLazyScope<IRProcess>) << "\n";
 }
 
 }

@@ -343,7 +343,7 @@ void interval_test () {
     check("zoom", va, Expr(8), zoom(vb, 8), Interval(-1272, -1));
     check("zoom", va, Expr(8), zoom(va, -8), Interval(-1272, -1));
     check("zoom", va, Expr(8), zoom(vb, -8), Interval(8, 1279));
-    std::cout << "Interval operations test passed";
+    std::cout << "Interval operations test passed\n";
 }
 }
 

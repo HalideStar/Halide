@@ -73,7 +73,7 @@ EXPORT Ival intersection(Ival u, Ival v);
 EXPORT Ival ival_union(Ival u, Ival v);
 
 namespace Internal {
-EXPORT void Ival_test();
+EXPORT void ival_test();
 }
 }
 

@@ -18,27 +18,15 @@ namespace Internal {
 // @{
 Stmt simplify(Stmt);
 Expr simplify(Expr);
-Stmt simplify_in_context(Stmt);
-Expr simplify_in_context(Expr);
 // @}  
-
-/** Perform simplification, but return undefined expression instead of
- * error if passed an undefined expression as input. */
-// @{
-Stmt simplify_undef(Stmt s);
-Expr simplify_undef(Expr e);
-// @} 
 
 /** Use the simplifier to test whether an expression can be
  * evaluated to true.  Disproved parameter (if used) tests
  * whether the expression can be evaluated to false.
- * proved_in_context uses the current context (variable bindings etc)
  */
 // @{
 bool proved(Expr, bool& disproved);
 bool proved(Expr);
-bool proved_in_context(Expr, bool& disproved);
-bool proved_in_context(Expr);
 // @}
    
 /** Implementations of division and mod that are specific to Halide.
