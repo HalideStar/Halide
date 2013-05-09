@@ -129,7 +129,35 @@ void test(std::string name, Func (*builder)(ImageParam, Image<int>, int, int), i
     t2 = currentTime();
     double jit = (t2 - t1) / count;
     
+    alarm(0);
+    
     fprintf (stderr, "%s: %.1f ms per jit\n", name.c_str(), jit);
+    
+    double stmt = 0.0;
+
+# if HALIDE_VERSION > 130508
+    t1 = currentTime();
+    check = 1;
+    for (count = 0; count < (logging ? 1 : 100); count++) {
+        (*builder)(a, b, n, schedule).compile_to_stmt();
+        if (count >= check) {
+            t2 = currentTime();
+            if (t2 - t1 > 2000.0)
+                break;
+            if (check == 1) {
+                alarm(0);
+                check = 4;
+            } else check = check * 2;
+        }
+    }    
+
+    t2 = currentTime();
+    stmt = (t2 - t1) / count;
+# endif
+
+    fprintf (stderr, "%s: %.1f ms per lower\n", name.c_str(), stmt);
+    
+    
 
     // Now to estimate execution time.
     Func f = (*builder)(a, b, n, schedule);
@@ -156,7 +184,7 @@ void test(std::string name, Func (*builder)(ImageParam, Image<int>, int, int), i
     misses = global_statistics.mutator_cache_misses;
 # endif
     fprintf (stderr, "%s: %.1f ms per execution\n", name.c_str(), execute);
-    printf ("%s,%s,%s,%.1f,%.1f,%d,%d\n", model.c_str(), version.c_str(), name.c_str(), jit, execute, hits, misses);
+    printf ("%s,%s,%s,%.1f,%.1f,%.1f,%d,%d\n", model.c_str(), version.c_str(), name.c_str(), jit, stmt, execute, hits, misses);
     fflush(stdout);
 }
 

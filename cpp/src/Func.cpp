@@ -842,10 +842,14 @@ Buffer Func::realize() {
 }
 #endif
 
-void Func::compile_to_bitcode(const string &filename, vector<Argument> args, const string &fn_name) {
+void Func::compile_to_stmt() {
     assert(value().defined() && "Can't compile undefined function");    
 
     if (!lowered.defined()) lowered = Halide::Internal::lower(func);
+    return;
+}
+
+void Func::compile_to_bitcode(const string &filename, vector<Argument> args, const string &fn_name) {
     Argument me(name(), true, Int(1));
     args.push_back(me);
 
