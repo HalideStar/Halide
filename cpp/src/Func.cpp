@@ -382,7 +382,7 @@ ScheduleHandle &ScheduleHandle::partition(Var var, bool auto_partition) {
     return *this;
 }
 
-ScheduleHandle &ScheduleHandle::partition(Var var, Interval interval) {
+ScheduleHandle &ScheduleHandle::partition(Var var, InfInterval interval) {
     record_partition(schedule, var, PartitionInfo(interval));
     return *this;
 }

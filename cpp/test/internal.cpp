@@ -16,8 +16,6 @@
 #include "Solver.h"
 #include "LoopPartition.h"
 #include "Statistics.h"
-#include "Interval.h"
-#include "Ival.h"
 #include "IRLazyScope.h"
 #include "Options.h"
 #include "BoundsSimplify.h"
@@ -44,7 +42,7 @@ int main(int argc, const char **argv) {
     modulus_remainder_test();
     
     interval_test();
-    ival_test();
+    infinterval_test();
     domain_inference_test();
     lower_clamp_test();
     border_test();

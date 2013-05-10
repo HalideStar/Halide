@@ -1,5 +1,5 @@
 #include "Solver.h"
-#include "Ival.h"
+#include "InfInterval.h"
 #include "BoundsAnalysis.h"
 
 namespace Halide { 
@@ -135,44 +135,44 @@ private:
 
 namespace {
 // Convenience methods for building solve nodes.
-Expr solve(Expr e, Ival i) {
+Expr solve(Expr e, InfInterval i) {
     return new Solve(e, i);
 }
 
-Expr solve(Expr e, std::vector<Ival> i) {
+Expr solve(Expr e, std::vector<InfInterval> i) {
     return new Solve(e, i);
 }
 
-// Apply unary operator to a vector of Ival by applying it to each Ival
-inline std::vector<Ival> v_apply(Ival (*f)(Ival), std::vector<Ival> v) {
-    std::vector<Ival> result;
+// Apply unary operator to a vector of InfInterval by applying it to each InfInterval
+inline std::vector<InfInterval> v_apply(InfInterval (*f)(InfInterval), std::vector<InfInterval> v) {
+    std::vector<InfInterval> result;
     for (size_t i = 0; i < v.size(); i++) {
         result.push_back((*f)(v[i]));
     }
     return result;
 }
 
-// Apply binary operator to a vector of Ival by applying it to each Ival
-inline std::vector<Ival> v_apply(Ival (*f)(Ival, Expr), std::vector<Ival> v, Expr b) {
-    std::vector<Ival> result;
+// Apply binary operator to a vector of InfInterval by applying it to each InfInterval
+inline std::vector<InfInterval> v_apply(InfInterval (*f)(InfInterval, Expr), std::vector<InfInterval> v, Expr b) {
+    std::vector<InfInterval> result;
     for (size_t i = 0; i < v.size(); i++) {
         result.push_back((*f)(v[i], b));
     }
     return result;
 }
 
-// Apply binary operator to a vector of Ival by applying it to each Ival
-inline std::vector<Ival> v_apply(Ival (*f)(Ival, Ival), std::vector<Ival> v, Ival w) {
-    std::vector<Ival> result;
+// Apply binary operator to a vector of InfInterval by applying it to each InfInterval
+inline std::vector<InfInterval> v_apply(InfInterval (*f)(InfInterval, InfInterval), std::vector<InfInterval> v, InfInterval w) {
+    std::vector<InfInterval> result;
     for (size_t i = 0; i < v.size(); i++) {
         result.push_back((*f)(v[i], w));
     }
     return result;
 }
 
-// Apply binary operator to a vector of Ival by applying it to each Ival
-inline std::vector<Ival> v_apply(Ival (*f)(Ival, Ival), std::vector<Ival> u, std::vector<Ival> v) {
-    std::vector<Ival> result;
+// Apply binary operator to a vector of InfInterval by applying it to each InfInterval
+inline std::vector<InfInterval> v_apply(InfInterval (*f)(InfInterval, InfInterval), std::vector<InfInterval> u, std::vector<InfInterval> v) {
+    std::vector<InfInterval> result;
     assert(u.size() == v.size() && "Vectors of intervals of different sizes");
     for (size_t i = 0; i < v.size(); i++) {
         result.push_back((*f)(u[i], v[i]));
@@ -180,49 +180,49 @@ inline std::vector<Ival> v_apply(Ival (*f)(Ival, Ival), std::vector<Ival> u, std
     return result;
 }
 
-Ival inverseMin(Ival v, Expr k) {
+InfInterval inverseMin(InfInterval v, Expr k) {
     // inverse of min on an interval against constant expression k.
     // If v.max >= k then the Min ensures that the upper bound is in
     // the target interval, so the new max is +infinity; otherwise
     // the new max is v.max.
-    return Ival(v.min, simplify(select(v.max >= k, make_infinity(v.max.type(), +1), v.max)));
+    return InfInterval(v.min, simplify(select(v.max >= k, make_infinity(v.max.type(), +1), v.max)));
 }
 
-Ival inverseMin(Ival v, Ival k) {
+InfInterval inverseMin(InfInterval v, InfInterval k) {
     // inverse of min on an interval against constant expression k.
     // If v.max >= k.max then the Min ensures that the upper bound is in
     // the target interval, so the new max is +infinity; otherwise
     // the new max is v.max.
-    return Ival(v.min, simplify(select(v.max >= k.max, make_infinity(v.max.type(), +1), v.max)));
+    return InfInterval(v.min, simplify(select(v.max >= k.max, make_infinity(v.max.type(), +1), v.max)));
 }
 
-Ival inverseMax(Ival v, Expr k) {
+InfInterval inverseMax(InfInterval v, Expr k) {
     // inverse of max on an interval against constant expression k.
     // If v.min <= k then the Max ensures that the lower bound is in
     // the target interval, so the new min is -infinity; otherwise
     // the new min is v.min.
-    return Ival(simplify(select(v.min <= k, make_infinity(v.min.type(), -1), v.min)), v.max);
+    return InfInterval(simplify(select(v.min <= k, make_infinity(v.min.type(), -1), v.min)), v.max);
 }
 
-Ival inverseMax(Ival v, Ival k) {
+InfInterval inverseMax(InfInterval v, InfInterval k) {
     // inverse of max on an interval against constant expression k.
     // If v.min <= k.min then the Max ensures that the lower bound is in
     // the target interval, so the new min is -infinity; otherwise
     // the new min is v.min.
     // The new max is v.max.
-    return Ival(simplify(select(v.min <= k.min, make_infinity(v.min.type(), -1), v.min)), v.max);
+    return InfInterval(simplify(select(v.min <= k.min, make_infinity(v.min.type(), -1), v.min)), v.max);
 }
 
-Ival inverseAdd(Ival v, Ival k) {
+InfInterval inverseAdd(InfInterval v, InfInterval k) {
     // Compute an interval such that adding the interval k always results
     // in an interval no bigger than v.
-    return Ival(simplify(v.min - k.min), simplify(v.max - k.max));
+    return InfInterval(simplify(v.min - k.min), simplify(v.max - k.max));
 }
 
-Ival inverseSub(Ival v, Ival k) {
+InfInterval inverseSub(InfInterval v, InfInterval k) {
     // Compute an interval such that adding the interval k always results
     // in an interval no bigger than v.
-    return Ival(simplify(v.min + k.min), simplify(v.max + k.max));
+    return InfInterval(simplify(v.min + k.min), simplify(v.max + k.max));
 }
 
 // end anonymous namespace
@@ -666,59 +666,59 @@ void checkSolver(Expr a, Expr b) {
 void solver_test() {
     Var x("x"), y("y"), c("c"), d("d");
     
-    checkSolver(solve(x, Ival(0,10)), solve(x, Ival(0,10)));
-    checkSolver(solve(x + 4, Ival(0,10)), solve(x, Ival(-4,6)) + 4);
-    checkSolver(solve(4 + x, Ival(0,10)), solve(x, Ival(-4,6)) + 4);
-    checkSolver(solve(x + 4 + d, Ival(0,10)), solve(x, Ival(-4-d, 6-d)) + d + 4);
-    checkSolver(solve(x - d, Ival(0,10)), solve(x, Ival(d, d+10)) - d);
-    checkSolver(solve(x - (4 - d), Ival(0,10)), solve(x, Ival(4-d, 14-d)) + d + -4);
-    checkSolver(solve(x - 4 - d, Ival(0,10)), solve(x, Ival(d+4, d+14)) - d + -4);
+    checkSolver(solve(x, InfInterval(0,10)), solve(x, InfInterval(0,10)));
+    checkSolver(solve(x + 4, InfInterval(0,10)), solve(x, InfInterval(-4,6)) + 4);
+    checkSolver(solve(4 + x, InfInterval(0,10)), solve(x, InfInterval(-4,6)) + 4);
+    checkSolver(solve(x + 4 + d, InfInterval(0,10)), solve(x, InfInterval(-4-d, 6-d)) + d + 4);
+    checkSolver(solve(x - d, InfInterval(0,10)), solve(x, InfInterval(d, d+10)) - d);
+    checkSolver(solve(x - (4 - d), InfInterval(0,10)), solve(x, InfInterval(4-d, 14-d)) + d + -4);
+    checkSolver(solve(x - 4 - d, InfInterval(0,10)), solve(x, InfInterval(d+4, d+14)) - d + -4);
     // Solve 4-x on the interval (0,10).
     // 0 <= 4-x <= 10.
     // -4 <= -x <= 6.  solve(-x) + 4
     // 4 >= x >= -6.   -solve(x) + 4  i.e.  4 - solve(x)
-    checkSolver(solve(4 - x, Ival(0,10)), 4 - solve(x, Ival(-6,4)));
-    checkSolver(solve(4 - d - x, Ival(0,10)), 4 - (solve(x, Ival(-6 - d, 4 - d)) + d));
-    checkSolver(solve(4 - d - x, Ival(0,10)) + 1, 5 - (solve(x, Ival(-6 - d, 4 - d)) + d));
+    checkSolver(solve(4 - x, InfInterval(0,10)), 4 - solve(x, InfInterval(-6,4)));
+    checkSolver(solve(4 - d - x, InfInterval(0,10)), 4 - (solve(x, InfInterval(-6 - d, 4 - d)) + d));
+    checkSolver(solve(4 - d - x, InfInterval(0,10)) + 1, 5 - (solve(x, InfInterval(-6 - d, 4 - d)) + d));
     // Solve c - (x + d) on (0,10).
     // 0 <= c - (x + d) <= 10.
     // -c <= -(x+d) <= 10-c.
     // c >= x+d >= c-10.
     // c-d >= d >= c-d-10.
-    checkSolver(solve(c - (x + d), Ival(0,10)), c - (solve(x, Ival(c-d+-10, c-d)) + d));
+    checkSolver(solve(c - (x + d), InfInterval(0,10)), c - (solve(x, InfInterval(c-d+-10, c-d)) + d));
     
-    checkSolver(solve(x * 2, Ival(0,10)), solve(x, Ival(0,5)) * 2);
-    checkSolver(solve(x * 3, Ival(1,17)), solve(x, Ival(1,5)) * 3);
-    checkSolver(solve(x * -3, Ival(1,17)), solve(x, Ival(-5,-1)) * -3);
-    checkSolver(solve((x + 3) * 2, Ival(0,10)), solve(x, Ival(-3, 2)) * 2 + 6);
+    checkSolver(solve(x * 2, InfInterval(0,10)), solve(x, InfInterval(0,5)) * 2);
+    checkSolver(solve(x * 3, InfInterval(1,17)), solve(x, InfInterval(1,5)) * 3);
+    checkSolver(solve(x * -3, InfInterval(1,17)), solve(x, InfInterval(-5,-1)) * -3);
+    checkSolver(solve((x + 3) * 2, InfInterval(0,10)), solve(x, InfInterval(-3, 2)) * 2 + 6);
     // Solve 0 <= (x + 4) * 3 <= 10
     // 0 <= (x + 4) <= 3
     // -4 <= x <= -1
-    checkSolver(solve((x + 4) * 3, Ival(0,10)), solve(x, Ival(-4, -1)) * 3 + 12);
+    checkSolver(solve((x + 4) * 3, InfInterval(0,10)), solve(x, InfInterval(-4, -1)) * 3 + 12);
     // Solve 0 <= (x + c) * -3 <= 10
     // 0 >= (x + c) >= -3
     // -c >= x >= -3 - c
-    checkSolver(solve((x + c) * -3, Ival(0,10)), (solve(x, Ival(-3 - c, 0 - c)) + c) * -3);
+    checkSolver(solve((x + c) * -3, InfInterval(0,10)), (solve(x, InfInterval(-3 - c, 0 - c)) + c) * -3);
     
-    checkSolver(solve(x / 3, Ival(0,10)), solve(x, Ival(0, 32)) / 3);
-    checkSolver(solve(x / -3, Ival(0,10)), solve(x, Ival(-30,2)) / -3);
+    checkSolver(solve(x / 3, InfInterval(0,10)), solve(x, InfInterval(0, 32)) / 3);
+    checkSolver(solve(x / -3, InfInterval(0,10)), solve(x, InfInterval(-30,2)) / -3);
     // Solve 1 <= (x + c) / 3 <= 17
     // 3 <= (x + c) <= 53
     // 3 - c <= x <= 53 - c
-    checkSolver(solve((x + c) / 3, Ival(1,17)), (solve(x, Ival(3 - c, 53 - c)) + c) / 3);
-    checkSolver(solve((x * d) / d, Ival(1,17)), solve(x, Ival(1,17)));
-    checkSolver(solve((x * d + d) / d, Ival(1,17)), solve(x, Ival(0,16)) + 1);
-    checkSolver(solve((x * d - d) / d, Ival(1,17)), solve(x, Ival(2,18)) + -1);
+    checkSolver(solve((x + c) / 3, InfInterval(1,17)), (solve(x, InfInterval(3 - c, 53 - c)) + c) / 3);
+    checkSolver(solve((x * d) / d, InfInterval(1,17)), solve(x, InfInterval(1,17)));
+    checkSolver(solve((x * d + d) / d, InfInterval(1,17)), solve(x, InfInterval(0,16)) + 1);
+    checkSolver(solve((x * d - d) / d, InfInterval(1,17)), solve(x, InfInterval(2,18)) + -1);
     
-    checkSolver(solve(x + 4, Ival(0,new Infinity(Int(32), +1))), solve(x, Ival(-4,new Infinity(Int(32), +1))) + 4);
-    checkSolver(solve(x + 4, Ival(new Infinity(Int(32), -1),10)), solve(x, Ival(new Infinity(Int(32), -1),6)) + 4);
+    checkSolver(solve(x + 4, InfInterval(0,new Infinity(Int(32), +1))), solve(x, InfInterval(-4,new Infinity(Int(32), +1))) + 4);
+    checkSolver(solve(x + 4, InfInterval(new Infinity(Int(32), -1),10)), solve(x, InfInterval(new Infinity(Int(32), -1),6)) + 4);
     
     // A few complex expressions
-    checkSolver(solve(x + c + 2 * y + d, Ival(0,10)), solve(x + y * 2, Ival(0 - d - c, 10 - d - c)) + c + d);
+    checkSolver(solve(x + c + 2 * y + d, InfInterval(0,10)), solve(x + y * 2, InfInterval(0 - d - c, 10 - d - c)) + c + d);
     // Solve 0 <= x + 10 + x + 15 <= 10
     // -25 <= x * 2 <= -15
     // -12 <= x <= -8
-    checkSolver(solve(x + 10 + x + 15, Ival(0,10)), solve(x, Ival(-12, -8)) * 2 + 25);
+    checkSolver(solve(x + 10 + x + 15, InfInterval(0,10)), solve(x, InfInterval(-12, -8)) * 2 + 25);
     
     checkSolver(x * x, x * x);
     checkSolver(x * d, x * d);

@@ -5,7 +5,7 @@
 #include "IROperator.h"
 #include "IREquality.h"
 #include "IRPrinter.h"
-#include "Ival.h"
+#include "InfInterval.h"
 #include "Util.h"
 #include "Var.h"
 #include "Log.h"
@@ -30,8 +30,8 @@ public:
     using Super::visit;
 
     void visit(const Mod *op) {
-        Ival bounds_a = bounds.bounds(op->a);
-        Ival bounds_b = bounds.bounds(op->b);
+        InfInterval bounds_a = bounds.bounds(op->a);
+        InfInterval bounds_b = bounds.bounds(op->b);
         if (proved(bounds_b.min > bounds_a.max) && proved(bounds_a.min >= 0)) {
             // The expression a is always in the bounds of the (positive) modulus b.
             expr = mutate(op->a);
@@ -45,9 +45,9 @@ public:
 
 	//LH
     void visit(const Clamp *op) {
-        Ival bounds_a = bounds.bounds(op->a);
-        Ival bounds_min = bounds.bounds(op->min);
-        Ival bounds_max = bounds.bounds(op->max);
+        InfInterval bounds_a = bounds.bounds(op->a);
+        InfInterval bounds_min = bounds.bounds(op->min);
+        InfInterval bounds_max = bounds.bounds(op->max);
         if (op->clamptype == Clamp::None || (proved(bounds_min.max <= bounds_a.min) && 
             proved(bounds_max.min >= bounds_a.max))) {
             // The expression is always in bounds, so the clamp is not required at all.
@@ -59,8 +59,8 @@ public:
 
     void visit(const Min *op) {
         //log(0) << "Min " << op->a << ", " << op->b << "\n";
-        Ival bounds_a = bounds.bounds(op->a);
-        Ival bounds_b = bounds.bounds(op->b);
+        InfInterval bounds_a = bounds.bounds(op->a);
+        InfInterval bounds_b = bounds.bounds(op->b);
         //log(0) << "    interval a " << bounds_a << "  b " << bounds_b << "\n";
         //log(0) << "    current context " << current_context() << "\n";
         if (proved(bounds_a.max <= bounds_b.min)) {
@@ -74,8 +74,8 @@ public:
 
     void visit(const Max *op) {
         //log(0) << "Max " << op->a << ", " << op->b << "\n";
-        Ival bounds_a = bounds.bounds(op->a);
-        Ival bounds_b = bounds.bounds(op->b);
+        InfInterval bounds_a = bounds.bounds(op->a);
+        InfInterval bounds_b = bounds.bounds(op->b);
         if (proved(bounds_a.min >= bounds_b.max)) {
             expr = mutate(op->a);
         } else if (proved(bounds_b.min >= bounds_a.max)) {
@@ -86,7 +86,7 @@ public:
     }
 
     void visit(const Select *op) {
-        Ival bounds_cond = bounds.bounds(op->condition);
+        InfInterval bounds_cond = bounds.bounds(op->condition);
         if (is_one(bounds_cond.min)) {
             // Provably always true condition.
             expr = mutate(op->true_value);

@@ -5,6 +5,7 @@
 #include "Type.h"
 #include "IR.h"
 #include "Interval.h"
+#include "InfInterval.h"
 #include "DomainInference.h"
 #include <ostream>
 
@@ -26,7 +27,7 @@
 namespace std {
 std::ostream &operator<<(std::ostream &stream, const std::vector<Halide::Expr> &v);
 std::ostream &operator<<(std::ostream &stream, const std::vector<Halide::Interval> &v);
-std::ostream &operator<<(std::ostream &stream, const std::vector<Halide::Ival> &v);
+std::ostream &operator<<(std::ostream &stream, const std::vector<Halide::InfInterval> &v);
 }
 
 namespace Halide { 
@@ -51,8 +52,8 @@ std::ostream &operator<<(std::ostream &stream, Domain);
 /** Emit an Interval in human readable form */
 std::ostream &operator<<(std::ostream &stream, Halide::Interval v);
 
-/** Emit an Ival in human readable form */
-std::ostream &operator<<(std::ostream &stream, Halide::Ival v);
+/** Emit an InfInterval in human readable form */
+std::ostream &operator<<(std::ostream &stream, Halide::InfInterval v);
 
 namespace Internal {
 

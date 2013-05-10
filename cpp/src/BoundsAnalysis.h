@@ -2,7 +2,7 @@
 #define HALIDE_BOUNDS_ANALYSIS_H
 
 #include "IR.h"
-#include "Ival.h"
+#include "InfInterval.h"
 #include "IREquality.h"
 #include "IRLazyScope.h"
 #include "IRPrinter.h"
@@ -25,26 +25,26 @@ using std::string;
  * is being performed.  This may result in information being cached,
  * but that it why we use IRLazyScope and the ContextManager.
  *
- * This class uses Ival to represent the interval, with infinity
+ * This class uses InfInterval to represent the interval, with infinity
  * for unbounded intervals.
  */
 
 class BoundsAnalysis : public IRLazyScope<IRProcess> {
-    Ival interval;
+    InfInterval interval;
     
     // Ideally the interval cache would be static and shared
     // in the same way as ContextManager.  It would then
     // want to be reset whenever the context manager is reset.
     // To do this in a tidy manner is difficult.  The untidy way
     // is to include it in the context manager.
-    std::map<NodeKey, Ival> interval_cache;
+    std::map<NodeKey, InfInterval> interval_cache;
     
 public:
-    Ival bounds(Expr e) { 
+    InfInterval bounds(Expr e) { 
         // Insert caching here once it is working correctly.
 # if 1
         NodeKey key = node_key(e);
-        std::map<NodeKey, Ival>::const_iterator found = interval_cache.find(key);
+        std::map<NodeKey, InfInterval>::const_iterator found = interval_cache.find(key);
         if (found != interval_cache.end()) {
             return found->second;
         }
@@ -55,26 +55,26 @@ public:
     }
 
 private:
-    Ival bounds_of_type(Type t) {
+    InfInterval bounds_of_type(Type t) {
         if (t.is_uint()) {
             if (t.bits <= 31) { // Previously, more than 16 bits was unbounded, but in practice that meant 32
-                return Ival(t.min(), t.max());
+                return InfInterval(t.min(), t.max());
             } else {
                 // Hack: Treat 32 bit unsigned int as unbounded.
                 // Previously, min was undef, but zero is sensible.
-                return Ival(t.min(), new Infinity(t, 1));
+                return InfInterval(t.min(), new Infinity(t, 1));
             }
         } else if (t.is_int()) {
             if (t.bits <= 31) { // Previously, more than 16 bbits was unbounded, but in practice that meant 32
-                return Ival(t.min(), t.max());
+                return InfInterval(t.min(), t.max());
             } else {
                 // Hack: Treat 32 bit signed integer as unbounded.
-                return Ival(new Infinity(t, -1), new Infinity(t, 1));
+                return InfInterval(new Infinity(t, -1), new Infinity(t, 1));
             }
             
         } else {
             // Floating point types are treated as unbounded for analysis
-            return Ival(new Infinity(t, -1), new Infinity(t, 1));
+            return InfInterval(new Infinity(t, -1), new Infinity(t, 1));
         }        
     }
 
@@ -82,17 +82,17 @@ protected:
     using IRLazyScope<IRProcess>::visit;
     
     virtual void visit(const IntImm *op) {
-        interval = Ival(op, op);
+        interval = InfInterval(op, op);
     }
     
     virtual void visit(const FloatImm *op) {
-        interval = Ival(op, op);
+        interval = InfInterval(op, op);
     }
 
     virtual void visit(const Cast *op) {
         // Assume no overflow
-        Ival value = bounds(op->value);
-        interval = Ival(new Cast(op->type, value.min), new Cast(op->type, value.max));
+        InfInterval value = bounds(op->value);
+        interval = InfInterval(new Cast(op->type, value.min), new Cast(op->type, value.max));
     }
 
     virtual void visit(const Variable *op) {
@@ -109,13 +109,13 @@ protected:
                 // Defined as a For loop.  The interval is easily determined.
                 //log(0) << "    for loop in context " << current_context() << "\n";
                 //log(0) << "        interval of " << def_for->min << "\n";
-                Ival formin = bounds(def_for->min);
+                InfInterval formin = bounds(def_for->min);
                 Expr emax = def_for->min + (def_for->extent - 1);
                 //log(0) << "        interval of " << emax << "\n";
-                Ival formax = bounds(emax);
+                InfInterval formax = bounds(emax);
                 //log(0) << "    min: " << formin << " " << def_for->min << "\n";
                 //log(0) << "    max: " << formax << " " << emax << "\n";
-                interval = Ival(formin.min, formax.max);
+                interval = InfInterval(formin.min, formax.max);
             } else if (def_let) {
                 //log(0) << "    let\n";
                 interval = bounds(def_let->value);
@@ -125,14 +125,14 @@ protected:
                 //log(0) << "    interval of " << def_letstmt->value << " " << interval << "\n";
             } else {
                 assert(0 && "Unknown defining node for variable");
-                interval = Ival(new Infinity(-1), new Infinity(1));
+                interval = InfInterval(new Infinity(-1), new Infinity(1));
             }
             ret(found);
         } else {
             // Keep the variable name in the absence of a definition.
             // This allows symbolic reasoning (i.e. simplify) to reduce
             // expressions.
-            interval = Ival(op, op);
+            interval = InfInterval(op, op);
         }
     }
     
@@ -174,19 +174,19 @@ protected:
     }
     
     virtual void visit(const EQ *op) {
-        Ival a = bounds(op->a);
-        Ival b = bounds(op->b);
+        InfInterval a = bounds(op->a);
+        InfInterval b = bounds(op->b);
         // Any variables in the interval expressions cannot be
         // further resolved, so there is no need for the current
         // variable bindings to be used by proved() below.
         if (proved(a.max < b.min) || proved(a.min > b.max)) {
             // The intervals do not overlap. Equality is disproved.
-            interval = Ival(const_false(op->type.width), const_false(op->type.width));
+            interval = InfInterval(const_false(op->type.width), const_false(op->type.width));
         } else if (equal(a.min, a.max) && equal(a.min, b.min) && equal(a.min, b.max)) {
             // Both intervals are unique constants and equal.
-            interval = Ival(const_true(op->type.width), const_true(op->type.width));
+            interval = InfInterval(const_true(op->type.width), const_true(op->type.width));
         } else {
-            interval = Ival(const_false(op->type.width), const_true(op->type.width));
+            interval = InfInterval(const_false(op->type.width), const_true(op->type.width));
         }
     }
     
@@ -195,30 +195,30 @@ protected:
     }
     
     virtual void visit(const LT *op) {
-        Ival a = bounds(op->a);
-        Ival b = bounds(op->b);
+        InfInterval a = bounds(op->a);
+        InfInterval b = bounds(op->b);
         if (proved(a.max < b.min)) {
             // a is always less than b
-            interval = Ival(const_true(op->type.width), const_true(op->type.width));
+            interval = InfInterval(const_true(op->type.width), const_true(op->type.width));
         } else if (proved(a.min >= b.max)) {
             // a is never less than b.
-            interval = Ival(const_false(op->type.width), const_false(op->type.width));
+            interval = InfInterval(const_false(op->type.width), const_false(op->type.width));
         } else {
-            interval = Ival(const_false(op->type.width), const_true(op->type.width));
+            interval = InfInterval(const_false(op->type.width), const_true(op->type.width));
         }
     }
     
     virtual void visit(const LE *op) {
-        Ival a = bounds(op->a);
-        Ival b = bounds(op->b);
+        InfInterval a = bounds(op->a);
+        InfInterval b = bounds(op->b);
         if (proved(a.max <= b.min)) {
             // a is always <= b
-            interval = Ival(const_true(op->type.width), const_true(op->type.width));
+            interval = InfInterval(const_true(op->type.width), const_true(op->type.width));
         } else if (proved(a.min > b.max)) {
             // a is never <= b.
-            interval = Ival(const_false(op->type.width), const_false(op->type.width));
+            interval = InfInterval(const_false(op->type.width), const_false(op->type.width));
         } else {
-            interval = Ival(const_false(op->type.width), const_true(op->type.width));
+            interval = InfInterval(const_false(op->type.width), const_true(op->type.width));
         }
     }
     
@@ -231,8 +231,8 @@ protected:
     }
     
     virtual void visit(const And *op) {
-        Ival a = bounds(op->a);
-        Ival b = bounds(op->b);
+        InfInterval a = bounds(op->a);
+        InfInterval b = bounds(op->b);
         if (is_zero(a.max)) {
             // If one is proved false, then it is the result
             interval = a;
@@ -246,13 +246,13 @@ protected:
         } else {
             // Neither is proved true nor proved false.
             // The result is uncertain.
-            interval = Ival(const_false(op->type.width), const_true(op->type.width));
+            interval = InfInterval(const_false(op->type.width), const_true(op->type.width));
         }
     }
     
     virtual void visit(const Or *op) {
-        Ival a = bounds(op->a);
-        Ival b = bounds(op->b);
+        InfInterval a = bounds(op->a);
+        InfInterval b = bounds(op->b);
         if (is_one(a.min)) {
             // If one is proved true, then it is the result
             interval = a;
@@ -266,27 +266,27 @@ protected:
         } else {
             // Neither is proved true nor proved false.
             // The result is uncertain.
-            interval = Ival(const_false(op->type.width), const_true(op->type.width));
+            interval = InfInterval(const_false(op->type.width), const_true(op->type.width));
         }
     }
     
     virtual void visit(const Not *op) {
-        Ival a = bounds(op->a);
+        InfInterval a = bounds(op->a);
         if (is_one(a.min)) {
             // If a is proved true, then the result is false
-            interval = Ival(const_false(op->type.width), const_false(op->type.width));
+            interval = InfInterval(const_false(op->type.width), const_false(op->type.width));
         } else if (is_zero(a.max)) {
             // If a is proved false, then the result is true.
-            interval = Ival(const_true(op->type.width), const_true(op->type.width));
+            interval = InfInterval(const_true(op->type.width), const_true(op->type.width));
         } else {
             // Neither proved true nor proved false.
             // The result is uncertain.
-            interval = Ival(const_false(op->type.width), const_true(op->type.width));
+            interval = InfInterval(const_false(op->type.width), const_true(op->type.width));
         }
     }
     
     virtual void visit(const Select *op) {
-        Ival condition = bounds(op->condition);
+        InfInterval condition = bounds(op->condition);
         if (is_one(condition.min)) {
             // If condition is proved true, then the result is always the true_value
             interval = bounds(op->true_value);
@@ -308,17 +308,17 @@ protected:
     }
 
     virtual void visit(const Ramp *op) {
-        Ival base = bounds(op->base);
-        Ival stride = bounds(op->stride);
+        InfInterval base = bounds(op->base);
+        InfInterval stride = bounds(op->stride);
         
         // Here we return a ramp representing the interval of values in each position of the
         // interpreted Ramp node.
-        interval = Ival(new Ramp(base.min, stride.min, op->width), new Ramp(base.max, stride.max, op->width));
+        interval = InfInterval(new Ramp(base.min, stride.min, op->width), new Ramp(base.max, stride.max, op->width));
     }
 
     virtual void visit(const Broadcast *op) {
-        Ival value = bounds(op->value);
-        interval = Ival(new Broadcast(value.min, op->width), new Broadcast(value.max, op->width));
+        InfInterval value = bounds(op->value);
+        interval = InfInterval(new Broadcast(value.min, op->width), new Broadcast(value.max, op->width));
     }
 
     virtual void visit(const Solve *op) {
@@ -342,47 +342,47 @@ protected:
     }
     
     virtual void visit(const LetStmt *op) {
-        interval = Ival(); 
+        interval = InfInterval(); 
     }
 
     virtual void visit(const PrintStmt *op) {
-        interval = Ival(); 
+        interval = InfInterval(); 
     }
 
     virtual void visit(const AssertStmt *op) {
-        interval = Ival(); 
+        interval = InfInterval(); 
     }
 
     virtual void visit(const Pipeline *op) {
-        interval = Ival(); 
+        interval = InfInterval(); 
     }
 
     virtual void visit(const For *op) {
-        interval = Ival(); 
+        interval = InfInterval(); 
     }
 
     virtual void visit(const Store *op) {
-        interval = Ival(); 
+        interval = InfInterval(); 
     }
 
     virtual void visit(const Provide *op) {
-        interval = Ival(); 
+        interval = InfInterval(); 
     }
 
     virtual void visit(const Allocate *op) {
-        interval = Ival(); 
+        interval = InfInterval(); 
     }
 
     virtual void visit(const Realize *op) {
-        interval = Ival(); 
+        interval = InfInterval(); 
     }
 
     virtual void visit(const Block *op) {
-        interval = Ival(); 
+        interval = InfInterval(); 
     }
     
     virtual void visit(const StmtTargetVar *op) {
-        interval = Ival(); 
+        interval = InfInterval(); 
     }
     
     virtual void visit(const Infinity *op) {

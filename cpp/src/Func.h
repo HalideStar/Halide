@@ -7,6 +7,7 @@
  */
 
 #include "IR.h"
+#include "IntRange.h"
 #include "Var.h"
 #include "IntrusivePtr.h"
 #include "Function.h"
@@ -235,9 +236,11 @@ public:
     EXPORT ScheduleHandle &reorder(Var x, Var y, Var z, Var w, Var t);
 
     //LH
-    /** Partition a loop by specifying an Interval for the main loop.
-     * Cancels automatic partitioning if previously specified. */
-    EXPORT ScheduleHandle &partition(Var var, Interval mainloop);
+    /** Partition a loop by specifying bounds for the main loop.
+     * Cancels automatic partitioning if previously specified. 
+     * Because of automatic type conversion, you can pass any type of IntRange
+     * object such as Interval or Range. */
+    EXPORT ScheduleHandle &partition(Var var, InfInterval bounds);
     /** Partition a loop automatically, or not, under control of boolean. 
      * Cancels manual partition if already specified. */
     EXPORT ScheduleHandle &partition(Var var, bool do_partition = true);

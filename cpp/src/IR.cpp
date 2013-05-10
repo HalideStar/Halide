@@ -69,12 +69,21 @@ EXPORT RefCount &ref_count<IRNode>(const IRNode *n) {return n->ref_count;}
 template<>
 EXPORT void destroy<IRNode>(const IRNode *n) {delete n;}
 
-
-void check_same_type(std::string opname, Expr a, Expr b) {
+/** Ensure that two operands are both defined and of the same type */
+void assert_defined_same_type(std::string opname, Expr a, Expr b) {
     if (! a.defined() || ! b.defined()) {
         std::cerr << opname << "(" << a << ", " << b << ") has undefined operand" << std::endl;
         assert(0 && "Undefined operand");
     }
+    if (a.type() == b.type()) return;
+    std::cerr << opname << "(" << a << ", " << b << ") has mismatched types " 
+        << a.type() << " and " << b.type() << std::endl;
+    assert(0 && "Mismatched types");
+}
+
+/** Ensure that two operands are of the same type if they are both defined */
+void assert_same_type(std::string opname, Expr a, Expr b) {
+    if (! a.defined() || ! b.defined()) return;
     if (a.type() == b.type()) return;
     std::cerr << opname << "(" << a << ", " << b << ") has mismatched types " 
         << a.type() << " and " << b.type() << std::endl;
@@ -95,6 +104,7 @@ const bool PartitionInfo::interval_defined() const {
     return (interval.min.defined() && interval.max.defined() && 
             ! interval.min.as<Infinity>() && ! interval.max.as<Infinity>()); 
 }
+
 
 }
 }

@@ -37,7 +37,7 @@ ostream &operator<<(ostream &stream, const vector<Halide::Interval> &v) {
     return stream;
 }
 
-ostream &operator<<(ostream &stream, const vector<Halide::Ival> &v) {
+ostream &operator<<(ostream &stream, const vector<Halide::InfInterval> &v) {
     for (size_t i = 0; i < v.size(); i++) {
         stream << v[i];
         if (i+1 < v.size()) {
@@ -105,7 +105,7 @@ ostream &operator<<(ostream &stream, Interval v) {
     return stream;
 }
 
-ostream &operator<<(ostream &stream, Ival v) {
+ostream &operator<<(ostream &stream, InfInterval v) {
     stream << "[" << v.min << ", " << v.max << "]";
     return stream;
 }

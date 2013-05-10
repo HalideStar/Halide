@@ -77,7 +77,7 @@ class LoopPreSolver : public InlineLet {
         Expr b = mutate(op->b);
         if (is_constant_expr(a) && ! is_constant_expr(b)) std::swap(a,b);
         if (!is_constant_expr(a) && is_constant_expr(b)) {
-            expr = new Min(new Solve(a, Ival(make_infinity(b.type(), -1), b)), b);
+            expr = new Min(new Solve(a, InfInterval(make_infinity(b.type(), -1), b)), b);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
@@ -94,7 +94,7 @@ class LoopPreSolver : public InlineLet {
         Expr b = mutate(op->b);
         if (is_constant_expr(a) && ! is_constant_expr(b)) std::swap(a,b);
         if (!is_constant_expr(a) && is_constant_expr(b)) {
-            expr = new Max(new Solve(a, Ival(b, make_infinity(b.type(), +1))), b);
+            expr = new Max(new Solve(a, InfInterval(b, make_infinity(b.type(), +1))), b);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
@@ -114,14 +114,14 @@ class LoopPreSolver : public InlineLet {
             if (b.type().is_int() || b.type().is_uint()) {
                 limit = simplify(limit + make_one(b.type()));
             }
-            expr = new LT(a, new Solve(b, Ival(limit, make_infinity(b.type(), +1))));
+            expr = new LT(a, new Solve(b, InfInterval(limit, make_infinity(b.type(), +1))));
         } else if (is_constant_expr(b)) {
             // a < kb: Solve for a on (-infinity, kb-1) or (-infinity,kb)
             Expr limit = b;
             if (a.type().is_int() || a.type().is_uint()) {
                 limit = simplify(limit - make_one(a.type()));
             }
-            expr = new LT(new Solve(a, Ival(make_infinity(a.type(), -1), limit)), b);
+            expr = new LT(new Solve(a, InfInterval(make_infinity(a.type(), -1), limit)), b);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
@@ -147,14 +147,14 @@ class LoopPreSolver : public InlineLet {
             if (a.type().is_int() || a.type().is_uint()) {
                 limit = simplify(limit - make_one(a.type()));
             }
-            expr = new Mod(new Solve(a, Ival(make_zero(a.type()), limit)), b);
+            expr = new Mod(new Solve(a, InfInterval(make_zero(a.type()), limit)), b);
         } else if (is_negative_const(b)) {
             // a % kb: Solve for a on (kb+1,0) or (kb,0)
             Expr limit = b;
             if (a.type().is_int() || a.type().is_uint()) {
                 limit = simplify(limit + make_one(a.type()));
             }
-            expr = new Mod(new Solve(a, Ival(limit, make_zero(a.type()))), b);
+            expr = new Mod(new Solve(a, InfInterval(limit, make_zero(a.type()))), b);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
@@ -171,7 +171,7 @@ class LoopPreSolver : public InlineLet {
         
         if (is_constant_expr(min) && is_constant_expr(max)) {
             // a on (min, max)
-            expr = new Clamp(op->clamptype, new Solve(a, Ival(min, max)), min, max, p1);
+            expr = new Clamp(op->clamptype, new Solve(a, InfInterval(min, max)), min, max, p1);
         } else if (a.same_as(op->a) && min.same_as(op->min) && 
                    max.same_as(op->max) && p1.same_as(op->p1)) {
             expr = op;
@@ -345,7 +345,7 @@ protected:
         Stmt new_body = mutate(op->body);
         if ((op->for_type == For::Serial || op->for_type == For::Parallel) &&
              (op->partition.status == PartitionInfo::Ordinary)) {
-            Ival part;
+            InfInterval part;
             if (op->partition.interval_defined()) {
                 part = op->partition.interval;
             } else if (op->partition.auto_partition == PartitionInfo::Yes || 
@@ -401,7 +401,7 @@ protected:
                     part_end = part_end - 1;
                 }
                 
-                part = Ival(part_start, part_end);
+                part = InfInterval(part_start, part_end);
                 
                 log(1) << "Auto partition: " << op->name << " " << part << "\n";
             }
@@ -553,7 +553,7 @@ Stmt code_1 () {
     Expr call2 = new Call(i32, "buf", vec(max(min(x-1,100),0)));
     Expr call3 = new Call(i32, "buf", vec(Expr(new Clamp(Clamp::Reflect, x+1, 0, 100))));
     Stmt store2 = new Store("out", call + call2 + call3 + 1, x);
-    PartitionInfo partition2(Ival(1,99)); // Specify manual partitioning interval.
+    PartitionInfo partition2(InfInterval(1,99)); // Specify manual partitioning interval.
     Stmt for_loop2 = new For("x", 0, 100, For::Serial, partition2, store2);
     Stmt pipeline = new Pipeline("buf", for_loop, Stmt(), for_loop2);
     

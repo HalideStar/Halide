@@ -33,7 +33,10 @@ namespace Halide {
 
 namespace Internal {
 
-void check_same_type(std::string opname, Expr a, Expr b);
+/** Assert that two operands are both defined and of the same type */
+void assert_defined_same_type(std::string opname, Expr a, Expr b);
+/** Assert that two operands are of the same type if both are defined */
+void assert_same_type(std::string opname, Expr a, Expr b);
 
 /** A class representing a type of IR node (e.g. Add, or Mul, or
  * PrintStmt). We use it for rtti (without having to compile with
@@ -261,7 +264,7 @@ struct Add : public ExprNode<Add> {
     Expr a, b;
 
     Add(Expr _a, Expr _b) : ExprNode<Add>(_a.type()), a(_a), b(_b) {
-        check_same_type("Add", a, b);
+        assert_defined_same_type("Add", a, b);
     }
 };
 
@@ -270,7 +273,7 @@ struct Sub : public ExprNode<Sub> {
     Expr a, b;
 
     Sub(Expr _a, Expr _b) : ExprNode<Sub>(_a.type()), a(_a), b(_b) {
-        check_same_type("Sub", a, b);
+        assert_defined_same_type("Sub", a, b);
     }
 };
 
@@ -279,7 +282,7 @@ struct Mul : public ExprNode<Mul> {
     Expr a, b;
 
     Mul(Expr _a, Expr _b) : ExprNode<Mul>(_a.type()), a(_a), b(_b) {
-        check_same_type("Mul", a, b);
+        assert_defined_same_type("Mul", a, b);
     }        
 };
 
@@ -288,7 +291,7 @@ struct Div : public ExprNode<Div> {
     Expr a, b;
 
     Div(Expr _a, Expr _b) : ExprNode<Div>(_a.type()), a(_a), b(_b) {
-        check_same_type("Div", a, b);
+        assert_defined_same_type("Div", a, b);
     }
 };
 
@@ -300,7 +303,7 @@ struct Mod : public ExprNode<Mod> {
     Expr a, b;
 
     Mod(Expr _a, Expr _b) : ExprNode<Mod>(_a.type()), a(_a), b(_b) {
-        check_same_type("Mod", a, b);
+        assert_defined_same_type("Mod", a, b);
     }
 };
 
@@ -309,7 +312,7 @@ struct Min : public ExprNode<Min> {
     Expr a, b;
 
     Min(Expr _a, Expr _b) : ExprNode<Min>(_a.type()), a(_a), b(_b) {
-        check_same_type("Min", a, b);
+        assert_defined_same_type("Min", a, b);
     }
 };
 
@@ -318,7 +321,7 @@ struct Max : public ExprNode<Max> {
     Expr a, b;
 
     Max(Expr _a, Expr _b) : ExprNode<Max>(_a.type()), a(_a), b(_b) {
-        check_same_type("Max", a, b);
+        assert_defined_same_type("Max", a, b);
     }
 };
 
@@ -573,7 +576,7 @@ struct Pipeline : public StmtNode<Pipeline> {
 }
 }
 
-#include "Ival.h"
+#include "IntRange.h"
 
 namespace Halide {
 namespace Internal {
@@ -582,9 +585,9 @@ namespace Internal {
  * It is stored in the Dim portion of the Schedule, and later into the For loops. */
     struct PartitionInfo {
         /** One option is for the user to partition the main loop manually.
-         * Specify an Ival for the loop.  The bounds can be expressions.
+         * Specify an InfInterval for the loop.  The bounds can be expressions.
          * If not used, the expressions will be undefined. */
-        Ival interval;
+        Halide::InfInterval interval;
         /** Boolean options translate to tristate variables internally because they can
          * be undefined. */
         enum TriState { Undefined, No, Yes };
@@ -599,7 +602,7 @@ namespace Internal {
             auto_partition = do_partition ? Yes : No;
             status = Ordinary;
         }
-        PartitionInfo(Ival _interval) { 
+        PartitionInfo(InfInterval _interval) { 
             interval = _interval; 
             auto_partition = Undefined; 
             status = Ordinary;
@@ -724,15 +727,7 @@ struct Allocate : public StmtNode<Allocate> {
     }
 };
 
-/** A single-dimensional span. Includes all numbers between min and
- * (min + extent - 1) */
-struct Range {
-    Expr min, extent;
-    Range() {}
-    Range(Expr min, Expr extent) : min(min), extent(extent) {
-        assert(min.type() == extent.type() && "Region min and extent must have same type");
-    }
-};
+#include "IntRange.h"
 
 /** A multi-dimensional box. The outer product of the elements */
 typedef std::vector<Range> Region;   
@@ -881,14 +876,14 @@ struct Variable : public ExprNode<Variable> {
  */
 struct Solve : public ExprNode<Solve> {
     Expr body;
-    std::vector<Ival> v;
+    std::vector<InfInterval> v;
     
-    // Solve over a vector of Ival.
-    Solve(Expr _e, std::vector<Ival> _v) : ExprNode<Solve>(_e.type()), body(_e), v(_v) {}
-    // Solve over one Ival
-    Solve(Expr _e, Ival _i) : ExprNode<Solve>(_e.type()), body(_e), v(vec(_i)) {}
-    // Solve over two Ival
-    Solve(Expr _e, Ival _i, Ival _j) : ExprNode<Solve>(_e.type()), body(_e), v(vec(_i, _j)) {}
+    // Solve over a vector of InfInterval.
+    Solve(Expr _e, std::vector<InfInterval> _v) : ExprNode<Solve>(_e.type()), body(_e), v(_v) {}
+    // Solve over one InfInterval
+    Solve(Expr _e, InfInterval _i) : ExprNode<Solve>(_e.type()), body(_e), v(vec(_i)) {}
+    // Solve over two InfInterval
+    Solve(Expr _e, InfInterval _i, InfInterval _j) : ExprNode<Solve>(_e.type()), body(_e), v(vec(_i, _j)) {}
 };
 
 struct TargetVar : public ExprNode<TargetVar> {

@@ -1,3 +1,9 @@
+// This include file must be included in the manner that IR.h includes it.
+// Do not include this file directly: include IR.h instead.
+#ifndef HALIDE_IR_H
+# include HALIDE_IR_H
+#endif
+
 #ifndef HALIDE_INTERVAL_H
 #define HALIDE_INTERVAL_H
 
@@ -8,10 +14,12 @@
 namespace Halide {
 
 /** An interval.  Includes all numbers from min to max inclusive. */
-struct Interval {
-    Expr min, max;
-    Interval(Expr min, Expr max) : min(min), max(max) {}
-    Interval() {}
+class Interval : public Internal::IntRange {
+private:
+    int extent; // Hide the extent member so that it cannot be used from Interval.
+public:
+    Interval(Expr min, Expr max) : IntRange(Mode_Interval, min, max) {}
+    Interval() : IntRange() {}
     
     int imin();
     int imax();
