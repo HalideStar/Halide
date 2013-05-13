@@ -59,13 +59,24 @@ void alarm_handler(int sig) {
     exit(0);
 }
 
+Var x("x"), y("y");
 
 
 Func build_basic(ImageParam a, Image<int> b, int n, int schedule) {
-    Var x("x");
     Func f("basic");
     f(x) = a(x) + b(x);
     return f;
+}
+
+Func build_blur(ImageParam a, Image<int> b, int n, int schedule) {
+    Func border("border"), h("h");
+    border(x,y) = b(clamp(x,WIDTH-1), clamp(y,HEIGHT-1));
+    h(x,y) = border(x-1,y) + border(x,y) + border(x+1,y);
+    blur(x,y) = (h(x,y-1) + h(x,y) + h(x,y+1)) / 9;
+# if HAS_PARTITION
+    if (schedule & SCHEDULE_PARTITION) blur.partition();
+# endif
+    return blur;
 }
 
 Func build_simplify_n(ImageParam a, Image<int> b, int n, int schedule) {
@@ -217,6 +228,10 @@ int main(int argc, char **argv) {
         }
     }
     test("basic", build_basic, 0);
+    test("blur", build_blur, 0);
+# if HAS_PARTITION
+    test("blur", build_blur, 0, SCHEDULE_PARTITION);
+# endif
     test("conv_10", build_conv_n, 10);
     test("conv_20", build_conv_n, 20);
     test("conv_40", build_conv_n, 40);
