@@ -11,6 +11,9 @@
 #include "Simplify.h"
 #include <map>
 
+//# define LOGLEVEL 0
+# define LOGLEVEL 4
+
 namespace Halide { 
 namespace Internal {
 
@@ -122,11 +125,11 @@ protected:
             } else if (def_letstmt) {
                 //log(0) << "    letstmt " << op->name << "\n";
                 interval = bounds(def_letstmt->value);
-                //log(0) << "    interval of " << def_letstmt->value << " " << interval << "\n";
             } else {
                 assert(0 && "Unknown defining node for variable");
                 interval = InfInterval(new Infinity(-1), new Infinity(1));
             }
+            log(LOGLEVEL) << "bounds(" << op->name << "): " << interval << "\n";
             ret(found);
         } else {
             // Keep the variable name in the absence of a definition.
@@ -138,30 +141,37 @@ protected:
     
     virtual void visit(const Add *op) {
         interval = bounds(op->a) + bounds(op->b);
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const Sub *op) {
         interval = bounds(op->a) - bounds(op->b);
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const Mul *op) {
         interval = bounds(op->a) * bounds(op->b);
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const Div *op) {
         interval = bounds(op->a) / bounds(op->b);
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const Mod *op) {
         interval = bounds(op->a) % bounds(op->b);
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const Min *op) {
         interval = min(bounds(op->a), bounds(op->b));
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const Max *op) {
         interval = max(bounds(op->a), bounds(op->b));
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const Clamp *op) {
@@ -170,7 +180,8 @@ protected:
         // The resulting interval is no larger than the clamping interval and also no larger
         // than the interval of expression a.
         interval = intersection(bounds(op->a), 
-                                ival_union(bounds(op->min), bounds(op->max)));
+                                infinterval_union(bounds(op->min), bounds(op->max)));
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const EQ *op) {
@@ -188,10 +199,12 @@ protected:
         } else {
             interval = InfInterval(const_false(op->type.width), const_true(op->type.width));
         }
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const NE *op) {
         interval = bounds(! (op->a == op->b));
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const LT *op) {
@@ -206,6 +219,7 @@ protected:
         } else {
             interval = InfInterval(const_false(op->type.width), const_true(op->type.width));
         }
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const LE *op) {
@@ -220,14 +234,17 @@ protected:
         } else {
             interval = InfInterval(const_false(op->type.width), const_true(op->type.width));
         }
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const GT *op) {
         interval = bounds(op->b < op->a);
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const GE *op) {
         interval = bounds(op->b <= op->a);
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const And *op) {
@@ -248,6 +265,7 @@ protected:
             // The result is uncertain.
             interval = InfInterval(const_false(op->type.width), const_true(op->type.width));
         }
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const Or *op) {
@@ -268,6 +286,7 @@ protected:
             // The result is uncertain.
             interval = InfInterval(const_false(op->type.width), const_true(op->type.width));
         }
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const Not *op) {
@@ -283,6 +302,7 @@ protected:
             // The result is uncertain.
             interval = InfInterval(const_false(op->type.width), const_true(op->type.width));
         }
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const Select *op) {
@@ -296,15 +316,17 @@ protected:
         } else {
             // Neither proved true nor proved false.
             // The result can be either expressions.
-            interval = ival_union(bounds(op->true_value),
+            interval = infinterval_union(bounds(op->true_value),
                                   bounds(op->false_value));
         }
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const Load *op) {
         // Here we could do better than the bounds of the type if we know what computed
         // the data that we are loading - i.e. if it comes from another function.
         interval = bounds_of_type(op->type);
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
 
     virtual void visit(const Ramp *op) {
@@ -314,19 +336,23 @@ protected:
         // Here we return a ramp representing the interval of values in each position of the
         // interpreted Ramp node.
         interval = InfInterval(new Ramp(base.min, stride.min, op->width), new Ramp(base.max, stride.max, op->width));
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
 
     virtual void visit(const Broadcast *op) {
         InfInterval value = bounds(op->value);
         interval = InfInterval(new Broadcast(value.min, op->width), new Broadcast(value.max, op->width));
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
 
     virtual void visit(const Solve *op) {
         interval = bounds(op->body);
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
 
     virtual void visit(const TargetVar *op) {
         interval = bounds(op->body);
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
 
     virtual void visit(const Call *op) {
@@ -335,10 +361,12 @@ protected:
         // The full solution for interval analysis of the current
         // expression involves interval analysis on the called function.
         interval = bounds_of_type(op->type);
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
 
     virtual void visit(const Let *op) {
         interval = bounds(op->body);
+        log(LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const LetStmt *op) {

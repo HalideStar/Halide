@@ -58,14 +58,16 @@ public:
     }
 
     void visit(const Min *op) {
-        //log(0) << "Min " << op->a << ", " << op->b << "\n";
+        log(0) << "Min " << op->a << ", " << op->b << "\n";
         InfInterval bounds_a = bounds.bounds(op->a);
         InfInterval bounds_b = bounds.bounds(op->b);
-        //log(0) << "    interval a " << bounds_a << "  b " << bounds_b << "\n";
-        //log(0) << "    current context " << current_context() << "\n";
+        log(0) << "    interval a " << bounds_a << "  b " << bounds_b << "\n";
+        log(0) << "    current context " << current_context() << "\n";
         if (proved(bounds_a.max <= bounds_b.min)) {
+            log(0) << "    result is expr a\n";
             expr = mutate(op->a);
         } else if (proved(bounds_b.max <= bounds_a.min)) {
+            log(0) << "    result is expr b\n";
             expr = mutate(op->b);
         } else {
             Super::visit(op);
@@ -105,7 +107,7 @@ public:
     }
 # endif
 
-# if 0
+# if 1
     // For loop visit only to focus debugging.
     void visit(const For *op) {
         int old_debug_level = log::debug_level;

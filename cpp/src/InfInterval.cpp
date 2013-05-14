@@ -184,7 +184,7 @@ InfInterval intersection(InfInterval u, InfInterval v) {
     return InfInterval(simplify(max(u.min, v.min)), simplify(min(u.max, v.max)));
 }
 
-InfInterval ival_union(InfInterval u, InfInterval v) {
+InfInterval infinterval_union(InfInterval u, InfInterval v) {
     return InfInterval(simplify(min(u.min, v.min)), simplify(max(u.max, v.max)));
 }
 

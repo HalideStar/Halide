@@ -159,7 +159,7 @@ test_jit_speed_fast: bin/test_jit_speed
 
 test_jit_speed: bin/test_jit_speed
 	@-mkdir -p tmp
-	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$< -log 5
+	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$< -log
 	@-echo
 
 test_%: bin/test_%

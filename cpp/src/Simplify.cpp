@@ -714,7 +714,9 @@ protected:
     }
 
     // Utility routine to compare ramp/broadcast with ramp/broadcast by comparing both ends.
-    bool compare_lt(Expr base_a, Expr stride_a, Expr base_b, Expr stride_b, int width, const LT *op) { //LH
+    // Returns true if the comparison result is consistent.  Returns false if it is not.
+    // When the result is false, if op is not null then it sets expr from a, b and op.
+    bool compare_lt(Expr a, Expr base_a, Expr stride_a, Expr b, Expr base_b, Expr stride_b, int width, const LT *op) { //LH
         // Compare two ramps and/or broadcast nodes.
         Expr first_lt = simplify(base_a < base_b);
         Expr last_lt = simplify(base_a + stride_a * (width-1) < base_b + stride_b * (width - 1));
@@ -725,14 +727,21 @@ protected:
             expr = mutate(new Broadcast(first_lt, width));
             return true; // Tell caller it worked.
         } else {
-            if (op) expr = op; // Cannot simplify it. Possible that part of ramp is < and part is not.
+            // If op parameter it passed, set expr to the 
+            if (op) {
+                // Cannot simplify it. Possible that part of ramp satisfies LT and part does not.
+                if (a.same_as(op->a) && b.same_as(op->b)) expr = op;
+                else expr = new LT(a, b);
+            }
         }
         return false;
     }
 
+    // vector_min: If it can prove that one vector is the minimum, set the expression to that vector.
+    // Otherwise, return result expression based on a, b and op.
     bool vector_min(Expr a, Expr base_a, Expr stride_a, Expr b, Expr base_b, Expr stride_b, int width, const Min *op) { //LH
         // Try to find if a <= b; i.e. if (b<a) is false.
-        bool a_lt_b = compare_lt(base_a, stride_a, base_b, stride_b, width, 0);
+        bool a_lt_b = compare_lt(a, base_a, stride_a, b, base_b, stride_b, width, 0);
         if (a_lt_b && is_zero(expr)) {
             // Proved that a >= b so minimum is b.
             expr = b;
@@ -743,19 +752,20 @@ protected:
             expr = a;
             return true;
         }
-        bool b_lt_a = compare_lt(base_b, stride_b, base_a, stride_a, width, 0);
+        bool b_lt_a = compare_lt(b, base_b, stride_b, a, base_a, stride_a, width, 0);
         if (b_lt_a && is_zero(expr)) {
             // Proved that a <= b so minimum is a.
             expr = a;
             return true;
         }
-        expr = op;
+        if (a.same_as(op->a) && b.same_as(op->b)) expr = op;
+        else expr = new Min(a, b);
         return false;
     }
 
     bool vector_max(Expr a, Expr base_a, Expr stride_a, Expr b, Expr base_b, Expr stride_b, int width, const Max *op) { //LH
         // Try to find if a <= b; i.e. if (b<a) is false.
-        bool a_lt_b = compare_lt(base_a, stride_a, base_b, stride_b, width, 0);
+        bool a_lt_b = compare_lt(a, base_a, stride_a, b, base_b, stride_b, width, 0);
         if (a_lt_b && is_zero(expr)) {
             // Proved that a >= b so maximum is a.
             expr = a;
@@ -766,13 +776,14 @@ protected:
             expr = b;
             return true;
         }
-        bool b_lt_a = compare_lt(base_b, stride_b, base_a, stride_a, width, 0);
+        bool b_lt_a = compare_lt(b, base_b, stride_b, a, base_a, stride_a, width, 0);
         if (b_lt_a && is_zero(expr)) {
             // Proved that a <= b so maximum is b.
             expr = b;
             return true;
         }
-        expr = op;
+        if (a.same_as(op->a) && b.same_as(op->b)) expr = op;
+        else expr = new Max(a, b);
         return false;
     }
 
@@ -805,6 +816,10 @@ protected:
         const Broadcast *broadcast_b = b.as<Broadcast>();
         const Add *add_a = a.as<Add>();
         const Add *add_b = b.as<Add>();
+        const Sub *sub_a = a.as<Sub>();
+        const Sub *sub_b = b.as<Sub>();
+        const Div *div_a = a.as<Div>();
+        const Div *div_b = b.as<Div>();
         const Min *min_a = a.as<Min>();
         const Min *min_b = b.as<Min>();
         const Min *min_a_a = min_a ? min_a->a.as<Min>() : NULL;
@@ -872,6 +887,44 @@ protected:
         } else if (min_a && is_simple_const(min_a->b) && is_simple_const(b)) {
             // min(min(x, 4), 5) -> min(x, 4)
             expr = new Min(min_a->a, mutate(new Min(min_a->b, b)));
+        } else if (add_a && add_b && const_int(add_a->b, &ia) && const_int(add_b->b, &ib)) { //LH
+            // vectorize.partition
+            // min(e1 + k1, e2 + k2) -->  min(e1 + (k1 - k2), e2) + k2
+            // Overflow invalidates this rule (and many of the rules above).
+            // e.g. min(x + 5, x + 7) is actually x+7 when the type is UInt(8) and
+            // x is 250.
+            if (ia == ib) {
+                expr = mutate(new Add(new Min(add_a->a, add_b->a), ib));
+            } else {
+                expr = mutate(new Add(new Min(add_a->a + (ia - ib), add_b->a), ib));
+            }
+        } else if (sub_a && sub_b && const_int(sub_a->a, &ia) && const_int(sub_b->a, &ib)) { //LH
+            // vectorize.partition
+            // min(k1 - e1, k2 - e2) --> k2 + min((k1 - k2) - e1, 0 - e2)
+            //                       --> k2 - max(e1 - (k1 - k2), e2)
+            //                       --> k2 - max(e1 + (k2 - k1), e2)
+            //         case k1 == k2 --> k2 - max(e1, e2)
+            // Overflow invalidates this rule.
+            if (ia == ib) {
+                expr = mutate(new Sub(ib, new Max(sub_a->b, sub_b->b)));
+            } else {
+                expr = mutate(new Sub(ib, new Max(sub_a->b + (ib - ia), sub_b->b)));
+            }
+        } else if (sub_a && sub_b && equal(sub_a->b, sub_b->b)) { //LH
+            // vectorize.partition
+            // min(e1 - e, e2 - e) --> min(e1, e2) - e
+            // Overflow invalidates this rule.
+            expr = mutate(new Sub(new Min(sub_a->a, sub_b->a), sub_b->b));
+        } else if (div_a && div_b && const_int(div_a->b, &ia) && const_int(div_b->b, &ib) && ia == ib) { //LH
+            // vectorize.partition
+            // min(e1 / k, e2 / k) --> if (k > 0): min(e1,e2) / k
+            //                         if (k < 0): max(e1,e2) / k
+            // This rule is not affected by overflow.
+            if (ia >= 0) { // Ignore divide by zero problem.
+                expr = mutate(new Div(new Min(div_a->a, div_b->a), ia));
+            } else {
+                expr = mutate(new Div(new Max(div_a->a, div_b->a), ia));
+            }
         } else if (clamp_upper_a && clamp_upper_b && 
                    const_int(clamp_lower_a->b, &k2) && const_int(clamp_lower_b->b, &k4) && k2 == k4 &&
                    const_int(clamp_upper_a->b, &k1) && const_int(clamp_upper_b->b, &k3) && k1 == k3) { //LH
@@ -879,6 +932,7 @@ protected:
             expr = mutate(new Max(new Min(new Min(clamp_upper_a->a, clamp_upper_b->a), k1), k2));
 # if 0
         // Disable this rule because it prevents simplifying nested min(...( of clamped expressions.
+        // However, this rule is needed to simplify nested min of index split points.
         } else if (global_options.simplify_nested_clamp && 
 				   add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) { //LH
 			// min(e + k1, k2) -> min(x, k2-k1) + k1   Provided there is no overflow
@@ -886,7 +940,7 @@ protected:
 			// (Subtractions e - k are previously converted to e + -k).
 			expr = new Add(new Min(add_a->a, ib - ia), ia);
 # endif
-		} else if (min_a && (equal(min_a->b, b) || equal(min_a->a, b))) {
+        } else if (min_a && (equal(min_a->b, b) || equal(min_a->a, b))) {
             // min(min(x, y), y) -> min(x, y)
             expr = a;
         } else if (min_b && (equal(min_b->b, a) || equal(min_b->a, a))) {
@@ -952,6 +1006,10 @@ protected:
         const Broadcast *broadcast_b = b.as<Broadcast>();
         const Add *add_a = a.as<Add>();
         const Add *add_b = b.as<Add>();
+        const Sub *sub_a = a.as<Sub>();
+        const Sub *sub_b = b.as<Sub>();
+        const Div *div_a = a.as<Div>();
+        const Div *div_b = b.as<Div>();
         const Max *max_a = a.as<Max>();
         const Max *max_b = b.as<Max>();
         const Max *max_a_a = max_a ? max_a->a.as<Max>() : NULL;
@@ -1015,6 +1073,44 @@ protected:
         } else if (max_a && is_simple_const(max_a->b) && is_simple_const(b)) {
             // max(max(x, 4), 5) -> max(x, 5)
             expr = new Max(max_a->a, mutate(new Max(max_a->b, b)));
+        } else if (add_a && add_b && const_int(add_a->b, &ia) && const_int(add_b->b, &ib)) { //LH
+            // vectorize.partition
+            // max(e1 + k1, e2 + k2) -->  max(e1 + (k1 - k2), e2) + k2
+            // Overflow invalidates this rule (and many of the rules above).
+            // e.g. max(x + 5, x + 7) is actually x+5 when the type is UInt(8) and
+            // x is 250.
+            if (ia == ib) {
+                expr = mutate(new Add(new Max(add_a->a, add_b->a), ib));
+            } else {
+                expr = mutate(new Add(new Max(add_a->a + (ia - ib), add_b->a), ib));
+            }
+        } else if (sub_a && sub_b && const_int(sub_a->a, &ia) && const_int(sub_b->a, &ib)) { //LH
+            // vectorize.partition
+            // max(k1 - e1, k2 - e2) --> k2 + max((k1 - k2) - e1, 0 - e2)
+            //                       --> k2 - min(e1 - (k1 - k2), e2)
+            //                       --> k2 - min(e1 + (k2 - k1), e2)
+            //         case k1 == k2 --> k2 - min(e1, e2)
+            // Overflow invalidates this rule.
+            if (ia == ib) {
+                expr = mutate(new Sub(ib, new Min(sub_a->b, sub_b->b)));
+            } else {
+                expr = mutate(new Sub(ib, new Min(sub_a->b + (ib - ia), sub_b->b)));
+            }
+        } else if (sub_a && sub_b && equal(sub_a->b, sub_b->b)) { //LH
+            // vectorize.partition
+            // max(e1 - e, e2 - e) --> max(e1, e2) - e
+            // Overflow invalidates this rule.
+            expr = mutate(new Sub(new Max(sub_a->a, sub_b->a), sub_b->b));
+        } else if (div_a && div_b && const_int(div_a->b, &ia) && const_int(div_b->b, &ib) && ia == ib) { //LH
+            // vectorize.partition
+            // max(e1 / k, e2 / k) --> if (k > 0): max(e1,e2) / k
+            //                         if (k < 0): min(e1,e2) / k
+            // This rule is not affected by overflow.
+            if (ia >= 0) { // Ignore divide by zero problem.
+                expr = mutate(new Div(new Max(div_a->a, div_b->a), ia));
+            } else {
+                expr = mutate(new Div(new Min(div_a->a, div_b->a), ia));
+            }
         } else if (clamp_upper_a && clamp_upper_b && 
                    const_int(clamp_lower_a->b, &k2) && const_int(clamp_lower_b->b, &k4) && k2 == k4 &&
                    const_int(clamp_upper_a->b, &k1) && const_int(clamp_upper_b->b, &k3) && k1 == k3) { //LH
@@ -1211,11 +1307,11 @@ protected:
             Expr bases_lt = (ramp_a->base < ramp_b->base);
             expr = mutate(new Broadcast(bases_lt, ramp_a->width));
         } else if (ramp_a && broadcast_b) { //LH
-            compare_lt(ramp_a->base, ramp_a->stride, broadcast_b->value, 0, ramp_a->width, op);
+            compare_lt(a, ramp_a->base, ramp_a->stride, b, broadcast_b->value, 0, ramp_a->width, op);
         } else if (broadcast_a && ramp_b) { //LH
-            compare_lt(broadcast_a->value, 0, ramp_b->base, ramp_b->stride, ramp_b->width, op);
+            compare_lt(a, broadcast_a->value, 0, b, ramp_b->base, ramp_b->stride, ramp_b->width, op);
         } else if (ramp_a && ramp_b) { //LH
-            compare_lt(ramp_a->base, ramp_a->stride, ramp_b->base, ramp_b->stride, ramp_b->width, op);
+            compare_lt(a, ramp_a->base, ramp_a->stride, b, ramp_b->base, ramp_b->stride, ramp_b->width, op);
         } else if (is_const(a) && add_b && is_const(add_b->b)) { //LH
             // Constant on LHS and add with constant on RHS
             expr = mutate(a - add_b->b < add_b->a);
@@ -1267,6 +1363,18 @@ protected:
                    equal(mul_a->b, mul_b->b)) {
             // Divide both sides by a constant
             expr = mutate(mul_a->a < mul_b->a);
+        } else if (mul_a && const_castint(b, &ib) && const_castint(mul_a->b, &ia)) { //LH
+            // e * ia < ib  -->  a < (ib / ia) with variants.
+            // ia == 0 is not possible - it would already be simplified.
+            if (ia > 0) {
+                // Positive divisor.  Compute ceiling(ib/ia) = floor((ib-1)/ia)+1.
+                expr = mutate(mul_a->a < div_imp(ib-1, ia)+1);
+            } else if (ia < 0) {
+                // Negative divisor.  Compute floor(ib/ia) and negate comparison.
+                expr = mutate(div_imp(ib, ia) < mul_a->a);
+            } else {
+                expr = op; // Impossible
+            }
         } else if (min_a && (proved(min_a->b < b, disproved) || proved(min_a->a < b))) { //LH
             // Prove min(x,y) < b by proving x < b or y < b
             // Because constants are pushed to RHS, it is more likely that min_a->b < b
@@ -1585,14 +1693,18 @@ Stmt simplify(Stmt s) {
 }
 
 bool proved(Expr e, bool &disproved) {
+    static int depth = 0;
+    depth++;
+    log logger(4);    
+    logger << depth << ": Attempt to prove  " << e << "\n";
     Expr b = Simplify().simplify(e);
     bool result = is_one(b);
     disproved = is_zero(b);
-    log logger(2);
-    logger << "Attempt to prove  " << e << "\n  ==>  ";
+    logger << depth << ":    ==> ";
     if (equal(e,b)) logger << "same  ==>  ";
-    else logger << b << "\n  ==>  ";
-    logger << (result ? "true" : "false") << "\n";
+    else logger << b << "\n" << depth << ":    ==>  ";
+    logger << (result ? "true" : (disproved ? "false" : "failed")) << "\n";
+    depth--;
     return result;
 }
 
@@ -1829,6 +1941,13 @@ void simplify_test() {
     check(x*0 < y*0, f);
     check(x < x+y, 0 < y);
     check(x+y < x, y < 0);
+    
+    check(x * 5 < 16, x < 4);
+    check(x * 5 < 15, x < 3);
+    check(x * 5 < 14, x < 3);
+    check(x * -5 < 16, -4 < x);
+    check(x * -5 < 15, -3 < x);
+    check(x * -5 < 14, -3 < x);
     
     //LH
     check(new LT(new Ramp(0, 1, 8), new Broadcast(8, 8)), const_true(8));

@@ -180,6 +180,15 @@ inline std::vector<InfInterval> v_apply(InfInterval (*f)(InfInterval, InfInterva
     return result;
 }
 
+// Apply binary operator to a vector of InfInterval by applying it to each InfInterval, with additional int parameter
+inline std::vector<InfInterval> v_apply(InfInterval (*f)(InfInterval, InfInterval, int), std::vector<InfInterval> v, InfInterval w, int k) {
+    std::vector<InfInterval> result;
+    for (size_t i = 0; i < v.size(); i++) {
+        result.push_back((*f)(v[i], w, k));
+    }
+    return result;
+}
+
 InfInterval inverseMin(InfInterval v, Expr k) {
     // inverse of min on an interval against constant expression k.
     // If v.max >= k then the Min ensures that the upper bound is in
@@ -225,6 +234,50 @@ InfInterval inverseSub(InfInterval v, InfInterval k) {
     return InfInterval(simplify(v.min + k.min), simplify(v.max + k.max));
 }
 
+InfInterval inverseRamp(InfInterval v, InfInterval s, int width) {
+    // Compute an interval such that a ramp with base in the result interval
+    // and designated stride interval always results in an interval no bigger than v.
+    // v will in fact be a vector interval but the result is not a vector interval.
+    assert(v.min.type().width == width && v.max.type().width == width && "inverseRamp applied to non-vector interval");
+    // Because v is a vector interval, it is likely to appear as a ramp or broadcast.
+    // stride is not a vector interval.
+    const Ramp *ramp_vmin = v.min.as<Ramp>();
+    const Broadcast *broadcast_vmin = v.min.as<Broadcast>();
+    const Ramp *ramp_vmax = v.max.as<Ramp>();
+    const Broadcast *broadcast_vmax = v.max.as<Broadcast>();
+    // Suppose that (Ramp(a,p),Ramp(b,q)) is the interval of v.
+    // Given stride interval s == (c,d) we want to determine
+    // the interval for base == (m,n).
+    // Now, the interval of a ramp is given as follows in BoundsAnalysis.h:
+    // Ramp(a,p) = Ramp(m,c)  Ramp(b,q) = Ramp(n,d)  
+    // This follows from the meaning of stride and base.
+    // It generates a "low" ramp and a "high" ramp.
+    
+    // basemin and basemax correspond to a and b in the above.
+    // stridemin and stridemax correspond to p and q.
+    Expr basemin, basemax, stridemin, stridemax;
+    if (ramp_vmin) { basemin = ramp_vmin->base; stridemin = ramp_vmin->stride; }
+    else if (broadcast_vmin) { basemin = broadcast_vmin->value; stridemin = make_zero(basemin.type()); }
+    else if (infinity_count(v.min) != 0) { basemin = make_infinity(v.min.type().element_of(), infinity_count(v.min)); stridemin = make_infinity(v.min.type().element_of(), infinity_count(v.min)); }
+    if (ramp_vmax) { basemax = ramp_vmax->base; stridemax = ramp_vmax->stride; }
+    else if (broadcast_vmax) { basemax = broadcast_vmax->value; stridemax = make_zero(basemax.type()); }
+    else if (infinity_count(v.max) != 0) { basemax = make_infinity(v.max.type().element_of(), infinity_count(v.max)); stridemax = make_infinity(v.max.type().element_of(), infinity_count(v.max)); }
+    
+    // From the above, we can see one immediate solution.
+    // If p == c and  q == d then a = m and b = n.
+    if (equal(stridemin, s.min) && equal(stridemax, s.max)) {
+        return InfInterval(basemin, basemax);
+    }
+    
+    // The general solution requires that Ramp(a,p) <= Ramp(m,c) for all indices in the vector
+    // and that Ramp(b,q) >= Ramp(n,d) for all indices.
+    // Ramp(a,p) <= Ramp(m,c) means a <= m and a + p * (w-1) <= m + c * (w-1).
+    // Solving for m we get: m >= a and m >= a + p * (w-1) - c * (w-1)
+    // i.e. m = min(a, a + (p - c) * (w-1));
+    return InfInterval(simplify(max(basemin, basemin + (stridemin - s.min) * (width-1))),
+                       simplify(min(basemax, basemax + (stridemax - s.max) * (width-1))));
+}
+
 // end anonymous namespace
 }
 
@@ -264,6 +317,7 @@ protected:
         const Div *div_e = e.as<Div>();
         const Min *min_e = e.as<Min>();
         const Max *max_e = e.as<Max>();
+        const Ramp *ramp_e = e.as<Ramp>();
         
         //if (solve_e) {
             // solve(solve(e)) --> solve(e) on intersection of intervals.
@@ -303,6 +357,17 @@ protected:
         } else if (max_e && is_constant_expr(max_e->b)) {
             // solve(max(v,k)) on (a,b) --> max(solve(v),k). 
             expr = mutate(new Max(solve(max_e->a, v_apply(inverseMax, op->v, bounds.bounds(max_e->b))), max_e->b));
+        } else if (ramp_e && is_constant_expr(ramp_e->stride)) {
+            // solve(ramp(v,k,w)) on (a,b)
+            //std::cout << "Solve " << e << "\n";
+            //std::cout << "ramp_e->base " << ramp_e->base << "\n";
+            //std::cout << "ramp_e->stride " << ramp_e->stride << "\n";
+            //std::cout << "op->v " << op->v << "\n";
+            //std::cout << "bounds(ramp_e->stride) " << bounds.bounds(ramp_e->stride) << "\n";
+            expr = mutate(new Ramp(solve(ramp_e->base, 
+                                         v_apply(inverseRamp, op->v, bounds.bounds(ramp_e->stride), ramp_e->width)),
+                                   ramp_e->stride, ramp_e->width));
+            //std::cout << "Solution " << expr << "\n";
         } else if (e.same_as(op->body)) {
             expr = op; // Nothing more to do.
         } else {
@@ -661,10 +726,27 @@ void checkSolver(Expr a, Expr b) {
         assert(false);
     }
 }
+
+void checkInverseRamp(InfInterval comb, InfInterval stride, int width, InfInterval base) {
+    InfInterval test = inverseRamp(comb, stride, width);
+    if (! equal(test.min, base.min) || ! equal(test.max, base.max)) {
+        std::cerr << "inverseRamp failed\n";
+        std::cerr << "  combined: " << comb << "\n";
+        std::cerr << "  stride:   " << stride << "\n";
+        std::cerr << "  expected: " << base << "\n";
+        std::cerr << "  computed: " << test << "\n";
+        assert(false);
+    }
+}
 }
 
 void solver_test() {
     Var x("x"), y("y"), c("c"), d("d");
+    
+    checkInverseRamp(InfInterval(new Ramp(0,1,8), new Ramp(1,1,8)), InfInterval(1,1), 8, InfInterval(0,1));
+    checkInverseRamp(InfInterval(new Ramp(0,1,8), new Ramp(3,2,8)), InfInterval(1,2), 8, InfInterval(0,3));
+    checkInverseRamp(InfInterval(new Broadcast(3,8), new Broadcast(10,8)), InfInterval(0,0), 8, InfInterval(3,10));
+    checkInverseRamp(InfInterval(new Broadcast(3,8), new Broadcast(10,8)), InfInterval(1,1), 8, InfInterval(3,3));
     
     checkSolver(solve(x, InfInterval(0,10)), solve(x, InfInterval(0,10)));
     checkSolver(solve(x + 4, InfInterval(0,10)), solve(x, InfInterval(-4,6)) + 4);

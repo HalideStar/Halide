@@ -246,6 +246,8 @@ protected:
     void insert_partition_point(Expr point, std::vector<Expr> &points, bool is_end) {
         bool disproved;
         size_t i;
+        if (infinity_count(point) != 0)
+            return; // No interest in collecting infinite points
         for (i = 0; i < points.size(); i++) {
             if (proved(point >  points[i], disproved)) {
                 if (! is_end) points[i] = point;
@@ -263,15 +265,25 @@ protected:
     }
     
     // Insert a partition point into the appropriate list; but if numeric update num_start or num_end instead.
-    void insert_partition_point(Expr point, int ithresh, int &num_start, int &num_end, std::vector<Expr> &starts, std::vector<Expr> &ends) {
+    void insert_partition_point(Expr point, bool hint_end, int ithresh, int &num_start, int &num_end, std::vector<Expr> &starts, std::vector<Expr> &ends) {
         int ival;
         if (get_const_int(point, ival)) {
             // A numeric value.  
             if (ival < ithresh && ival > num_start) num_start = ival;
             else if (ival >= ithresh && ival < num_end) num_end = ival;
+#if 0
         } else if (has_variable_match(".min.", point)) {
             // Symbolic expression.
             if (has_variable_match(".extent.", point)) {
+                // End point.
+                insert_partition_point(point, ends, true);
+            } else {
+                // Start point.
+                insert_partition_point(point, starts, false);
+            }
+#endif
+        } else {
+            if (hint_end) {
                 // End point.
                 insert_partition_point(point, ends, true);
             } else {
@@ -321,8 +333,8 @@ protected:
                 Expr start = sol[i].intervals[j].min;
                 // max means decision is <= max vs > max, so adjust for consistency
                 Expr end = simplify(sol[i].intervals[j].max + 1);
-                insert_partition_point(start, ithresh, num_start, num_end, starts, ends);
-                insert_partition_point(end, ithresh, num_start, num_end, starts, ends);
+                insert_partition_point(start, false, ithresh, num_start, num_end, starts, ends);
+                insert_partition_point(end, true, ithresh, num_start, num_end, starts, ends);
             }
         }
         if (num_start > Int(32).imin()) starts.push_back(Expr(num_start));
@@ -390,7 +402,7 @@ protected:
                 if (starts.size() > 0) {
                     part_start = starts[0];
                     for (size_t i = 1; i < starts.size(); i++) {
-                        part_start = min (part_start, starts[i]);
+                        part_start = max (part_start, starts[i]);
                     }
                 }
                 if (ends.size() > 0) {

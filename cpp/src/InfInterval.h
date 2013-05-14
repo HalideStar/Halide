@@ -79,7 +79,7 @@ EXPORT InfInterval operator%(InfInterval u, InfInterval v);
 EXPORT InfInterval min(InfInterval u, InfInterval v);
 EXPORT InfInterval max(InfInterval u, InfInterval v);
 EXPORT InfInterval intersection(InfInterval u, InfInterval v);
-EXPORT InfInterval ival_union(InfInterval u, InfInterval v);
+EXPORT InfInterval infinterval_union(InfInterval u, InfInterval v);
 
 namespace Internal {
 EXPORT void infinterval_test();

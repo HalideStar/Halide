@@ -682,6 +682,7 @@ void IRPrinter::visit(const StmtTargetVar *op) {
 void IRPrinter::visit(const Infinity *op) {
     if (op->count < 0) stream << "-";
     stream << "infinity";
+    if (op->type.width > 1) stream << "_x" << op->type.width;
     if (op->count > 1) stream << "(" << op->count << ")";
     else if (op->count < -1) stream << "(" << -op->count << ")";
 }
