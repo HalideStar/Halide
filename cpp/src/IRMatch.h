@@ -16,6 +16,16 @@ namespace Internal {
  * as wildcards, and their matching equivalent in the second
  * expression is placed in the vector give as the third argument.
  *
+ * The type of the expression matched against the wildcard must ordinarily match the
+ * type of the wildcard variable.  To allow more general matching,
+ * the wildcard variable name may be of the following forms:
+ *
+ * "**"  Matches any type
+ * "*i"  Matches any Int.
+ * "*u"  Matches any UInt.
+ * "*iu" Matches any Int or UInt.
+ * "*f"  Matches any Float.
+ *
  * For example:
  \code
  Expr x = new Variable(Int(32), "*");

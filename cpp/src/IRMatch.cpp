@@ -76,13 +76,22 @@ public:
     }
 
     void visit(const Variable *op) {
-        if (op->type != expr.type()) {
-            result = false;
-        } else if (op->name == "*") {
-            matches.push_back(expr);
-        } else if (result) {
-            const Variable *e = expr.as<Variable>();
-            result = e && (e->name == op->name);
+        if (result) {
+            if (op->name[0] == '*') {
+                // Wildcard match.
+                if (op->name == "*") result = op->type == expr.type();
+                else if (op->name == "**") result = true; // Type is not relevant to matching
+                else if (op->name == "*i") result = expr.type().is_int();
+                else if (op->name == "*u") result = expr.type().is_uint();
+                else if (op->name == "*iu") result = expr.type().is_int() || expr.type().is_uint();
+                else if (op->name == "*f") result = expr.type().is_float();
+                if (result) matches.push_back(expr);
+            } else if (op->type != expr.type()) {
+                result = false;
+            } else {
+                const Variable *e = expr.as<Variable>();
+                result = e && (e->name == op->name);
+            }
         }
     }
 
@@ -202,8 +211,8 @@ public:
 
 bool expr_match(Expr pattern, Expr expr, vector<Expr> &matches) {
     matches.clear();
-    if (!pattern.defined() && !pattern.defined()) return true;
-    if (!pattern.defined() || !pattern.defined()) return false;
+    if (!pattern.defined() && !expr.defined()) return true;
+    if (!pattern.defined() || !expr.defined()) return false;
 
     IRMatch eq(expr, matches);
     pattern.accept(&eq);
