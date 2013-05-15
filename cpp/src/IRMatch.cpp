@@ -85,6 +85,7 @@ public:
                 else if (op->name == "*u") result = expr.type().is_uint();
                 else if (op->name == "*iu") result = expr.type().is_int() || expr.type().is_uint();
                 else if (op->name == "*f") result = expr.type().is_float();
+                else if (op->name == "*k") result = is_const(expr);
                 if (result) matches.push_back(expr);
             } else if (op->type != expr.type()) {
                 result = false;

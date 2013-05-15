@@ -889,7 +889,7 @@ Stmt lower(Function f) {
     log(2) << "Simplified: \n" << s << "\n\n";
     code_logger.log(s, "simplify");
 
-    //s = do_loop_partition(s, 460);
+    s = do_loop_partition(s, 460);
 
     code_logger.section(500);
     log(1) << "Vectorizing...\n";
@@ -915,7 +915,7 @@ Stmt lower(Function f) {
     code_logger.log(s, "interleave");
 
 
-    s = do_loop_partition(s, 560);
+    //s = do_loop_partition(s, 560); // More difficult to work with ramp.
     
     code_logger.section(800);
     log(1) << "Simplifying...\n";

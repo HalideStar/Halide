@@ -63,6 +63,9 @@ int logging = 0;
 std::string model = "unknown";
 std::string version = "unknown";
 
+// Set to true to list test numbers and names.
+int listing = 0;
+
 // Test ID passed as parameter; -1 means run all, but a timeout will abandon subsequent tests.
 int testid = -1;
 
@@ -157,8 +160,6 @@ int testcount = 0;
 template<typename T>
 void test(std::string basename, Func (*builder)(std::string name, ImageParam, Image<T>, int, int, int), 
         int n = 0, int schedule = 0, int vec = 0) {
-    if (testcount++ != testid && testid != -1) return; // Skip this test.
-    
     std::ostringstream ss;
     if (type_of<T>().is_uint()) ss << "u" << type_of<T>().bits;
     if (type_of<T>().is_int()) ss << "i" << type_of<T>().bits;
@@ -169,6 +170,14 @@ void test(std::string basename, Func (*builder)(std::string name, ImageParam, Im
     if (schedule & SCHEDULE_SPLIT_INDEX) ss << "_s";
     if (vec > 0) ss << "_v" << vec;
     std::string name = ss.str();
+    
+    testcount++;
+    if (listing) {
+        std::cout << testcount << " " << name << "\n";
+        return;
+    }
+    if (testcount != testid && testid != -1) return; // Skip this test.  ID -1 means do all.
+    
     
     ImageParam a(type_of<T>(), 2);
     Image<T> b(WIDTH,HEIGHT), c(WIDTH,HEIGHT), d(WIDTH,HEIGHT), ref(WIDTH,HEIGHT);
@@ -347,6 +356,7 @@ int main(int argc, char **argv) {
     // Command line information
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-log") == 0) logging = 1; // Compile and execute each function once only.
+        else if (strcmp(argv[i], "-list") == 0) listing = 1;
         else if (strcmp(argv[i], "-t") == 0 && i < argc - 1) {
             // Parse time limit.
             sscanf(argv[i+1], "%d", &timelimit);
@@ -378,6 +388,7 @@ int main(int argc, char **argv) {
     do_tests<uint16_t>(8);
     
     // id -2 prints out a list of IDs that can be used in a loop to execute all tests in turn.
+    // It does no tests.
     if (testid == -2) {
         for (int i = 0; i < testcount; i++) printf ("%d ", i);
         printf ("\n");

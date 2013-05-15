@@ -572,6 +572,8 @@ Stmt code_1 () {
     return pipeline;
 }
 
+# define SOLUTION_SET 2
+# if SOLUTION_SET==1
 std::string correct_simplified =
 "produce buf {\n"
 "  parallel (x, 0, 100, auto [-infinity, infinity]) {\n"
@@ -582,7 +584,6 @@ std::string correct_simplified =
 "    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
 "  }\n"
 "}\n";
-
 
 std::string correct_presolver =
 "produce buf {\n"
@@ -642,6 +643,79 @@ std::string correct_partitioned =
 "    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
 "  }\n"
 "}\n";
+# endif
+
+# if SOLUTION_SET==2
+// Alternate solution where additional simplification rules are active, lifting constant addends outside min and max.
+std::string correct_simplified = 
+"produce buf {\n"
+"  parallel (x, 0, 100, auto [-infinity, infinity]) {\n"
+"    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
+"  }\n"
+"} consume {\n"
+"  for (x, 0, 100, [1, 99]) {\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf((max(min(x, 101), 1) + -1))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"  }\n"
+"}\n";
+
+std::string correct_presolver =
+"produce buf {\n"
+"  parallel (x, 0, 100, auto [-infinity, infinity]) {\n"
+"    stmtTargetVar(x) {\n"
+"      buf[(x + -1)] = select((3 < solve([4, infinity]: x)), select((solve([-infinity, 86]: x) < 87), input(((solve([0, 99]: (x + -10)) % 100) + 10)), i16(-17)), i16(-17))\n"
+"    }\n"
+"  }\n"
+"} consume {\n"
+"  for (x, 0, 100, [1, 99]) {\n"
+"    stmtTargetVar(x) {\n"
+"      out[x] = (((buf(max(solve([0, infinity]: min(solve([-infinity, 100]: x), 100)), 0)) + buf((max(solve([1, infinity]: min(solve([-infinity, 101]: x), 101)), 1) + -1))) + buf(Clamp::reflect(solve([0, 100]: (x + 1)),0,100,0))) + 1)\n"
+"    }\n"
+"  }\n"
+"}\n";
+
+std::string correct_solved =
+"produce buf {\n"
+"  parallel (x, 0, 100, auto [-infinity, infinity]) {\n"
+"    stmtTargetVar(x) {\n"
+"      buf[(x + -1)] = select((3 < solve([4, infinity]: x)), select((solve([-infinity, 86]: x) < 87), input((((solve([10, 109]: x) + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
+"    }\n"
+"  }\n"
+"} consume {\n"
+"  for (x, 0, 100, [1, 99]) {\n"
+"    stmtTargetVar(x) {\n"
+"      out[x] = (((buf(max(min(solve([0, infinity]: solve([-infinity, 100]: x)), 100), 0)) + buf((max(min(solve([1, infinity]: solve([-infinity, 101]: x)), 101), 1) + -1))) + buf(Clamp::reflect((solve([-1, 99]: x) + 1),0,100,0))) + 1)\n"
+"    }\n"
+"  }\n"
+"}\n";
+
+std::string correct_partitioned = 
+"produce buf {\n"
+"  let x.start = 10\n"
+"  let x.end = 87\n"
+"  parallel (x, 0, min((x.start - 0), 100), before) {\n"
+"    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
+"  }\n"
+"  parallel (x, max(x.start, 0), (min(x.end, (0 + 100)) - max(x.start, 0)), main auto [-infinity, infinity]) {\n"
+"    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
+"  }\n"
+"  parallel (x, x.end, ((0 + 100) - x.end), after) {\n"
+"    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
+"  }\n"
+"} consume {\n"
+"  let x.start = 1\n"
+"  let x.end = 100\n"
+"  for (x, 0, min((x.start - 0), 100), before) {\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf((max(min(x, 101), 1) + -1))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"  }\n"
+"  for (x, max(x.start, 0), (min(x.end, (0 + 100)) - max(x.start, 0)), main [1, 99]) {\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf((max(min(x, 101), 1) + -1))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"  }\n"
+"  for (x, x.end, ((0 + 100) - x.end), after) {\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf((max(min(x, 101), 1) + -1))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"  }\n"
+"}\n";
+# endif
+
 
 void code_compare (std::string long_desc, std::string head, Stmt code, std::string correct) {
     std::ostringstream output;

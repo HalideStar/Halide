@@ -96,6 +96,7 @@ protected:
         }
     }
 
+    /* Recognise expression as a constant integer.  Cast not allowed to minimise overflow issues. */
     bool const_int(Expr e, int *i) {
         const IntImm *c = e.as<IntImm>();
         if (c) {
@@ -106,6 +107,24 @@ protected:
         }
     }
 
+
+    /* Recognise expression a as an integer clamp expression.  i.e. Max(Min(e, k2), k1) */
+    bool clamp_expr_int(Expr a, Expr *e, int *k1, int *k2) {
+        const Max *max = a.as<Max>();
+        if (max) {
+            const Min *min = max->a.as<Min>();
+            if (min) {
+                assert(e && k1 && k2);
+                *e = min->a;
+                //log(0) << "clamp int \n";
+                return min && const_int(min->b, k2) && const_int(max->b, k1);
+            } else {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
 
     /* Recognise an integer or cast integer and fetch its value.
      * Only matches if the number of bits of the cast integer does not exceed
@@ -786,7 +805,7 @@ protected:
         else expr = new Max(a, b);
         return false;
     }
-
+    
     virtual void visit(const Min *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
 
@@ -810,6 +829,7 @@ protected:
         int ia, ib;
         int k1, k2, k3, k4;
         float fa, fb;
+        Expr e1, e2;
         const Ramp *ramp_a = a.as<Ramp>();
         const Ramp *ramp_b = b.as<Ramp>();
         const Broadcast *broadcast_a = a.as<Broadcast>();
@@ -826,11 +846,7 @@ protected:
         const Min *min_a_a_a = min_a_a ? min_a_a->a.as<Min>() : NULL;
         const Min *min_a_a_a_a = min_a_a_a ? min_a_a_a->a.as<Min>() : NULL;
         const Max *max_a = a.as<Max>();
-		const Max *clamp_lower_a = max_a;
-		const Max *clamp_lower_b = b.as<Max>();
-		const Min *clamp_upper_a = clamp_lower_a ? clamp_lower_a->a.as<Min>() : NULL;
-		const Min *clamp_upper_b = clamp_lower_b ? clamp_lower_b->a.as<Min>() : NULL;
-
+        
         // Sometimes we can do bounds analysis to simplify
         // things. Only worth doing for ints
         
@@ -864,7 +880,7 @@ protected:
         } else if (add_a && const_int(add_a->b, &ia) && 
                    add_b && const_int(add_b->b, &ib) && 
                    equal(add_a->a, add_b->a)) {
-            // min(x + 3, x - 2) -> x - 2
+            // min(x + 3, x + -2) -> x + -2
             if (ia > ib) {
                 expr = b;
             } else {
@@ -884,20 +900,26 @@ protected:
             } else {
                 expr = b;
             }
-        } else if (min_a && is_simple_const(min_a->b) && is_simple_const(b)) {
-            // min(min(x, 4), 5) -> min(x, 4)
-            expr = new Min(min_a->a, mutate(new Min(min_a->b, b)));
-        } else if (add_a && add_b && const_int(add_a->b, &ia) && const_int(add_b->b, &ib)) { //LH
+        } else if (add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) { //LH
+            // min(e + k1, k2) -->  min(e, k2 -k1) + k1
+            // Overflow invalidates this rule.
             // vectorize.partition
+            expr = mutate(new Add(new Min(add_a->a, ib - ia), ia));
+        } else if (add_a && add_b && const_int(add_a->b, &ia) && const_int(add_b->b, &ib)) { //LH
             // min(e1 + k1, e2 + k2) -->  min(e1 + (k1 - k2), e2) + k2
             // Overflow invalidates this rule (and many of the rules above).
             // e.g. min(x + 5, x + 7) is actually x+7 when the type is UInt(8) and
             // x is 250.
+            // vectorize.partition
             if (ia == ib) {
+                // Special case: min(e1 + k, e2 + k) --> min(e1, e2) + k
                 expr = mutate(new Add(new Min(add_a->a, add_b->a), ib));
             } else {
                 expr = mutate(new Add(new Min(add_a->a + (ia - ib), add_b->a), ib));
             }
+        } else if (min_a && is_simple_const(min_a->b) && is_simple_const(b)) {
+            // min(min(x, 4), 5) -> min(x, 4)
+            expr = new Min(min_a->a, mutate(new Min(min_a->b, b)));
         } else if (sub_a && sub_b && const_int(sub_a->a, &ia) && const_int(sub_b->a, &ib)) { //LH
             // vectorize.partition
             // min(k1 - e1, k2 - e2) --> k2 + min((k1 - k2) - e1, 0 - e2)
@@ -925,20 +947,30 @@ protected:
             } else {
                 expr = mutate(new Div(new Max(div_a->a, div_b->a), ia));
             }
-        } else if (clamp_upper_a && clamp_upper_b && 
-                   const_int(clamp_lower_a->b, &k2) && const_int(clamp_lower_b->b, &k4) && k2 == k4 &&
-                   const_int(clamp_upper_a->b, &k1) && const_int(clamp_upper_b->b, &k3) && k1 == k3) { //LH
-            // min(clamp(e1, k2, k1), clamp(e2, k2, k1)) ==> clamp(min(e1, e2), k2, k1)
-            expr = mutate(new Max(new Min(new Min(clamp_upper_a->a, clamp_upper_b->a), k1), k2));
-# if 0
-        // Disable this rule because it prevents simplifying nested min(...( of clamped expressions.
-        // However, this rule is needed to simplify nested min of index split points.
-        } else if (global_options.simplify_nested_clamp && 
-				   add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) { //LH
-			// min(e + k1, k2) -> min(x, k2-k1) + k1   Provided there is no overflow
-			// Pushes additions down where they may combine with others.
-			// (Subtractions e - k are previously converted to e + -k).
-			expr = new Add(new Min(add_a->a, ib - ia), ia);
+# if 1
+        } else if (clamp_expr_int(a, &e1, &k1, &k2) && const_int(b, &k3) && k1 < k2) { //LH
+            // simplify bounds checks
+            // min(clamp(x, k1, k2), k3)
+			// Expression arises from nested clamp expressions due to inlining
+            // Case k1 >= k2: clamp(x, k1, k2) resolves to k2 (because clamp is Max(Min(x, k2), k1)).
+            //     This case will be resolved by the Max rule that detects degenerate cases, so cannot happen here.
+            // Case k1 >= k3: min(clamp(x, k1, k2), k3) --> k3.  This is a special case of the max_a rule below.
+			if (k1 >= k3) expr = b;
+            else expr = clamp(e1, k1, std::min(k2, k3));   
+        } else if (clamp_expr_int(a, &e1, &k1, &k2) && clamp_expr_int(b, &e2, &k3, &k4) && k1 == k3 && k2 == k4) { //LH
+            // simplify bounds checks
+            // min(clamp(e1, k1, k2), clamp(e2, k1, k2)) ==> clamp(min(e1, e2), k1, k2)
+            expr = mutate(clamp(new Min(e1, e2), k1, k2));
+        } else if (add_a && clamp_expr_int(add_a->a, &e1, &k1, &k2) && clamp_expr_int(b, &e2, &k3, &k4) && const_int(add_a->b, &ia) && k1 == k3 - ia && k2 == k4 - ia) { //LH
+            // simplify bounds checks
+            // min(clamp(e1, k3-ia, k4-ia) + ia, clamp(e2, k3, k4)) ==> clamp(min(e1+ia, e2), k3, k4)
+            // Same rule as above, but applied after constant addition has been lifted out of clamp.
+            expr = mutate(clamp(min(e1 + ia, e2), k3, k4));
+        } else if (add_b && clamp_expr_int(add_b->a, &e1, &k1, &k2) && clamp_expr_int(a, &e2, &k3, &k4) && const_int(add_b->b, &ia) && k1 == k3 - ia && k2 == k4 - ia) { //LH
+            // simplify bounds checks
+            // min(clamp(e2, k3, k4), clamp(e1, k3-ia, k4-ia) + ia) ==> clamp(min(e1+ia, e2), k3, k4)
+            // Same rule as above, but in reverse
+            expr = mutate(clamp(min(e1 + ia, e2), k3, k4));
 # endif
         } else if (min_a && (equal(min_a->b, b) || equal(min_a->a, b))) {
             // min(min(x, y), y) -> min(x, y)
@@ -955,26 +987,16 @@ protected:
         } else if (min_a_a_a_a && equal(min_a_a_a_a->b, b)) {
             // min(min(min(min(min(x, y), z), w), l), y) -> min(min(min(min(x, y), z), w), l)
             expr = a;            
-        } else if (global_options.simplify_nested_clamp && 
-				   max_a && const_int(max_a->b, &k1) && const_int(b, &k2) && k1 >= k2) { //LH
+        } else if (max_a && const_int(max_a->b, &k1) && const_int(b, &k2) && k1 >= k2) { //LH
 			// min(max(x, k1), k2) -> k2 when k1 >= k2
 			expr = b;
-		} else if (global_options.simplify_nested_clamp && 
-				   clamp_upper_a && const_int(b, &k3) && const_int(clamp_lower_a->b, &k2) && 
-                   const_int(clamp_upper_a->b, &k1) &&
-			       k1 >= k2 && k3 >= k2) { //LH
-            // min(max(min(x, k1), k2), k3)
-			// Expression arises from nested clamp expressions due to inlining
-			// k1 <= k2 --> min(k2, k3) to be simplified further.  Max rule should capture that.
-			// k2 >= k3 --> k3 according to rule above.
-			// Otherwise: min(x, k1) limits upper bound to k1 then max(..., k2) limits lower bound to k2 (where k2 < k1)
-			// then min(..., k3) limits upper bound to k3 (where k2 < k3) so overall x is limited to (k2, min(k1,k3))
-            expr = new Min(new Max(clamp_upper_a->a, k2), std::min(k1, k3));   
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
             expr = new Min(a, b);
         }
+        
+        k3 = 1; k4 = 2; ia = k3 + k4;
     }
 
     virtual void visit(const Max *op) {
@@ -997,9 +1019,10 @@ protected:
             std::swap(a, b);
         }
 
-        int ia, ib, ib2, ib3;
+        int ia, ib;
         int k1, k2, k3, k4;
         float fa, fb;
+        Expr e1, e2;
         const Ramp *ramp_a = a.as<Ramp>();
         const Ramp *ramp_b = b.as<Ramp>();
         const Broadcast *broadcast_a = a.as<Broadcast>();
@@ -1017,10 +1040,6 @@ protected:
         const Max *max_a_a_a_a = max_a_a_a ? max_a_a_a->a.as<Max>() : NULL;
         const Min *min_a = a.as<Min>();
         const Max *max_a_min_a = min_a ? min_a->a.as<Max>() : NULL;
-		const Max *clamp_lower_a = max_a;
-		const Max *clamp_lower_b = max_b;
-		const Min *clamp_upper_a = clamp_lower_a ? clamp_lower_a->a.as<Min>() : NULL;
-		const Min *clamp_upper_b = clamp_lower_b ? clamp_lower_b->a.as<Min>() : NULL;
 
         if (equal(a, b)) {
             expr = a;
@@ -1070,6 +1089,11 @@ protected:
             } else {
                 expr = a;
             }
+        } else if (add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) { //LH
+            // vectorize.partition
+            // max(e + k1, k2) -->  max(e, k2 -k1) + k1
+            // Overflow invalidates this rule.
+            expr = mutate(new Add(new Max(add_a->a, ib - ia), ia));
         } else if (max_a && is_simple_const(max_a->b) && is_simple_const(b)) {
             // max(max(x, 4), 5) -> max(x, 5)
             expr = new Max(max_a->a, mutate(new Max(max_a->b, b)));
@@ -1111,20 +1135,40 @@ protected:
             } else {
                 expr = mutate(new Div(new Min(div_a->a, div_b->a), ia));
             }
-        } else if (clamp_upper_a && clamp_upper_b && 
-                   const_int(clamp_lower_a->b, &k2) && const_int(clamp_lower_b->b, &k4) && k2 == k4 &&
-                   const_int(clamp_upper_a->b, &k1) && const_int(clamp_upper_b->b, &k3) && k1 == k3) { //LH
-            // max(clamp(e1, k2, k1), clamp(e2, k2, k1)) ==> clamp(max(e1, e2), k2, k1)
-            expr = mutate(new Max(new Min(new Max(clamp_upper_a->a, clamp_upper_b->a), k1), k2));
-# if 0
-        // Disable this rule because it prevents simplifying chain of max(...( is clamp expressions
-        } else if (global_options.simplify_nested_clamp && 
-				   add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) { //LH
-			// max(e + k1, k2) -> max(x, k2-k1) + k1   Provided there is no overflow
-			// Pushes additions down where they may combine with others.
-			// (Subtractions e - k are previously converted to e + -k).
-			expr = new Add(new Max(add_a->a, ib - ia), ia);
-# endif
+        } else if (clamp_expr_int(a, &e1, &k1, &k2) && const_int(b, &k3) && k1 < k2) { //LH
+            // simplify nested clamp expressions
+            // max(clamp(x, k1, k2), k3)
+			// Expression arises from nested clamp expressions due to inlining
+            // Case k1 >= k2: clamp(x, k1, k2) resolves to k2 (because clamp is Max(Min(x, k2), k1)).
+            //     This case will be resolved by the Max rule that detects degenerate cases, so cannot happen here.
+            // Case k3 >= k2: max(clamp(x, k1, k2), k3) --> k3.
+            // Otherwise: max(clamp(x, k1, k2), k3) --> clamp(x, max(k1, k3), k2)
+			if (k3 >= k2) expr = b;
+            else expr = clamp(e1, std::max(k1, k3), k2);
+        } else if (clamp_expr_int(a, &e1, &k1, &k2) && clamp_expr_int(b, &e2, &k3, &k4) && k1 == k3 && k2 == k4) { //LH
+            // simplify bounds checks
+            // max(clamp(e1, k1, k2), clamp(e2, k1, k2)) ==> clamp(max(e1, e2), k1, k2)
+            //expr = mutate(clamp(Expr(new Max(e1, e2)), k1, k2));
+            expr = mutate(new Max(new Min(new Max(e1, e2), k2), k1));
+        } else if (add_a && clamp_expr_int(add_a->a, &e1, &k1, &k2) && clamp_expr_int(b, &e2, &k3, &k4) && const_int(add_a->b, &ia) && k1 == k3 - ia && k2 == k4 - ia) { //LH
+            // simplify bounds checks
+            // max(clamp(e1, k3-ia, k4-ia) + ia, clamp(e2, k3, k4)) ==> clamp(max(e1+ia, e2), k3, k4)
+            // Same rule as above, but applied after lifting of a constant out of the enclosed expression
+            expr = mutate(clamp(max(e1 + ia, e2), k3, k4));
+        } else if (add_b && clamp_expr_int(add_b->a, &e1, &k1, &k2) && clamp_expr_int(a, &e2, &k3, &k4) && const_int(add_b->b, &ia) && k1 == k3 - ia && k2 == k4 - ia) { //LH
+            // simplify bounds checks
+            // max(clamp(e2, k3, k4), clamp(e1, k3-ia, k4-ia) + ia) ==> clamp(max(e1+ia, e2), k3, k4)
+            // Same rule as above, but applied in reverse
+            expr = mutate(clamp(max(e1 + ia, e2), k3, k4));
+        } else if (max_a_min_a && const_int(max_a_min_a->b, &k1) && const_int(min_a->b, &k2) && const_int(b, &k3)) {
+            // simplify nested clamp expressions
+            // max(min(max(e, k1), k2), k3)
+            // Case k2 <= k3 --> k3 because min drops below k3.
+            // Else Case k1 >= k2 --> k2 because inner max lifts above k2, min drops to k2 and k2 > k3.
+            // Else k1 < k2 and k2 > k3 --> clamp(e, max(k1, k3), k2)
+            if (k2 <= k3) expr = b;
+            else if (k1 >= k2) expr = min_a->b;
+            else expr = mutate(clamp(max_a_min_a->a, std::max(k1, k3), k2));
         } else if (max_a && (equal(max_a->b, b) || equal(max_a->a, b))) {
             // max(max(x, y), y) -> max(x, y)
             expr = a;
@@ -1140,26 +1184,18 @@ protected:
         } else if (max_a_a_a_a && equal(max_a_a_a_a->b, b)) {
             // max(max(max(max(max(x, y), z), w), l), y) -> max(max(max(max(x, y), z), w), l)
             expr = a;            
-        } else if (global_options.simplify_nested_clamp && 
-				   min_a && const_int(min_a->b, &k1) && const_int(b, &k2) && k2 >= k1) { //LH
+        } else if (min_a && const_int(min_a->b, &k1) && const_int(b, &k2) && k2 >= k1) { //LH
+            // degenerate clamp expression
 			// max(min(x, k1), k2) -> k2 when k1 <= k2
 			expr = b;
-		} else if (global_options.simplify_nested_clamp && 
-				   max_a_min_a && const_int(b, &ib) && const_int(min_a->b, &ib2) && 
-                   const_int(max_a_min_a->b, &ib3) &&
-			       ib < ib2 && ib2 > ib3) { //LH
-            // max(min(max(x, k1), k2), k3)
-			// Expression arises from nested clamp expressions due to inlining
-			// k1 >= k2 --> max(k2, k3) to be simplified further.  Min rule should capture that.
-			// k2 <= k3 --> k3 according to rule above.
-			// Otherwise: max(x, k1) limits lower bound to k1 then min(..., k2) limits upper bound to k2 (where k2 > k1)
-			// then max(..., k3) limits lower bound to k3 (where k2 > k3) so overall x is limited to (max(k1,k3), k2)
-            expr = new Max(new Min(max_a_min_a->a, ib2), std::max(ib, ib3));            
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
             expr = new Max(a, b);
         }
+        
+        k3 = 1; k4 = 2;
+        ia = k3 + k4;
     }
 
     virtual void visit(const EQ *op) {
@@ -1695,15 +1731,19 @@ Stmt simplify(Stmt s) {
 bool proved(Expr e, bool &disproved) {
     static int depth = 0;
     depth++;
-    log logger(4);    
-    logger << depth << ": Attempt to prove  " << e << "\n";
+    log logger(0);    
+    //logger << depth << ": Attempt to prove  " << e << "\n";
     Expr b = Simplify().simplify(e);
     bool result = is_one(b);
     disproved = is_zero(b);
-    logger << depth << ":    ==> ";
-    if (equal(e,b)) logger << "same  ==>  ";
-    else logger << b << "\n" << depth << ":    ==>  ";
-    logger << (result ? "true" : (disproved ? "false" : "failed")) << "\n";
+    //logger << depth << ":    ==> ";
+    //if (equal(e,b)) logger << "same  ==>  ";
+    //else logger << b << "\n" << depth << ":    ==>  ";
+    //logger << (result ? "true" : (disproved ? "false" : "failed")) << "\n";
+    if (! result && ! disproved) {
+        logger << depth << ": Failed to prove or disprove:\n    " << e << "\n";
+        logger << "    " << b << "\n";
+    }
     depth--;
     return result;
 }
@@ -1899,7 +1939,7 @@ void simplify_test() {
     check(new Min(new Min(x, y), y), new Min(x, y));
     check(new Min(x, new Min(x, y)), new Min(x, y));
     check(new Min(y, new Min(x, y)), new Min(x, y));
-	check(new Min(new Max(new Min(x, 18), 7), 21), new Min(new Max(x, 7), 18));
+	check(new Min(new Max(new Min(x, 18), 7), 21), new Max(new Min(x, 18), 7));
 	check(new Min(new Max(x, 5), 3), Expr(3));
 
     check(new Max(7, 3), 7);
@@ -1916,6 +1956,8 @@ void simplify_test() {
     check(new Max(y, new Max(x, y)), new Max(x, y));
 	check(new Max(new Min(new Max(x, 5), 15), 7), new Max(new Min(x, 15), 7));
 	check(new Max(new Min(x, 7), 9), Expr(9));
+    
+    check(clamp(clamp(x, 3, 8), 2, 7), clamp(x, 3, 7));
 
     Expr t = const_true(), f = const_false();
     check(x == x, t);
