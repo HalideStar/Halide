@@ -257,7 +257,7 @@ ScheduleHandle &ScheduleHandle::split(Var old, Var outer, Var inner, Expr factor
                 dims[j-1] = dims[j-2];
             }
             dims[i+1].var = outer_name;
-            dims[i].partition = PartitionInfo(); // Do not partition the inner loop
+            dims[i].partition = PartitionInfo(false); // Do not partition the inner loop
             dims[i+1].partition.interval = unzoom(dims[i+1].partition.interval, factor);
             
             //std::cout << "outer: " << dims[i].partition << "\n";
@@ -842,11 +842,11 @@ Buffer Func::realize() {
 }
 #endif
 
-void Func::compile_to_stmt() {
+Internal::Stmt Func::compile_to_stmt() {
     assert(value().defined() && "Can't compile undefined function");    
 
     if (!lowered.defined()) lowered = Halide::Internal::lower(func);
-    return;
+    return lowered;
 }
 
 void Func::compile_to_bitcode(const string &filename, vector<Argument> args, const string &fn_name) {

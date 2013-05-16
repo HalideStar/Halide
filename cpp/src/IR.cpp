@@ -105,6 +105,11 @@ const bool PartitionInfo::interval_defined() const {
             ! interval.min.as<Infinity>() && ! interval.max.as<Infinity>()); 
 }
 
+const bool PartitionInfo::may_be_partitioned() const { 
+    return auto_partition != No || interval_defined(); 
+}
+
+
 
 }
 }

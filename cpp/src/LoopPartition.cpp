@@ -12,6 +12,8 @@
 #include "Options.h"
 #include "CodeLogger.h"
 
+# define LOGLEVEL 4
+
 namespace Halide {
 namespace Internal {
 
@@ -32,7 +34,10 @@ class LoopPreSolver : public InlineLet {
     virtual void visit(const For *op) {
         // Only serial and parallel for loops can be partitioned.
         // Vector and Unrolled for loops, if present, become intervals for the solver to deal with.
-        if (op->for_type == For::Serial || op->for_type == For::Parallel) {
+        // Also, any loop that is marked not to be partitioned becomes an interval for the solver
+        // (this happens to the inner loop of a split, such as split parallel execution).
+        if (op->partition.may_be_partitioned() && 
+            (op->for_type == For::Serial || op->for_type == For::Parallel) ){
             // Indicate that the For variable is not a constant variable
             varlist.push_back(op->name);
             
@@ -356,7 +361,8 @@ protected:
         // optimised for each iteration due to the unrolling.
         Stmt new_body = mutate(op->body);
         if ((op->for_type == For::Serial || op->for_type == For::Parallel) &&
-             (op->partition.status == PartitionInfo::Ordinary)) {
+            (op->partition.status == PartitionInfo::Ordinary)) {
+            log(LOGLEVEL) << "Considering partitioning loop:\n" << Stmt(op);
             InfInterval part;
             if (op->partition.interval_defined()) {
                 part = op->partition.interval;
@@ -367,11 +373,11 @@ protected:
                 // Search for solutions related to this particular for loop.
                 std::vector<Solution> solutions = extract_solutions(op->name, op, solved);
                 //std::cout << global_options;
-# if 0
-                std::cout << "For loop: \n" << Stmt(op);
-                std::cout << "Solutions: \n";
+                log(LOGLEVEL) << "Considering automatic partitioning\n";
+# if 1
+                log(LOGLEVEL) << "Solutions: \n";
                 for (size_t i = 0; i < solutions.size(); i++) {
-                    std::cout << solutions[i].var << " " << solutions[i].intervals << "\n";
+                    log(LOGLEVEL) << solutions[i].var << " " << solutions[i].intervals << "\n";
                 }
 # endif               
                 // Compute loop partition points for each end of the loop.
@@ -415,11 +421,12 @@ protected:
                 
                 part = InfInterval(part_start, part_end);
                 
-                log(1) << "Auto partition: " << op->name << " " << part << "\n";
+                log(LOGLEVEL) << "Auto partition: " << op->name << " " << part << "\n";
             }
             
             if ((part.min.defined() && infinity_count(part.min) == 0) || 
                 (part.max.defined() && infinity_count(part.max) == 0)) {
+                log(LOGLEVEL) << "About to partition loop:\n" << Stmt(op);
                 // The partitioned loops are as follows:
                 // for (x, .min, Min(start - .min, .extent))
                 //     This loop starts at .min and never reaches start.  It also never exceeds .extent.
@@ -789,6 +796,67 @@ void loop_partition_test() {
     test_loop_partition_1();
     
     std::cout << "Loop Partition test passed\n";
+}
+
+class EffectivePartition : public IRVisitor {
+public:
+    int failing;
+    
+    EffectivePartition() : failing(false) {}
+private:
+    using IRVisitor::visit;
+    
+    virtual void visit(const For *op) {
+        // For loops that are marked Main are worthy of consideration.
+        // For loops marked Before or After are not.
+        // For loops that are marked not to be partitioned are worthy of consideration -
+        // these arise from variable splitting.
+        // Potential problems: The Before or After loops may be degenerate.
+        if (op->partition.status == PartitionInfo::Main || ! op->partition.may_be_partitioned()) {
+            op->body.accept(this);
+        }
+    }
+    
+    virtual void visit(const LetStmt *op) {
+        // LetStmt is not part of the loop body (not usually)
+        op->body.accept(this);
+    }
+    
+    virtual void visit(const Min *op) {
+        // Constant expression such as Min(ramp(), broadcast()) is acceptable.
+        if (is_const(op->a) && is_const(op->b)) return;
+        std::cerr << Expr(op) << "\n";
+        failing = true;
+    }
+    
+    virtual void visit(const Max *op) {
+        // Constant expression such as Max(ramp(), broadcast()) is acceptable.
+        if (is_const(op->a) && is_const(op->b)) return;
+        std::cerr << Expr(op) << "\n";
+        failing = true;
+    }
+    
+    virtual void visit(const Clamp *op) {
+        std::cerr << Expr(op) << "\n";
+        failing = true;
+    }
+    
+    virtual void visit(const Select *op) {
+        std::cerr << Expr(op) << "\n";
+        failing = true;
+    }
+};
+
+
+/** is_effective_partition tells whether partition has been effective to eliminate
+ * Min, Max, Clamp, Select and Mod operators from the main loop.  Note that there are obviously
+ * programs that use clamp(), Mod, or Select on data.  Such programs will not pass
+ * this test, but the purpose of the test is for those programs that should be fully
+ * clean after partition has been applied. */
+bool is_effective_partition(Stmt s) {
+    EffectivePartition eff;
+    s.accept(&eff);
+    return !eff.failing;
 }
 
 }

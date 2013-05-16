@@ -14,7 +14,7 @@
 
 using std::vector;
 
-# define LOGLEVEL 0
+# define LOGLEVEL 4
 
 // Simplify using bounds analysis provided by IntervalAnal.
 // Note: If there are variables remaining in the intervals, then
@@ -119,13 +119,13 @@ public:
         if (op->partition.status != PartitionInfo::Main && 
             op->partition.status != PartitionInfo::Ordinary) {
             log::debug_level = -1;
-            if (log::debug_level != old_debug_level) 
-                log(-1) << "Debug level " << old_debug_level << " -> " << log::debug_level << "\n";
+            //if (log::debug_level != old_debug_level) 
+            //    log(-1) << "Debug level " << old_debug_level << " -> " << log::debug_level << "\n";
         }
         Super::visit(op);
         
-        if (log::debug_level != old_debug_level) 
-            log(-1) << "Debug level " << log::debug_level << " -> " << old_debug_level << "\n";
+        //if (log::debug_level != old_debug_level) 
+        //    log(-1) << "Debug level " << log::debug_level << " -> " << old_debug_level << "\n";
         log::debug_level = old_debug_level;
     }
 # endif

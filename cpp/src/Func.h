@@ -372,7 +372,7 @@ public:
     //EXPORT void realize();
 
     /** Compile this function to lowered Halide code but no further. */
-    EXPORT void compile_to_stmt();
+    EXPORT Internal::Stmt compile_to_stmt();
     
     /** Statically compile this function to llvm bitcode, with the
      * given filename (which should probably end in .bc), type

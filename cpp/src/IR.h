@@ -617,8 +617,14 @@ namespace Internal {
             status = Ordinary;
         }
         
+        /* defined() returns true if partition information is defined.  i.e. if
+         * auto_partition is Yes or No, or if a partition interval is defined. */
         const bool defined() const;
+        /* interval_defined() returns true if a partition interval is defined. */
         const bool interval_defined() const;
+        /* may_be_partitioned() returns true if the partition information indicates to perform
+         * partitioning.  auto_partition is Yes or Undefined, or partition interval is defined. */
+        const bool may_be_partitioned() const;
     };
         
 /** A for loop. Execute the 'body' statement for all values of the

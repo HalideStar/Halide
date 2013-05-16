@@ -12,6 +12,8 @@
 #include "SlidingWindow.h"
 #include <iostream>
 
+# define LOGLEVEL 4
+
 namespace Halide { 
 namespace Internal {
 
@@ -167,32 +169,22 @@ protected:
     bool min_div_expr(Expr e, Expr *e1, int *k1, int *kd) {
         const Add *add_e = e.as<Add>(); // Min(...)*kd + e1
         if (! add_e) return false;
+        // Recognised ? + ?
         const Mul *mul_a = add_e->a.as<Mul>(); // Min(...) * kd
         if (! mul_a) return false;
         if (! const_int(mul_a->b, kd)) return false;
+        // Recognised ? * kd + ?
         const Min *min = mul_a->a.as<Min>(); // Min( , )
         if (! min) return false;
-        Expr ediv;
+        // Recognised Min(?, ?) * kd + ?
         int kdiv;
-        if (division_int(min->a, &ediv, &kdiv) && kdiv == (*kd)) {
-            // Min(a,b): a  as  ediv / kd
-            const Sub *sub = ediv.as<Sub>(); // ediv  as  k1 - e1
-            if (const_int(sub->a, k1) && equal(sub->b, add_e->b)) {
-                // k1 extracted.  e1 matches in the two places.
-                // kd extracted and matched.  e9 ignored.
-                *e1 = sub->b;
-                return true;
-            }
+        if (sub_div_int(min->a, e1, k1, &kdiv) && kdiv == (*kd) && equal(*e1, add_e->b)) {
+            // Min(a,b): a  as  (k1 - e1) / kd
+            return true;
         }
         // In case LHS of Min does not match, try RHS of min.
-        if (division_int(min->b, &ediv, &kdiv) && kdiv == (*kd)) {
-            const Sub *sub = ediv.as<Sub>(); // ediv  as  k1 - e1
-            if (const_int(sub->a, k1) && equal(sub->b, add_e->b)) {
-                // k1 extracted.  e1 matches in the two places.
-                // kd extracted and matched.  e9 ignored.
-                *e1 = sub->b;
-                return true;
-            }
+        if (sub_div_int(min->b, e1, k1, &kdiv) && kdiv == (*kd) && equal(*e1, add_e->b)) {
+            return true;
         }
         return false;
     }
@@ -208,29 +200,14 @@ protected:
         if (! const_int(mul_a->b, kd)) return false;
         const Max *max = mul_a->a.as<Max>(); // Max( , )
         if (! max) return false;
-        Expr ediv;
         int kdiv;
-        if (division_int(max->a, &ediv, &kdiv) && kdiv == (*kd)) {
-            // Max(a,b): a  as  ediv / kd
-            const Sub *sub = ediv.as<Sub>(); // ediv  as  k1 - e1
-            if (const_int(sub->a, k1) && equal(sub->b, add_e->b)) {
-                // k1 extracted.  e1 matches in the two places.
-                // kd extracted and matched.  e9 ignored.
-                *e1 = sub->b;
-                //log(0) << "  max_div_expr a: " << (*e1) << "  " << (*k1) << "  " << (*kd) << "\n";
-                return true;
-            }
+        if (sub_div_int(max->a, e1, k1, &kdiv) && kdiv == (*kd) && equal(*e1, add_e->b)) {
+            // Max(a,b): a  as  (k1 - e1) / kd
+            return true;
         }
-        // In case LHS of Max does not match, try RHS of max.
-        if (division_int(max->b, &ediv, &kdiv) && kdiv == (*kd)) {
-            const Sub *sub = ediv.as<Sub>(); // ediv  as  k1 - e1
-            if (const_int(sub->a, k1) && equal(sub->b, add_e->b)) {
-                // k1 extracted.  e1 matches in the two places.
-                // kd extracted and matched.  e9 ignored.
-                *e1 = sub->b;
-                //log(0) << "  max_div_expr b: " << (*e1) << "  " << (*k1) << "  " << (*kd) << "\n";
-                return true;
-            }
+        // In case LHS of Max does not match, try RHS of Max.
+        if (sub_div_int(max->b, e1, k1, &kdiv) && kdiv == (*kd) && equal(*e1, add_e->b)) {
+            return true;
         }
         return false;
     }
@@ -1872,7 +1849,7 @@ Stmt simplify(Stmt s) {
 bool proved(Expr e, bool &disproved) {
     static int depth = 0;
     depth++;
-    log logger(0);    
+    log logger(LOGLEVEL);    
     //logger << depth << ": Attempt to prove  " << e << "\n";
     Expr b = Simplify().simplify(e);
     bool result = is_one(b);

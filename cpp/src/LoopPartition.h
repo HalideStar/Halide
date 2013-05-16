@@ -19,7 +19,7 @@ namespace Internal {
 Stmt loop_partition(Stmt s);
 
 void loop_partition_test();
-
+bool is_effective_partition(Stmt s);
 }
 }
 
