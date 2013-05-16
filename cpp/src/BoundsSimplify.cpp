@@ -14,6 +14,8 @@
 
 using std::vector;
 
+# define LOGLEVEL 0
+
 // Simplify using bounds analysis provided by IntervalAnal.
 // Note: If there are variables remaining in the intervals, then
 // they cannot be further resolved.  Therefore, proved() is appropriate.
@@ -58,24 +60,25 @@ public:
     }
 
     void visit(const Min *op) {
-        //log(0) << "Min " << op->a << ", " << op->b << "\n";
+        log(LOGLEVEL) << "BoundsSimplify: Min " << op->a << ", " << op->b << "\n";
         InfInterval bounds_a = bounds.bounds(op->a);
         InfInterval bounds_b = bounds.bounds(op->b);
-        //log(0) << "    interval a " << bounds_a << "  b " << bounds_b << "\n";
+        log(LOGLEVEL) << "    interval a " << bounds_a << "  b " << bounds_b << "\n";
         //log(0) << "    current context " << current_context() << "\n";
         if (proved(bounds_a.max <= bounds_b.min)) {
-            //log(0) << "    result is expr a\n";
+            log(LOGLEVEL) << "    result is expr a\n";
             expr = mutate(op->a);
         } else if (proved(bounds_b.max <= bounds_a.min)) {
-            //log(0) << "    result is expr b\n";
+            log(LOGLEVEL) << "    result is expr b\n";
             expr = mutate(op->b);
         } else {
+            log(LOGLEVEL) << "    could not resolve\n";
             Super::visit(op);
         }
     }
 
     void visit(const Max *op) {
-        //log(0) << "Max " << op->a << ", " << op->b << "\n";
+        log(LOGLEVEL) << "BoundsSimplify: Max " << op->a << ", " << op->b << "\n";
         InfInterval bounds_a = bounds.bounds(op->a);
         InfInterval bounds_b = bounds.bounds(op->b);
         if (proved(bounds_a.min >= bounds_b.max)) {

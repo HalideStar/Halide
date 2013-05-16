@@ -108,24 +108,119 @@ protected:
     }
 
 
-    /* Recognise expression a as an integer clamp expression.  i.e. Max(Min(e, k2), k1) */
-    bool clamp_expr_int(Expr a, Expr *e, int *k1, int *k2) {
-        const Max *max = a.as<Max>();
-        if (max) {
-            const Min *min = max->a.as<Min>();
-            if (min) {
-                assert(e && k1 && k2);
-                *e = min->a;
-                //log(0) << "clamp int \n";
-                return min && const_int(min->b, k2) && const_int(max->b, k1);
-            } else {
-                return false;
-            }
+    /* Recognise expression e as an integer clamp expression.  i.e. Max(Min(e1, k2), k1).
+     * Returns the subexpression e1 and the integers k1, k2.  On failure, some of these
+     * parameters may be modified. */
+    bool clamp_expr_int(Expr e, Expr *e1, int *k1, int *k2) {
+        const Max *max_e = e.as<Max>();
+        if (! max_e) return false;
+        const Min *min_a = max_e->a.as<Min>();
+        if (! min_a) return false;
+        assert(e1 && k1 && k2);
+        *e1 = min_a->a;
+        return const_int(min_a->b, k2) && const_int(max_e->b, k1);
+    }
+    
+    /* Recognise an integer division expression  e / k.
+     * Ceiling division can be written (e1 + (k-1)) / k or
+     * as (e1 - 1) /k + 1.
+     * Further, there could be an additional constant term.
+     * This recogniser unifies the forms into
+     * e1 / k. The expression is simplified in the current context by calling mutate. */
+    bool division_int(Expr e, Expr *e1, int *k) {
+        const Add *add_e = e.as<Add>();
+        const Div *div_e = e.as<Div>();
+        if (add_e) {
+            const Div *div_a = add_e->a.as<Div>();
+            if (! div_a) return false;
+            int add_kb;
+            if (! const_int(add_e->b, &add_kb)) return false;
+            if (! const_int(div_a->b, k)) return false;
+            // e / k + add_kb  -->  e1 := e + add_kb * k
+            *e1 = mutate(div_a->a + add_kb * (*k));
+            return true;
+        } else if (div_e) {
+            // Looking for e1 / k
+            *e1 = div_e->a;
+            return const_int(div_e->b, k);
         } else {
             return false;
         }
     }
 
+    /* Recognise expression e as a min div with vectorisation 
+     * Min ( (k1 - e1) / kd, e9 ) * kd + e1 */
+    bool min_div_expr(Expr e, Expr *e1, int *k1, int *kd) {
+        const Add *add_e = e.as<Add>(); // Min(...)*kd + e1
+        if (! add_e) return false;
+        const Mul *mul_a = add_e->a.as<Mul>(); // Min(...) * kd
+        if (! mul_a) return false;
+        if (! const_int(mul_a->b, kd)) return false;
+        const Min *min = mul_a->a.as<Min>(); // Min( , )
+        if (! min) return false;
+        Expr ediv;
+        int kdiv;
+        if (division_int(min->a, &ediv, &kdiv) && kdiv == (*kd)) {
+            // Min(a,b): a  as  ediv / kd
+            const Sub *sub = ediv.as<Sub>(); // ediv  as  k1 - e1
+            if (const_int(sub->a, k1) && equal(sub->b, add_e->b)) {
+                // k1 extracted.  e1 matches in the two places.
+                // kd extracted and matched.  e9 ignored.
+                *e1 = sub->b;
+                return true;
+            }
+        }
+        // In case LHS of Min does not match, try RHS of min.
+        if (division_int(min->b, &ediv, &kdiv) && kdiv == (*kd)) {
+            const Sub *sub = ediv.as<Sub>(); // ediv  as  k1 - e1
+            if (const_int(sub->a, k1) && equal(sub->b, add_e->b)) {
+                // k1 extracted.  e1 matches in the two places.
+                // kd extracted and matched.  e9 ignored.
+                *e1 = sub->b;
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /* Recognise expression e as a max div with vectorisation 
+     * Max ( (k1 - e1) / kd, e9 ) * kd + e1 */
+    bool max_div_expr(Expr e, Expr *e1, int *k1, int *kd) {
+        //log(0) << "  max_div_expr...\n";
+        const Add *add_e = e.as<Add>(); // Max(...)*kd + e1
+        if (! add_e) return false;
+        const Mul *mul_a = add_e->a.as<Mul>(); // Max(...) * kd
+        if (! mul_a) return false;
+        if (! const_int(mul_a->b, kd)) return false;
+        const Max *max = mul_a->a.as<Max>(); // Max( , )
+        if (! max) return false;
+        Expr ediv;
+        int kdiv;
+        if (division_int(max->a, &ediv, &kdiv) && kdiv == (*kd)) {
+            // Max(a,b): a  as  ediv / kd
+            const Sub *sub = ediv.as<Sub>(); // ediv  as  k1 - e1
+            if (const_int(sub->a, k1) && equal(sub->b, add_e->b)) {
+                // k1 extracted.  e1 matches in the two places.
+                // kd extracted and matched.  e9 ignored.
+                *e1 = sub->b;
+                //log(0) << "  max_div_expr a: " << (*e1) << "  " << (*k1) << "  " << (*kd) << "\n";
+                return true;
+            }
+        }
+        // In case LHS of Max does not match, try RHS of max.
+        if (division_int(max->b, &ediv, &kdiv) && kdiv == (*kd)) {
+            const Sub *sub = ediv.as<Sub>(); // ediv  as  k1 - e1
+            if (const_int(sub->a, k1) && equal(sub->b, add_e->b)) {
+                // k1 extracted.  e1 matches in the two places.
+                // kd extracted and matched.  e9 ignored.
+                *e1 = sub->b;
+                //log(0) << "  max_div_expr b: " << (*e1) << "  " << (*k1) << "  " << (*kd) << "\n";
+                return true;
+            }
+        }
+        return false;
+    }
+    
     /* Recognise an integer or cast integer and fetch its value.
      * Only matches if the number of bits of the cast integer does not exceed
      * the number of bits of an int in the compiler, because simplification
@@ -1279,6 +1374,7 @@ protected:
 
     virtual void visit(const LT *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
+        log(4) << "  LT " << a << "  <  " << b << "\n";
 
         // Check for infinity cases
         int inf = infinity_code(a, b);
@@ -1313,7 +1409,9 @@ protected:
         const Max *max_b = b.as<Max>();
 
         int ia, ib;
-        bool disproved;
+        int k1, kd;
+        Expr e1;
+        bool disproved, disproved_2;
         
         // Note that the computation of delta could be incorrect if 
         // ia and/or ib are large unsigned integer constants, especially when
@@ -1357,6 +1455,26 @@ protected:
         } else if (is_const(a) && sub_b && is_const(sub_b->a)) { //LH
             // Constant on LHS and subtract from constant on RHS
             expr = mutate(sub_b->b < sub_b->a - a);
+        } else if (const_int(a, &ia) && min_div_expr(b, &e1, &k1, &kd) && (ia < k1-(kd-1) || ia >= k1)) { //LH
+            // specialised rule to simplify clamp of vectorised ISS loop
+            // ia < Min((k1 - e1) / kd, ...) * kd + e1.
+            // ia < (k1 - e1) / kd * kd + e1
+            // ia - e1 < (k1 - e1) / kd * kd
+            // Now: e - (kd-1) <= e / kd * kd <= e
+            // Using the above:
+            // It is true that ia - e1 < (k1 - e1) / kd * kd if ia - e1 < k1 - e1 - (kd-1) i.e. if ia < k1 - (kd-1).
+            // It is false that ia - e1 < (k1 - e1) / k1 * kd if ia - e1 >= k1 - e1  i.e. if ia >= k1
+            // Otherwise, it is undecided.
+            if (ia < k1 - (kd-1)) expr = const_true();
+            else if (ia >= k1) expr = const_false();
+            // The following error arises if the outer condition is met but then the inner condition is not met.
+            // This should never happen.
+            else assert(0 && "Error in simplify LT: inconsistent condition for min_div_expr");
+        } else if (const_int(b, &ib) && max_div_expr(a, &e1, &k1, &kd) && (k1 < ib || k1 >= ib + (kd - 1))) { //LH
+            // specialised rule to simplify camp of vectorised ISS loop
+            if (k1 < ib) expr = const_true();
+            else if (k1 >= ib + (kd - 1)) expr = const_false();
+            else assert(0 && "Error in simplify LT: inconsistent condition for max_div_expr");
         } else if (add_a && add_b && equal(add_a->a, add_b->a)) {
             // Subtract a term from both sides
             expr = mutate(add_a->b < add_b->b);
@@ -1411,32 +1529,32 @@ protected:
             } else {
                 expr = op; // Impossible
             }
-        } else if (min_a && (proved(min_a->b < b, disproved) || proved(min_a->a < b))) { //LH
+        } else if (min_a && (proved(min_a->b < b, disproved) || proved(min_a->a < b, disproved_2) ||
+            (disproved && disproved_2))) { //LH
             // Prove min(x,y) < b by proving x < b or y < b
+            // Prove min(x,y) >= b by proving x >= b and y >= b  i.e. disprove both of the above.
             // Because constants are pushed to RHS, it is more likely that min_a->b < b
             // can be resolved quickly
-            expr = const_true();
-        } else if (min_a && (disproved /* proved(min_a->b >= b) */ && proved(min_a->a >= b))) { //LH
-            // Prove min(x,y) >= b by proving x >= b and y >= b
-            expr = const_false();
-        } else if (min_b && (proved(a >= min_b->b, disproved) || proved(a >= min_b->a))) { //LH
+            if (!disproved) expr = const_true();
+            else expr = const_false();
+        } else if (min_b && (proved(a >= min_b->b, disproved) || proved(a >= min_b->a, disproved_2) ||
+            (disproved && disproved_2))) { //LH
             // Prove a >= min(x,y) by proving a >= x or a >= y
-            expr = const_false();
-        } else if (min_b && (disproved /* proved(a < min_b->b) */ && proved(a < min_b->a))) { //LH
             // Prove a < min(x,y) by proving a < x and a < y
-            expr = const_true();
-        } else if (max_a && (proved(max_a->b >= b, disproved) || proved(max_a->a >= b))) { //LH
+            if (!disproved) expr = const_false();
+            else expr = const_true();
+        } else if (max_a && (proved(max_a->b >= b, disproved) || proved(max_a->a >= b, disproved_2) ||
+            (disproved && disproved_2))) { //LH
             // Prove that max(x,y) >= b by proving x >= b or y >= b
-            expr = const_false();
-        } else if (max_a && (disproved /* proved(max_a->b < b) */ && proved(max_a->a < b))) { //LH
             // Prove that max(x,y) < b by proving x < b and y < b
-            expr = const_true();
-        } else if (max_b && (proved(a < max_b->b, disproved) || proved(a < max_b->b))) { //LH
+            if (!disproved) expr = const_false();
+            else expr = const_true();
+        } else if (max_b && (proved(a < max_b->b, disproved) || proved(a < max_b->b, disproved_2) ||
+            (disproved && disproved_2))) { //LH
             // Prove that a < max(x,y) by proving a < x or a < y
-            expr = const_true();
-        } else if (max_b && (disproved /* proved(a >= max_b->b) */ && proved(a >= max_b->a))) { //LH
             // Prove that a >= max(x,y) by proving a >= x and a >= y
-            expr = const_false();
+            if (!disproved) expr = const_true();
+            else expr = const_false();
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
