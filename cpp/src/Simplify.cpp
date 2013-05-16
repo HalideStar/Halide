@@ -147,6 +147,20 @@ protected:
             return false;
         }
     }
+    
+    /* Recognise an integer division expression in the form (k1 - e1) / kd */
+    bool sub_div_int(Expr e, Expr *e1, int *k1, int *kd) {
+        Expr ediv;
+        if (! division_int(e, &ediv, kd)) return false;
+        // Recognised ediv / kd
+        const Sub *sub = ediv.as<Sub>();
+        if (! sub) return false;
+        // Recognised (... - ...) / kd
+        if (! const_int(sub->a, k1)) return false;
+        *e1 = sub->b;
+        // Recognised (k1 - e1) / kd
+        return true;
+    }
 
     /* Recognise expression e as a min div with vectorisation 
      * Min ( (k1 - e1) / kd, e9 ) * kd + e1 */
@@ -1409,8 +1423,8 @@ protected:
         const Max *max_b = b.as<Max>();
 
         int ia, ib;
-        int k1, kd;
-        Expr e1;
+        int k1, k2, kd, kd2;
+        Expr e1, e2;
         bool disproved, disproved_2;
         
         // Note that the computation of delta could be incorrect if 
@@ -1498,6 +1512,15 @@ protected:
         } else if (sub_b && !(min_a || max_a) && (sub_b->b.as<Min>() || sub_b->b.as<Max>())) {
             // Push the min/max to the other side to expose it
             expr = mutate(sub_b->b < sub_b->a - a);
+        } else if (sub_div_int(a, &e1, &k1, &kd) && sub_div_int(b, &e2, &k2, &kd2) && kd == kd2 &&
+            equal(e1, e2) && (k1 >= k2 || k1 < k2 - (kd-1))) { //LH
+            // ***********************************************************************
+            // Allow comparison of index split points in vectorised code
+            // (k1 - e) / kd < (k2 - e) / kd.  
+            // False if k1 >= k2.
+            // True if k1 < (k2 - (kd-1)).
+            if (k1 >= k2) expr = const_false();
+            else expr = const_true();
         } else if (add_a && ! min_b && ! max_b) {
             // Rearrange so that all adds and subs are on the rhs to cut down on further cases
             // Exception: min/max on RHS keeps the add/sub away
