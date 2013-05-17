@@ -783,7 +783,7 @@ void solver_test() {
     checkSolver(solve((x + c) * -3, InfInterval(0,10)), (solve(x, InfInterval(-3 - c, 0 - c)) + c) * -3);
     
     checkSolver(solve(x / 3, InfInterval(0,10)), solve(x, InfInterval(0, 32)) / 3);
-    checkSolver(solve(x / -3, InfInterval(0,10)), solve(x, InfInterval(-30,2)) / -3);
+    checkSolver(solve(x / -3, InfInterval(0,10)), solve(x, InfInterval(-32,0)) / -3);
     // Solve 1 <= (x + c) / 3 <= 17
     // 3 <= (x + c) <= 53
     // 3 - c <= x <= 53 - c

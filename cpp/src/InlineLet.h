@@ -9,7 +9,7 @@
  */
 
 #include "IR.h"
-#include "IRMutator.h"
+#include "IRCacheMutator.h"
 #include "Scope.h"
 #include <map>
 
@@ -24,7 +24,9 @@ EXPORT std::vector<std::string> list_repeat_variables(Expr e);
  * The only restriction is that the value of the Let may not contain
  * a reference to a variable that has been defined more recently
  * than the Let itself. */
-class InlineLet : public IRMutator {
+ // Use IRCacheMutator which uses IRLazyScope so that derived classes have
+ // access to lazy scope for bounds analysus.
+class InlineLet : public IRCacheMutator {
     Scope<Expr> scope;
     
 public:

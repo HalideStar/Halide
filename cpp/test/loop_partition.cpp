@@ -93,6 +93,7 @@ void check_clamp(std::string s, Image<uint8_t> output, int k) {
     }
 }
 
+// Border::wrap or mod
 int dowrap(int x, int lo, int hi) { return((x - lo + (hi - lo + 1)) % (hi - lo + 1) + lo); }
 
 void check_wrap(std::string s, Image<uint8_t> output, int k) {
@@ -101,6 +102,25 @@ void check_wrap(std::string s, Image<uint8_t> output, int k) {
             uint8_t val;
             val = input(dowrap(i-k,0,WIDTH-1),dowrap(j-k,0,HEIGHT-1)) +
                   input(dowrap(i+k,0,WIDTH-1),dowrap(j+k,0,HEIGHT-1));
+            if (val != output(i,j)) {
+                printf ("Error: %s(%d,%d) is %d, expected %d\n", s.c_str(), i, j, output(i,j), val);
+            }
+        }
+    }
+}
+
+int doconst(int c, int x, int xlo, int xhi, int y, int ylo, int yhi) { 
+    if (x < xlo) return c; if (x > xhi) return c;  
+    if (y < ylo) return c; if (y > yhi) return c;
+    return input(x,y);
+}
+
+void check_const(std::string s, Image<uint8_t> output, int k) {
+    for (int i = 0; i < WIDTH; i++) {
+        for (int j = 0; j < HEIGHT; j++) {
+            uint8_t val;
+            val = doconst(1,i-k,0,WIDTH-1,j-k,0,HEIGHT-1) +
+                  doconst(1,i+k,0,WIDTH-1,j+k,0,HEIGHT-1);
             if (val != output(i,j)) {
                 printf ("Error: %s(%d,%d) is %d, expected %d\n", s.c_str(), i, j, output(i,j), val);
             }
@@ -222,7 +242,7 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi,
         compare(prefix + "_b_v8_m", norm, part, check, k);
     }
 # endif
-# if 1
+# if 0
     {
         // Manual partition without bound does not work because the partition is specified
         // in the output image dimension, which is unknown to the code generator.
@@ -391,8 +411,9 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi,
 
 # define CODEVIEW_1D 0
 # define CODEVIEW_2D 0
-# define SPEED_CLAMP 1
-# define SPEED_MOD 1
+# define SPEED_CLAMP 0
+# define SPEED_MOD 0
+# define SPEED_SELECT 1
 # define SPEED_WRAP 0
 
 main () {
@@ -467,6 +488,20 @@ main () {
         b(x,y) = input(x%WIDTH,y%HEIGHT);
         Expr e = b(x-k,y-k) + b(x+k,y+k);
         test(ss.str(),e,k,WIDTH-1-k,k,HEIGHT-1-k, check_wrap, k);
+    }
+# endif
+
+# if SPEED_SELECT
+    // 2-D simple diagonal case: good for speed testing.
+    for (int k = 1; k <= max_diag; k++) {
+        std::ostringstream ss;
+        ss << "select_" << k;
+        Func b;
+        int c = 1;
+        b(x,y) = select(x<0,c,select(x>WIDTH-1,c,
+                 select(y<0,c,select(y>HEIGHT-1,c,input(x%WIDTH,y%HEIGHT)))));
+        Expr e = b(x-k,y-k) + b(x+k,y+k);
+        test(ss.str(),e,k,WIDTH-1-k,k,HEIGHT-1-k, check_const, k);
     }
 # endif
 

@@ -1,4 +1,5 @@
 #include "LoopPartition.h"
+#include "BoundsAnalysis.h"
 #include "IR.h"
 #include "InlineLet.h"
 #include "IREquality.h"
@@ -30,6 +31,8 @@ class LoopPreSolver : public InlineLet {
     using IRMutator::visit;
     
     bool is_constant_expr(Expr a) { return Halide::Internal::is_constant_expr(varlist, a); }
+    
+    BoundsAnalysis bounds;
     
     virtual void visit(const For *op) {
         // Only serial and parallel for loops can be partitioned.
@@ -115,14 +118,16 @@ class LoopPreSolver : public InlineLet {
         Expr b = mutate(op->b);
         if (is_constant_expr(a)) {
             // ka < b: Solve for b on (ka+1,infinity) [integer types] or (ka,infinity) [float]
-            Expr limit = a;
+            InfInterval bounds_a = bounds.bounds(a);
+            Expr limit = bounds_a.max; // Must exceed the maximum of the other side.
             if (b.type().is_int() || b.type().is_uint()) {
                 limit = simplify(limit + make_one(b.type()));
             }
             expr = new LT(a, new Solve(b, InfInterval(limit, make_infinity(b.type(), +1))));
         } else if (is_constant_expr(b)) {
             // a < kb: Solve for a on (-infinity, kb-1) or (-infinity,kb)
-            Expr limit = b;
+            InfInterval bounds_b = bounds.bounds(b);
+            Expr limit = bounds_b.min; // Must stay below the minimum of the other side.
             if (a.type().is_int() || a.type().is_uint()) {
                 limit = simplify(limit - make_one(a.type()));
             }

@@ -379,6 +379,7 @@ inline Expr abs(Expr a) {
  * the first argument is true, then return the second, else return the
  * third. */
 inline Expr select(Expr a, Expr b, Expr c) {
+    Internal::match_types(b, c);
     return new Internal::Select(a, b, c);
 }
 

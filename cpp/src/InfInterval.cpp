@@ -6,76 +6,115 @@
 
 namespace Halide {
 
+namespace {
+// Halide division implements floor division - i.e. it rounds the quotient towards -infinity.
+// A side effect of this is that the remainder always has the same sign as the divisor.
+
+// Ceiling division of a by positive b
+// Examples: ceil(10,3) ==> 4. ceil(11,3) ==> 4.  ceil(12,3) ==> 4.
+inline Expr pos_ceil(Expr a, Expr b) { return (a - 1) / b + 1; }
+// Ceiling division of a by negative b
+// Example: ceil(10,-3) ==> -3.  ceil(11,-3) ==> -3.  ceil(12,-3) ==> -4.
+inline Expr neg_ceil(Expr a, Expr b) { return (a + 1) / b + 1; }
+}
+
 /** Implementation of manipulation of InfIntervals. */
+/** Add a constant to an interval */
 InfInterval operator+(InfInterval v, Expr b) { 
     return InfInterval(simplify(v.min + b), simplify(v.max + b)); 
 }
 
+/** Subtract a constant from an interval */
 InfInterval operator-(InfInterval v, Expr b) { 
     return InfInterval(simplify(v.min - b), simplify(v.max - b)); 
 }
 
+/** Negate an interval */
 InfInterval operator-(InfInterval v) { 
     return InfInterval(simplify(-v.max), simplify(-v.min)); 
 }
 
+/** Multiply an interval by a constant. If negative constant, the interval is flipped. */
 InfInterval operator*(InfInterval v, Expr b) { 
     return InfInterval(simplify(select(b >= 0, v.min * b, v.max * b)), simplify(select(b >= 0, v.max * b, v.min * b))); 
 }
 
+/** Divide an interval by a constant using Halide division (floor).  If negative constant, the interval is flipped */
 InfInterval operator/(InfInterval v, Expr b) { 
     return InfInterval(simplify(select(b >= 0, v.min / b, v.max / b)), simplify(select(b >= 0, v.max / b, v.min / b))); 
 }
 
+/** Multiply an interval by a constant in such a way that, if divided again, it will yield the original interval.
+ * For integer intervals, each unit of the original interval is replicated b times.  This yields the largest
+ * interval that divides down to cover the original interval.
+ * Examples: zoom( I(3,5), 2) ==> I(6, 11)
+ *    zoom( I(3,5), -2) ==> I(-11, -6)  because -11/-2 yields 5 with a remainder of -1 and -6/-2 yields -3.
+ */
 InfInterval zoom(InfInterval v, Expr b) { 
-    // Multiplying an InfInterval (by an integer other than zero).
-    // For positive b, the new InfInterval is min*b, max*b+(b-1).
-    // For negative b, the new InfInterval is max*b, min*b-(b+1).
-    // This is symmetric with unzoom
-    // Other definitions could be used - this definition always appends the
-    // additional space to the top end of the InfInterval.
-    
     if (b.type().is_float() || v.min.type().is_float() || v.max.type().is_float()) {
         // Result will be floating type, not integer.  zoom degenerates to multiply.
         return v * b;
     }
 
-    Expr newmin = select(b >= 0, v.min * b, v.max * b);
-    Expr newmax = select(b >= 0, v.max * b + (b-1), v.min * b - (b+1));
+    // Multiplying an InfInterval (by an integer other than zero).
+    // For positive b, the new InfInterval is min*b, max*b+(b-1).
+    // For negative b, the new InfInterval is max*b+(b+1), min*b.
+    
+    Expr newmin = select(b >= 0, v.min * b, v.max * b + (b+1));
+    Expr newmax = select(b >= 0, v.max * b + (b-1), v.min * b);
     return InfInterval(simplify(newmin), simplify(newmax)); 
 }
 
-InfInterval decimate(InfInterval v, Expr b) { 
-    // Decimate an InfInterval.  Get every element of v
-    // that is a multiple of b, and then divide them by b.
-    
+/** Multiply an interval by a constant in such a way that, if divided again, it will yield the original interval.
+ * This version of the operator yields the smallest upscaled interval, which happens to be the same as multiplication.
+ */
+InfInterval inverseDiv(InfInterval v, Expr b) { 
+    return v * b;
+}
+
+/** Divide an interval by a constant in such a way that multiplying it up again will yield an interval
+ * no larger than the original interval.
+ * Examples: decimate( I(4,11), 3) ==> I(2,3)  because I(2,3) * 3 ==> (6, 9)
+ *    decimate( I(4,11), -3) ==> I(-3,-2)  because I(-2,-3) * -3 ==> (6, 9)
+ * It is called decimal because it gives you the valid pixel coordinates that you get if you decimate
+ * an image (i.e. it gives you indices that you can multiply back up to access the pixels in the original image).
+ */
+InfInterval decimate(InfInterval v, Expr b) {
     if (b.type().is_float() || v.min.type().is_float() || v.max.type().is_float()) {
         // Result will be floating type, not integer.  decimate degenerates to division.
         return v / b;
     }
+    
+    // For positive b, the new InfInterval is ceil(min,b), max/b
+    // For negative b, it is ceil(max,b), min/b
 
-    // (x - 1) / b + 1 is ceiling for positive b.
-    // (x + 1) / b + 1 is ceiling for negative b.
-    Expr newmin = select(b >= 0, (v.min - 1) / b + 1, (v.max + 1) / b + 1);
-    Expr newmax = select(b >= 0, v.max / b, (v.min) / b);
+    Expr newmin = select(b >= 0, pos_ceil(v.min, b), neg_ceil(v.max, b));
+    Expr newmax = select(b >= 0, v.max / b, v.min / b);
     return InfInterval(simplify(newmin), simplify(newmax));
 }
 
+/** Divide an interval by a constant in such a way that zooming it up again would not
+ * exceed the original interval.
+ * Examples: unzoom( I(4,11), 3) ==> I(2,3)  because zoom( I(2,3), 3) ==> (6, 11)
+ *           unzoom( I(4,10), 3) ==> I(2,2)  because zoom( I(2,2), 2) ==> (6,8)
+ *           unzoom( I(4,11), -3) ==> I(-3,-2) because zoom( I(-3,-2), -3) ==> (6, 11)
+ */
 InfInterval unzoom(InfInterval v, Expr b) { 
     // Unzoom an InfInterval.  The semantics is that the
     // result should be such that if you zoom the InfInterval
     // up again then it will not exceed the original InfInterval.
-    
-    // Halide division is floor.  To get ceiling for a positive divisor,
-    // compute (x - 1) / b + 1.  For a negative divisor: (x + 1) / b + 1.
     
     if (b.type().is_float() || v.min.type().is_float() || v.max.type().is_float()) {
         // Result will be floating type, not integer.  unzoom degenerates to division.
         return v / b;
     }
 
-    Expr newmin = select(b >= 0, (v.min - 1) / b + 1, (v.max + 2) / b + 2);
-    Expr newmax = select(b >= 0, (v.max + 1) / b - 1, (v.min) / b);
+    // Since zoom expands the interval as much as possible, unzoom must shrink it if
+    // zoom would expand it.
+    // For positive b, the new interval is ceil(min,b), (max+1)/b-1
+    // For negative b, the new interval is ceil(max,b), (min+1)/b+1
+    Expr newmin = select(b >= 0, pos_ceil(v.min,b), neg_ceil(v.max,b));
+    Expr newmax = select(b >= 0, (v.max + 1) / b - 1, (v.min - 1) / b - 1);
     return InfInterval(simplify(newmin), simplify(newmax));
 }
 
@@ -212,7 +251,8 @@ namespace {
         int absdiv = div > 0 ? div : -div;
         if (r.imin() < a.imin() || r.imax() > a.imax() || r.imin() >= a.imin() + absdiv || r.imax() <= a.imax() - absdiv) {
             std::cout << "InfInterval unzoom and zoom test failed: zoom(unzoom(" << a << ", " << div << "), " << div << ")\n";
-            std::cout << "  got: " << r << " from " << unzoom(a, div) << "\n";
+            std::cout << "  got: " << r << " from " << unzoom(a, div) << "from" << a << "\n";
+            assert(0);
         }
     }
     
@@ -222,7 +262,27 @@ namespace {
         if (r.imin() < a.imin() || r.imax() > a.imax() || r.imin() >= a.imin() + absdiv || r.imax() <= a.imax() - absdiv) {
             std::cout << "InfInterval decimate and multiply test failed: decimate(" << a << ", " << div << ") * " << div << "\n";
             std::cout << "  got: " << r << " from " << unzoom(a, div) << "\n";
+            assert(0);
         }
+    }
+    
+    void checkzoomdiv(InfInterval a, int div) {
+        // Check that if you zoom up an interval and then divide it you end
+        // up with the original interval.
+        // Also check that the new interval has every pixel multiplied div times.
+        // Together, these two properties define zoom.
+        InfInterval z = zoom(a,div);
+        InfInterval r = z / div;
+        int lz = z.imax() - z.imin() + 1;
+        int la = a.imax() - a.imin() + 1;
+        int absdiv = div > 0 ? div : -div;
+        if (lz != la * absdiv) {
+            std::cout << "InfInterval zoom test failed\n";
+            std::cout << "  the original interval contains " << la << " integers\n";
+            std::cout << "  the zoomed interval contains " << lz << " integers; expected " << la * absdiv << "\n";
+            assert(0);
+        }
+        check(a, "zoomdiv", div, r, a);
     }
 }
 
@@ -251,6 +311,20 @@ void infinterval_test () {
     checkzoom(v5, -8);
     checkzoom(v6, -8);
     checkzoom(v7, -8);
+    checkzoomdiv(v1, 8);
+    checkzoomdiv(v2, 8);
+    checkzoomdiv(v3, 8);
+    checkzoomdiv(v4, 8);
+    checkzoomdiv(v5, 8);
+    checkzoomdiv(v6, 8);
+    checkzoomdiv(v7, 8);
+    checkzoomdiv(v1, -8);
+    checkzoomdiv(v2, -8);
+    checkzoomdiv(v3, -8);
+    checkzoomdiv(v4, -8);
+    checkzoomdiv(v5, -8);
+    checkzoomdiv(v6, -8);
+    checkzoomdiv(v7, -8);
     checkdecimate(v1, 8);
     checkdecimate(v2, 8);
     checkdecimate(v3, 8);
@@ -265,10 +339,6 @@ void infinterval_test () {
     checkdecimate(v5, -8);
     checkdecimate(v6, -8);
     checkdecimate(v7, -8);
-    check("zoom", va, Expr(8), zoom(va, 8), InfInterval(8, 1279));
-    check("zoom", va, Expr(8), zoom(vb, 8), InfInterval(-1272, -1));
-    check("zoom", va, Expr(8), zoom(va, -8), InfInterval(-1272, -1));
-    check("zoom", va, Expr(8), zoom(vb, -8), InfInterval(8, 1279));
     std::cout << "InfInterval operations test passed\n";
 }
 }

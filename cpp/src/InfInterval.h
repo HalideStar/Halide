@@ -53,7 +53,7 @@ EXPORT InfInterval zoom(InfInterval v, Expr b);
 /** Scaling an InfInterval down has the following forms.
  * operator/ divides both values by a constant.  Note that v / k * k may result in
  *    values outside the original v, depending on the data type.
- * For integet types:
+ * For integer types:
  * decimate selects every element of the InfInterval that is an integer multiple of b, and
  *    gives you the resulting down-scaled InfInterval.  This represents the pixel range
  *    that you get by decimating an image.  It also represents the inverse of integer
@@ -67,8 +67,19 @@ EXPORT InfInterval zoom(InfInterval v, Expr b);
 EXPORT InfInterval operator/(InfInterval v, Expr b);
 EXPORT InfInterval decimate(InfInterval v, Expr b);
 EXPORT InfInterval unzoom(InfInterval v, Expr b);
+
+/** Operator% takes modulus of both extremes. */
 EXPORT InfInterval operator%(InfInterval v, Expr b);
-EXPORT InfInterval intersection(InfInterval u, InfInterval v);
+
+/** Inverse operators 
+ * inverseMul returns an interval such that multiplication by b does not exceed
+ *    the original interval.  This is equivalent to decimate.
+ * inverseDiv returns an interval such that dividing it back down yields the original interval.
+ *    Both zoom and operator* are candidates for this operation.
+ */
+inline InfInterval inverseAdd(InfInterval v, Expr b) { return operator-(v,b); }
+inline InfInterval inverseSub(InfInterval v, Expr b) { return operator+(v,b); }
+inline InfInterval inverseMul(InfInterval v, Expr b) { return decimate(v, b); }
 
 /** Operators on two InfIntervals */
 EXPORT InfInterval operator+(InfInterval u, InfInterval v);

@@ -124,6 +124,7 @@ Func border_handled(Image<T> b, int bdr, int schedule) {
 # if HAS_PARTITION
         if (schedule & SCHEDULE_SPLIT_INDEX) border.partition();
 # endif
+    }
     return border;
 }
 
@@ -432,7 +433,7 @@ int main(int argc, char **argv) {
 
     do_tests<uint8_t>(BORDER_CLAMP, 8);
     do_tests<uint8_t>(BORDER_MOD, 8);
-# if 0
+# if 1
     do_tests<uint8_t>(BORDER_CLAMP, 16, 1);
     do_tests<uint8_t>(BORDER_MOD, 16, 1);
     do_tests<float>(BORDER_CLAMP, 4);
