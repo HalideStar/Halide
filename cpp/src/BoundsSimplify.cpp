@@ -32,15 +32,20 @@ public:
     using Super::visit;
 
     void visit(const Mod *op) {
+        log(LOGLEVEL) << "BoundsSimplify: Mod " << op->a << ", " << op->b << "\n";
         InfInterval bounds_a = bounds.bounds(op->a);
         InfInterval bounds_b = bounds.bounds(op->b);
+        log(LOGLEVEL) << "    interval a " << bounds_a << "  b " << bounds_b << "\n";
         if (proved(bounds_b.min > bounds_a.max) && proved(bounds_a.min >= 0)) {
             // The expression a is always in the bounds of the (positive) modulus b.
+            log(LOGLEVEL) << "    result is +ve expr a\n";
             expr = mutate(op->a);
         } else if (proved(bounds_b.max < bounds_a.min) && proved(bounds_a.max <= 0)) {
             // The expression a is always in the bounds of the negative modulus b.
-            expr = mutate(op->b);
+            log(LOGLEVEL) << "    result is -ve expr a\n";
+            expr = mutate(op->a);
         } else {
+            log(LOGLEVEL) << "    could not resolve\n";
             Super::visit(op);
         }
     }
@@ -119,13 +124,13 @@ public:
         if (op->partition.status != PartitionInfo::Main && 
             op->partition.status != PartitionInfo::Ordinary) {
             log::debug_level = -1;
-            //if (log::debug_level != old_debug_level) 
-            //    log(-1) << "Debug level " << old_debug_level << " -> " << log::debug_level << "\n";
+            if (log::debug_level != old_debug_level) 
+                log(LOGLEVEL-1) << "Debug level " << old_debug_level << " -> " << log::debug_level << "\n";
         }
         Super::visit(op);
         
-        //if (log::debug_level != old_debug_level) 
-        //    log(-1) << "Debug level " << log::debug_level << " -> " << old_debug_level << "\n";
+        if (log::debug_level != old_debug_level) 
+            log(LOGLEVEL-1) << "Debug level " << log::debug_level << " -> " << old_debug_level << "\n";
         log::debug_level = old_debug_level;
     }
 # endif

@@ -841,6 +841,13 @@ private:
         failing = true;
     }
     
+    virtual void visit(const Mod *op) {
+        // Constant expression such as Mod(ramp(), broadcast()) is acceptable.
+        if (is_const(op->a) && is_const(op->b)) return;
+        std::cerr << Expr(op) << "\n";
+        failing = true;
+    }
+    
     virtual void visit(const Select *op) {
         std::cerr << Expr(op) << "\n";
         failing = true;

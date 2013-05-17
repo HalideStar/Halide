@@ -1,0 +1,134 @@
+BoundsSimplify: Mod (diag_1_p4_s.x + -1), 1280
+    interval a [(max(diag_1_p4_s.min.0, 1) + -1), (min((diag_1_p4_s.min.0 + diag_1_p4_s.extent.0), 1279) + -2)]  b [1280, 1280]
+  LT (min((diag_1_p4_s.min.0 + diag_1_p4_s.extent.0), 1279) + -2)  <  1280
+  LT min((diag_1_p4_s.min.0 + diag_1_p4_s.extent.0), 1279)  <  1282
+  LT 1279  <  1282
+  LT (max(diag_1_p4_s.min.0, 1) + -1)  <  0
+  LT max(diag_1_p4_s.min.0, 1)  <  1
+  LT 1  <  1
+    result is +ve expr a
+
+BoundsSimplify: Mod ((((diag_1_p4_s.y.y*4) + diag_1_p4_s.y.yi) + diag_1_p4_s.min.1) + -1), 1280
+    interval a [(((max(((0 - diag_1_p4_s.min.1)/4), -1)*4) + diag_1_p4_s.min.1) + 3), (((min((((1275 - diag_1_p4_s.min.1)/4) + 1), ((diag_1_p4_s.extent.1 + 3)/4))*4) + diag_1_p4_s.min.1) + -2)]  b [1280, 1280]
+  LT (((min((((1275 - diag_1_p4_s.min.1)/4) + 1), ((diag_1_p4_s.extent.1 + 3)/4))*4) + diag_1_p4_s.min.1) + -2)  <  1280
+  LT ((min((((1275 - diag_1_p4_s.min.1)/4) + 1), ((diag_1_p4_s.extent.1 + 3)/4))*4) + diag_1_p4_s.min.1)  <  1282
+  LT (min((((1275 - diag_1_p4_s.min.1)/4) + 1), ((diag_1_p4_s.extent.1 + 3)/4))*4)  <  (1282 - diag_1_p4_s.min.1)
+1: Failed to prove or disprove:
+    (1280 > (((min((((1275 - diag_1_p4_s.min.1)/4) + 1), ((diag_1_p4_s.extent.1 + 3)/4))*4) + diag_1_p4_s.min.1) + -2))
+    ((min((((1275 - diag_1_p4_s.min.1)/4) + 1), ((diag_1_p4_s.extent.1 + 3)/4))*4) < (1282 - diag_1_p4_s.min.1))
+  LT 1280  <  (((max(((0 - diag_1_p4_s.min.1)/4), -1)*4) + diag_1_p4_s.min.1) + 3)
+  LT 1277  <  ((max(((0 - diag_1_p4_s.min.1)/4), -1)*4) + diag_1_p4_s.min.1)
+1: Failed to prove or disprove:
+    (1280 < (((max(((0 - diag_1_p4_s.min.1)/4), -1)*4) + diag_1_p4_s.min.1) + 3))
+    (1277 < ((max(((0 - diag_1_p4_s.min.1)/4), -1)*4) + diag_1_p4_s.min.1))
+    could not resolve
+
+BoundsSimplify: Mod (diag_1_p4_s.x + 1), 1280
+    interval a [(max(diag_1_p4_s.min.0, 1) + 1), min((diag_1_p4_s.min.0 + diag_1_p4_s.extent.0), 1279)]  b [1280, 1280]
+  LT min((diag_1_p4_s.min.0 + diag_1_p4_s.extent.0), 1279)  <  1280
+  LT 1279  <  1280
+  LT (max(diag_1_p4_s.min.0, 1) + 1)  <  0
+  LT max(diag_1_p4_s.min.0, 1)  <  -1
+  LT 1  <  -1
+    result is +ve expr a
+BoundsSimplify: Mod ((((diag_1_p4_s.y.y*4) + diag_1_p4_s.y.yi) + diag_1_p4_s.min.1) + 1), 1280
+    interval a [(((max(((0 - diag_1_p4_s.min.1)/4), -1)*4) + diag_1_p4_s.min.1) + 5), ((min((((1275 - diag_1_p4_s.min.1)/4) + 1), ((diag_1_p4_s.extent.1 + 3)/4))*4) + diag_1_p4_s.min.1)]  b [1280, 1280]
+  LT ((min((((1275 - diag_1_p4_s.min.1)/4) + 1), ((diag_1_p4_s.extent.1 + 3)/4))*4) + diag_1_p4_s.min.1)  <  1280
+  LT (min((((1275 - diag_1_p4_s.min.1)/4) + 1), ((diag_1_p4_s.extent.1 + 3)/4))*4)  <  (1280 - diag_1_p4_s.min.1)
+1: Failed to prove or disprove:
+    (1280 > ((min((((1275 - diag_1_p4_s.min.1)/4) + 1), ((diag_1_p4_s.extent.1 + 3)/4))*4) + diag_1_p4_s.min.1))
+    ((min((((1275 - diag_1_p4_s.min.1)/4) + 1), ((diag_1_p4_s.extent.1 + 3)/4))*4) < (1280 - diag_1_p4_s.min.1))
+  LT 1280  <  (((max(((0 - diag_1_p4_s.min.1)/4), -1)*4) + diag_1_p4_s.min.1) + 5)
+  LT 1275  <  ((max(((0 - diag_1_p4_s.min.1)/4), -1)*4) + diag_1_p4_s.min.1)
+1: Failed to prove or disprove:
+    (1280 < (((max(((0 - diag_1_p4_s.min.1)/4), -1)*4) + diag_1_p4_s.min.1) + 5))
+    (1275 < ((max(((0 - diag_1_p4_s.min.1)/4), -1)*4) + diag_1_p4_s.min.1))
+    could not resolve
+Debug level 0 -> -1
+Debug level -1 -> 0
+Debug level 0 -> -1
+Debug level -1 -> 0
+  LT diag_1_p4_s.extent.1  <  (((diag_1_p4_s.extent.1 + 3)/4)*4)
+  LT diag_1_p4_s.extent.1  <  (((diag_1_p4_s.extent.1 + 3)/4)*4)
+  LT diag_1_p4_s.extent.1  <  (((diag_1_p4_s.extent.1 + 3)/4)*4)
+(((((diag_1_p4_s.y.y*4) + diag_1_p4_s.y.yi) + diag_1_p4_s.min.1) + -1) % 1280)
+(((((diag_1_p4_s.y.y*4) + diag_1_p4_s.y.yi) + diag_1_p4_s.min.1) + 1) % 1280)
+Partitioning of diag_1_p4_s was not fully effective
+  LT diag_1_p4.min.1  <  diag_1_p4.min.1
+  LT (diag_1_p4.min.1 + diag_1_p4.extent.1)  <  (diag_1_p4.min.1 + (((diag_1_p4.extent.1 + 3)/4)*4))
+  LT diag_1_p4.extent.1  <  (((diag_1_p4.extent.1 + 3)/4)*4)
+  LT diag_1_p4.min.0  <  diag_1_p4.min.0
+  LT (diag_1_p4.min.0 + diag_1_p4.extent.0)  <  (diag_1_p4.min.0 + diag_1_p4.extent.0)
+  LT 0  <  0
+  LT 1280  <  1280
+  LT 0  <  0
+  LT 1280  <  1280
+  LT diag_1_p4.extent.1  <  (((diag_1_p4.extent.1 + 3)/4)*4)
+  LT diag_1_p4.extent.1  <  (((diag_1_p4.extent.1 + 3)/4)*4)
+  LT diag_1_p4.extent.1  <  (((diag_1_p4.extent.1 + 3)/4)*4)
+  LT diag_1_p4.extent.1  <  (((diag_1_p4.extent.1 + 3)/4)*4)
+  LT 4  <  0
+  LT 4  <  0
+  LT 4  <  0
+  LT 4  <  0
+  LT diag_1_p4.extent.1  <  (((diag_1_p4.extent.1 + 3)/4)*4)
+BoundsSimplify: Mod (diag_1_p4.x + -1), 1280
+    interval a [(diag_1_p4.min.0 + -1), ((diag_1_p4.min.0 + diag_1_p4.extent.0) + -2)]  b [1280, 1280]
+  LT ((diag_1_p4.min.0 + diag_1_p4.extent.0) + -2)  <  1280
+  LT (diag_1_p4.min.0 + diag_1_p4.extent.0)  <  1282
+  LT diag_1_p4.min.0  <  (1282 - diag_1_p4.extent.0)
+1: Failed to prove or disprove:
+    (1280 > ((diag_1_p4.min.0 + diag_1_p4.extent.0) + -2))
+    (diag_1_p4.min.0 < (1282 - diag_1_p4.extent.0))
+  LT 1280  <  (diag_1_p4.min.0 + -1)
+  LT 1281  <  diag_1_p4.min.0
+1: Failed to prove or disprove:
+    (1280 < (diag_1_p4.min.0 + -1))
+    (1281 < diag_1_p4.min.0)
+    could not resolve
+BoundsSimplify: Mod ((((diag_1_p4.y.y*4) + diag_1_p4.y.yi) + diag_1_p4.min.1) + -1), 1280
+    interval a [(diag_1_p4.min.1 + -1), (((((diag_1_p4.extent.1 + 3)/4)*4) + diag_1_p4.min.1) + -2)]  b [1280, 1280]
+  LT (((((diag_1_p4.extent.1 + 3)/4)*4) + diag_1_p4.min.1) + -2)  <  1280
+  LT ((((diag_1_p4.extent.1 + 3)/4)*4) + diag_1_p4.min.1)  <  1282
+  LT (((diag_1_p4.extent.1 + 3)/4)*4)  <  (1282 - diag_1_p4.min.1)
+1: Failed to prove or disprove:
+    (1280 > (((((diag_1_p4.extent.1 + 3)/4)*4) + diag_1_p4.min.1) + -2))
+    ((((diag_1_p4.extent.1 + 3)/4)*4) < (1282 - diag_1_p4.min.1))
+  LT 1280  <  (diag_1_p4.min.1 + -1)
+  LT 1281  <  diag_1_p4.min.1
+1: Failed to prove or disprove:
+    (1280 < (diag_1_p4.min.1 + -1))
+    (1281 < diag_1_p4.min.1)
+    could not resolve
+BoundsSimplify: Mod (diag_1_p4.x + 1), 1280
+    interval a [(diag_1_p4.min.0 + 1), (diag_1_p4.min.0 + diag_1_p4.extent.0)]  b [1280, 1280]
+  LT (diag_1_p4.min.0 + diag_1_p4.extent.0)  <  1280
+  LT diag_1_p4.min.0  <  (1280 - diag_1_p4.extent.0)
+1: Failed to prove or disprove:
+    (1280 > (diag_1_p4.min.0 + diag_1_p4.extent.0))
+    (diag_1_p4.min.0 < (1280 - diag_1_p4.extent.0))
+  LT 1280  <  (diag_1_p4.min.0 + 1)
+  LT 1279  <  diag_1_p4.min.0
+1: Failed to prove or disprove:
+    (1280 < (diag_1_p4.min.0 + 1))
+    (1279 < diag_1_p4.min.0)
+    could not resolve
+BoundsSimplify: Mod ((((diag_1_p4.y.y*4) + diag_1_p4.y.yi) + diag_1_p4.min.1) + 1), 1280
+    interval a [(diag_1_p4.min.1 + 1), ((((diag_1_p4.extent.1 + 3)/4)*4) + diag_1_p4.min.1)]  b [1280, 1280]
+  LT ((((diag_1_p4.extent.1 + 3)/4)*4) + diag_1_p4.min.1)  <  1280
+  LT (((diag_1_p4.extent.1 + 3)/4)*4)  <  (1280 - diag_1_p4.min.1)
+1: Failed to prove or disprove:
+    (1280 > ((((diag_1_p4.extent.1 + 3)/4)*4) + diag_1_p4.min.1))
+    ((((diag_1_p4.extent.1 + 3)/4)*4) < (1280 - diag_1_p4.min.1))
+  LT 1280  <  (diag_1_p4.min.1 + 1)
+  LT 1279  <  diag_1_p4.min.1
+1: Failed to prove or disprove:
+    (1280 < (diag_1_p4.min.1 + 1))
+    (1279 < diag_1_p4.min.1)
+    could not resolve
+  LT diag_1_p4.extent.1  <  (((diag_1_p4.extent.1 + 3)/4)*4)
+  LT diag_1_p4.extent.1  <  (((diag_1_p4.extent.1 + 3)/4)*4)
+  LT diag_1_p4.extent.1  <  (((diag_1_p4.extent.1 + 3)/4)*4)
+                     diag_1_p4: norm:   2.592   part:   0.876 
+                     diag_1_p4: norm:   2.611   part:   0.902 
+

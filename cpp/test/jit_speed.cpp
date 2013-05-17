@@ -46,6 +46,9 @@ using namespace Halide;
 # define SCHEDULE_SPLIT_INDEX 1
 # define SCHEDULE_BOUND 2
 
+# define BORDER_CLAMP 0
+# define BORDER_MOD 1
+
 #ifndef HALIDE_NEW
 # define HALIDE_NEW 0
 #endif
@@ -72,11 +75,23 @@ int testid = -1;
 // Set with -t option to limit time allowed for each individual compilation, in seconds.
 int timelimit = 20;
 std::string the_name;
+std::string data_type;
+std::string base_name;
+int parameter_n;
+int schedule_bound, schedule_splitindex, schedule_vector;
+std::string border_mode;
+
+void print_data(double jit, double stmt, double execute, int hits, int misses) {
+    printf ("%s,%s,%s,%s,%s,%d,%s,%d,%d,%d,%.1f,%.1f,%.1f,%d,%d\n", model.c_str(), version.c_str(), the_name.c_str(), 
+            data_type.c_str(), base_name.c_str(), parameter_n, border_mode.c_str(), schedule_bound, schedule_splitindex, 
+            schedule_vector, jit, stmt, execute, hits, misses);
+    fflush (stdout);
+}
 
 void alarm_handler(int sig) {
     signal(SIGALRM, SIG_IGN);
     fprintf (stderr, "%s: Timeout\n", the_name.c_str());
-    printf("%s,%s,%s,%.1f,%.1f,%.1f,0,0\n", model.c_str(), version.c_str(), the_name.c_str(), -1.0, -1.0,-1.0);
+    print_data(-1.0, -1.0, -1.0, 0, 0);
     exit(0);
 }
 
@@ -84,7 +99,7 @@ static Var x("x"), y("y");
 
 
 template<typename T>
-Func build_basic(std::string name, ImageParam a, Image<T> b, int n, int schedule, int vec) {
+Func build_basic(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec) {
     Func f(name);
     f(x) = a(x) + b(x);
     if (vec > 0) f.vectorize(x,vec);
@@ -92,9 +107,22 @@ Func build_basic(std::string name, ImageParam a, Image<T> b, int n, int schedule
 }
 
 template<typename T>
-Func build_blur(std::string name, ImageParam a, Image<T> b, int n, int schedule, int vec) {
-    Func border("border"), h("h"), f(name);
-    border(x,y) = b(clamp(x,0,WIDTH-1), clamp(y,0,HEIGHT-1));
+Func border_handled(Image<T> b, int bdr) {
+    Func border("border");
+    if (bdr == BORDER_CLAMP) {
+        border(x,y) = b(clamp(x,0,WIDTH-1), clamp(y,0,HEIGHT-1));
+    } else if (bdr == BORDER_MOD) {
+        border(x,y) = b(x%WIDTH, y%HEIGHT);
+    } else {
+        assert(0 && "Invalid bdr selector");
+    }
+    return border;
+}
+
+template<typename T>
+Func build_blur(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec) {
+    Func h("h"), f(name);
+    Func border = border_handled(b, bdr);
     h(x,y) = border(x-1,y) + border(x,y) + border(x+1,y);
     f(x,y) = (h(x,y-1) + h(x,y) + h(x,y+1)) / 9;
     if (schedule & SCHEDULE_BOUND) f.bound(x,0,WIDTH).bound(y,0,HEIGHT);
@@ -106,7 +134,7 @@ Func build_blur(std::string name, ImageParam a, Image<T> b, int n, int schedule,
 }
 
 template<typename T>
-Func build_simplify_n(std::string name, ImageParam a, Image<T> b, int n, int schedule, int vec) {
+Func build_simplify_n(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec) {
     Func f(name);
     int mult = 23;
     Expr e = a(x,y) * mult;
@@ -120,11 +148,10 @@ Func build_simplify_n(std::string name, ImageParam a, Image<T> b, int n, int sch
 }
 
 template<typename T>
-Func build_conv_n(std::string name, ImageParam a, Image<T> b, int n, int schedule, int vec) {
+Func build_conv_n(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec) {
     Func f(name);
-    Func in("input");
     int mult = 23;
-    in(x,y) = a(clamp(x, 0, WIDTH-1),clamp(y,0,HEIGHT-1));
+    Func in = border_handled(b, bdr);
     Expr e = in(x-n/2,y) * mult;
     for (int i = 1; i < n; i++) {
         mult = mult + (i % 7) + ((i * i) % 3) + 1; // Monotonic increasing multipliers, randomised
@@ -140,11 +167,10 @@ Func build_conv_n(std::string name, ImageParam a, Image<T> b, int n, int schedul
 }
 
 template<typename T>
-Func build_diag_n(std::string name, ImageParam a, Image<T> b, int n, int schedule, int vec) {
+Func build_diag_n(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec) {
     Func f(name);
-    Func in("input");
     int mult = 23;
-    in(x,y) = a(clamp(x, 0, WIDTH-1), clamp(y,0,HEIGHT-1));
+    Func in = border_handled(b, bdr);
     f(x,y) = in(x-n,y-n) + in(x+n,y+n);
     if (schedule & SCHEDULE_BOUND) f.bound(x,0,WIDTH).bound(y,0,HEIGHT);
     if (vec > 0) f.vectorize(x,vec);
@@ -158,17 +184,25 @@ Func build_diag_n(std::string name, ImageParam a, Image<T> b, int n, int schedul
 int testcount = 0;
 
 template<typename T>
-void test(std::string basename, Func (*builder)(std::string name, ImageParam, Image<T>, int, int, int), 
-        int n = 0, int schedule = 0, int vec = 0) {
+void test(std::string basename, 
+        Func (*builder)(std::string name, ImageParam, Image<T>, int, int, int, int), 
+        int n = 0, int bdr = BORDER_CLAMP, int schedule = 0, int vec = 0) {
     std::ostringstream ss;
     if (type_of<T>().is_uint()) ss << "u" << type_of<T>().bits;
     if (type_of<T>().is_int()) ss << "i" << type_of<T>().bits;
     if (type_of<T>().is_float()) ss << "f" << type_of<T>().bits;
+    data_type = ss.str();
+    base_name = basename;
     ss << "_" << basename;
     if (n > 0) ss << "_" << n;
-    if (schedule & SCHEDULE_BOUND) ss << "_b";
-    if (schedule & SCHEDULE_SPLIT_INDEX) ss << "_s";
+    parameter_n = n;
+    if (schedule & SCHEDULE_BOUND) { ss << "_b"; schedule_bound = 1; } else { schedule_bound = 0; }
+    if (schedule & SCHEDULE_SPLIT_INDEX) { ss << "_s"; schedule_splitindex = 1; } else { schedule_splitindex = 0; }
     if (vec > 0) ss << "_v" << vec;
+    if (bdr == BORDER_CLAMP) { ss << "_clamp"; border_mode = "clamp"; }
+    else if (bdr == BORDER_MOD) { ss << "_mod"; border_mode = "mod"; }
+    else { assert(0 && "Unknown border mode"); }
+    schedule_vector = vec;
     std::string name = ss.str();
     
     testcount++;
@@ -202,7 +236,7 @@ void test(std::string basename, Func (*builder)(std::string name, ImageParam, Im
     alarm(timelimit);
     signal(SIGALRM, alarm_handler);
     for (count = 0; count < (logging ? 1 : 100); count++) {
-        f = (*builder)(name, a, b, n, schedule, vec);
+        f = (*builder)(name, a, b, n, bdr, schedule, vec);
         f.compile_jit();
         if (count >= check) {
             t2 = currentTime();
@@ -231,7 +265,7 @@ void test(std::string basename, Func (*builder)(std::string name, ImageParam, Im
         t1 = currentTime();
         check = 1;
         for (count = 0; count < (logging ? 1 : 100); count++) {
-            (*builder)(name, a, b, n, schedule, vec).compile_to_stmt();
+            (*builder)(name, a, b, n, bdr, schedule, vec).compile_to_stmt();
             if (count >= check) {
                 t2 = currentTime();
                 if (t2 - t1 > 2000.0)
@@ -256,7 +290,7 @@ void test(std::string basename, Func (*builder)(std::string name, ImageParam, Im
     if (schedule != 0 && ! logging) {
         // Compute the preferred output using the builder with no
         // schedule.
-        (*builder)(name, a, b, n, 0, 0).realize(ref);
+        (*builder)(name, a, b, n, bdr, 0, 0).realize(ref);
         
         for (int i = 0; i < WIDTH; i++) {
             for (int j = 0; j < HEIGHT; j++) {
@@ -294,61 +328,68 @@ void test(std::string basename, Func (*builder)(std::string name, ImageParam, Im
     misses = global_statistics.mutator_cache_misses;
 # endif
     fprintf (stderr, "%s: %.1f ms per execution\n", name.c_str(), execute);
-    printf ("%s,%s,%s,%.1f,%.1f,%.1f,%d,%d\n", model.c_str(), version.c_str(), name.c_str(), jit, stmt, execute, hits, misses);
+    print_data(jit, stmt, execute, hits, misses);
     fflush(stdout);
 }
 
 template<typename T>
-void do_tests(int vec) {
-    //test<T>("basic", build_basic, 0);
-    //test<T>("basic", build_basic, 0, 0, vec);
+void do_tests(int bdr, int vec) {
+    //test<T>("basic", build_basic, 0, bdr);
+    //test<T>("basic", build_basic, 0, bdr, 0, vec);
     const int max_diag = 2;
     for (int k = 1; k <= max_diag; k++)
-        test<T>("diag", build_diag_n, k, 0, 0);
+        test<T>("diag", build_diag_n, k, bdr, 0, 0);
     for (int k = 1; k <= max_diag; k++)
-        test<T>("diag", build_diag_n, k, 0, vec);
+        test<T>("diag", build_diag_n, k, bdr, 0, vec);
 # if HAS_PARTITION
     for (int k = 1; k <= max_diag; k++)
-        test<T>("diag", build_diag_n, k, SCHEDULE_SPLIT_INDEX, 0);
+        test<T>("diag", build_diag_n, k, bdr, SCHEDULE_SPLIT_INDEX, 0);
     for (int k = 1; k <= max_diag; k++)
-        test<T>("diag", build_diag_n, k, SCHEDULE_SPLIT_INDEX, vec);
+        test<T>("diag", build_diag_n, k, bdr, SCHEDULE_SPLIT_INDEX, vec);
 # endif
     for (int k = 1; k <= max_diag; k++)
-        test<T>("diag", build_diag_n, k, SCHEDULE_BOUND, 0);
+        test<T>("diag", build_diag_n, k, bdr, SCHEDULE_BOUND, 0);
     for (int k = 1; k <= max_diag; k++)
-        test<T>("diag", build_diag_n, k, SCHEDULE_BOUND, vec);
+        test<T>("diag", build_diag_n, k, bdr, SCHEDULE_BOUND, vec);
 # if HAS_PARTITION
     for (int k = 1; k <= max_diag; k++)
-        test<T>("diag", build_diag_n, k, SCHEDULE_BOUND | SCHEDULE_SPLIT_INDEX, 0);
+        test<T>("diag", build_diag_n, k, bdr, SCHEDULE_BOUND | SCHEDULE_SPLIT_INDEX, 0);
     for (int k = 1; k <= max_diag; k++)
-        test<T>("diag", build_diag_n, k, SCHEDULE_BOUND | SCHEDULE_SPLIT_INDEX, vec);
+        test<T>("diag", build_diag_n, k, bdr, SCHEDULE_BOUND | SCHEDULE_SPLIT_INDEX, vec);
 # endif
-    test<T>("blur", build_blur, 0);
-    test<T>("blur", build_blur, 0, 0, vec);
+    test<T>("blur", build_blur, 0, bdr);
+    test<T>("blur", build_blur, 0, bdr, 0, vec);
 # if HAS_PARTITION
-    test<T>("blur", build_blur, 0, SCHEDULE_SPLIT_INDEX);
-    test<T>("blur", build_blur, 0, SCHEDULE_SPLIT_INDEX, vec);
+    test<T>("blur", build_blur, 0, bdr, SCHEDULE_SPLIT_INDEX);
+    test<T>("blur", build_blur, 0, bdr, SCHEDULE_SPLIT_INDEX, vec);
 # endif
-    test<T>("conv", build_conv_n, 10);
-    test<T>("conv", build_conv_n, 20);
-    test<T>("conv", build_conv_n, 40);
-    test<T>("conv", build_conv_n, 80);
-    test<T>("conv", build_conv_n, 10, 0, vec);
-    test<T>("conv", build_conv_n, 20, 0, vec);
-    test<T>("conv", build_conv_n, 40, 0, vec);
-    test<T>("conv", build_conv_n, 80, 0, vec);
+    test<T>("conv", build_conv_n, 5, bdr);
+    test<T>("conv", build_conv_n, 10, bdr);
+    test<T>("conv", build_conv_n, 20, bdr);
+    test<T>("conv", build_conv_n, 40, bdr);
+    test<T>("conv", build_conv_n, 80, bdr);
+    test<T>("conv", build_conv_n, 5, bdr, 0, vec);
+    test<T>("conv", build_conv_n, 10, bdr, 0, vec);
+    test<T>("conv", build_conv_n, 20, bdr, 0, vec);
+    test<T>("conv", build_conv_n, 40, bdr, 0, vec);
+    test<T>("conv", build_conv_n, 80, bdr, 0, vec);
 # if HAS_PARTITION
-    test<T>("conv", build_conv_n, 10, SCHEDULE_SPLIT_INDEX);
-    test<T>("conv", build_conv_n, 20, SCHEDULE_SPLIT_INDEX);
-    test<T>("conv", build_conv_n, 40, SCHEDULE_SPLIT_INDEX);
-    test<T>("conv", build_conv_n, 80, SCHEDULE_SPLIT_INDEX);
-    test<T>("conv", build_conv_n, 10, SCHEDULE_SPLIT_INDEX, vec);
-    test<T>("conv", build_conv_n, 20, SCHEDULE_SPLIT_INDEX, vec);
-    test<T>("conv", build_conv_n, 40, SCHEDULE_SPLIT_INDEX, vec);
-    test<T>("conv", build_conv_n, 80, SCHEDULE_SPLIT_INDEX, vec);
+    test<T>("conv", build_conv_n, 5, bdr, SCHEDULE_SPLIT_INDEX);
+    test<T>("conv", build_conv_n, 10, bdr, SCHEDULE_SPLIT_INDEX);
+    test<T>("conv", build_conv_n, 20, bdr, SCHEDULE_SPLIT_INDEX);
+    test<T>("conv", build_conv_n, 40, bdr, SCHEDULE_SPLIT_INDEX);
+    test<T>("conv", build_conv_n, 80, bdr, SCHEDULE_SPLIT_INDEX);
+    test<T>("conv", build_conv_n, 5, bdr, SCHEDULE_SPLIT_INDEX, vec);
+    test<T>("conv", build_conv_n, 10, bdr, SCHEDULE_SPLIT_INDEX, vec);
+    test<T>("conv", build_conv_n, 20, bdr, SCHEDULE_SPLIT_INDEX, vec);
+    test<T>("conv", build_conv_n, 40, bdr, SCHEDULE_SPLIT_INDEX, vec);
+    test<T>("conv", build_conv_n, 80, bdr, SCHEDULE_SPLIT_INDEX, vec);
 # endif
-    test<T>("simplify", build_simplify_n, 10);
-    test<T>("simplify", build_simplify_n, 100);
+    test<T>("simplify", build_simplify_n, 5, bdr);
+    test<T>("simplify", build_simplify_n, 10, bdr);
+    test<T>("simplify", build_simplify_n, 20, bdr);
+    test<T>("simplify", build_simplify_n, 40, bdr);
+    test<T>("simplify", build_simplify_n, 80, bdr);
 }
 
 
@@ -381,11 +422,12 @@ int main(int argc, char **argv) {
         }
     }
 
-    do_tests<uint8_t>(8);
-    do_tests<uint8_t>(16);
-    do_tests<float>(4);
-    do_tests<int>(4);
-    do_tests<uint16_t>(8);
+    do_tests<uint8_t>(BORDER_CLAMP, 8);
+    do_tests<uint8_t>(BORDER_MOD, 8);
+    //do_tests<uint8_t>(16);
+    //do_tests<float>(4);
+    //do_tests<int>(4);
+    //do_tests<uint16_t>(8);
     
     // id -2 prints out a list of IDs that can be used in a loop to execute all tests in turn.
     // It does no tests.

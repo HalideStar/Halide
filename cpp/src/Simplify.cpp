@@ -993,9 +993,7 @@ protected:
             expr = mutate(new Add(new Min(add_a->a, ib - ia), ia));
         } else if (add_a && add_b && const_int(add_a->b, &ia) && const_int(add_b->b, &ib)) { //LH
             // min(e1 + k1, e2 + k2) -->  min(e1 + (k1 - k2), e2) + k2
-            // Overflow invalidates this rule (and many of the rules above).
-            // e.g. min(x + 5, x + 7) is actually x+7 when the type is UInt(8) and
-            // x is 250.
+            // Rule is only applied to Int(32) constants because overflow would invalidate it.
             // vectorize.partition
             if (ia == ib) {
                 // Special case: min(e1 + k, e2 + k) --> min(e1, e2) + k
@@ -1365,7 +1363,7 @@ protected:
 
     virtual void visit(const LT *op) {
         Expr a = mutate(op->a), b = mutate(op->b);
-        log(4) << "  LT " << a << "  <  " << b << "\n";
+        log(LOGLEVEL) << "  LT " << a << "  <  " << b << "\n";
 
         // Check for infinity cases
         int inf = infinity_code(a, b);
@@ -1446,26 +1444,30 @@ protected:
         } else if (is_const(a) && sub_b && is_const(sub_b->a)) { //LH
             // Constant on LHS and subtract from constant on RHS
             expr = mutate(sub_b->b < sub_b->a - a);
-        } else if (const_int(a, &ia) && min_div_expr(b, &e1, &k1, &kd) && (ia < k1-(kd-1) || ia >= k1)) { //LH
+        } else if (const_int(a, &ia) && min_div_expr(b, &e1, &k1, &kd) && k1 <= ia) { //LH
             // specialised rule to simplify clamp of vectorised ISS loop
             // ia < Min((k1 - e1) / kd, ...) * kd + e1.
             // ia < (k1 - e1) / kd * kd + e1
             // ia - e1 < (k1 - e1) / kd * kd
             // Now: e - (kd-1) <= e / kd * kd <= e
+            // This logic applies to DISPROVING ia < ... since if we disprove the above then it applied to
+            // the entire Min expression.
             // Using the above:
-            // It is true that ia - e1 < (k1 - e1) / kd * kd if ia - e1 < k1 - e1 - (kd-1) i.e. if ia < k1 - (kd-1).
             // It is false that ia - e1 < (k1 - e1) / k1 * kd if ia - e1 >= k1 - e1  i.e. if ia >= k1
             // Otherwise, it is undecided.
-            if (ia < k1 - (kd-1)) expr = const_true();
-            else if (ia >= k1) expr = const_false();
-            // The following error arises if the outer condition is met but then the inner condition is not met.
-            // This should never happen.
-            else assert(0 && "Error in simplify LT: inconsistent condition for min_div_expr");
-        } else if (const_int(b, &ib) && max_div_expr(a, &e1, &k1, &kd) && (k1 < ib || k1 >= ib + (kd - 1))) { //LH
-            // specialised rule to simplify camp of vectorised ISS loop
-            if (k1 < ib) expr = const_true();
-            else if (k1 >= ib + (kd - 1)) expr = const_false();
-            else assert(0 && "Error in simplify LT: inconsistent condition for max_div_expr");
+            expr = const_false();
+        } else if (const_int(b, &ib) && min_div_expr(a, &e1, &k1, &kd) && k1 < ib) { //LH
+            // specialised rule to simplify clamp of vectorised ISS loop
+            // Min((k1 - e1) / kd, ...) * kd + e1  <  ib
+            // Similar to above rule, but interchange the comparisons
+            // Useful to prove ... < ib
+            expr = const_true();
+        } else if (const_int(b, &ib) && max_div_expr(a, &e1, &k1, &kd) && (k1 - (kd - 1) >= ib)) { //LH
+            // Max(...)... < ib  can be DISPROVED.
+            expr = const_false();
+        } else if (const_int(a, &ia) && max_div_expr(b, &e1, &k1, &kd) && (k1 - (kd - 1) > ia)) { //LH
+            // ia < Max(...)...  can be PROVED
+            expr = const_true();
         } else if (add_a && add_b && equal(add_a->a, add_b->a)) {
             // Subtract a term from both sides
             expr = mutate(add_a->b < add_b->b);

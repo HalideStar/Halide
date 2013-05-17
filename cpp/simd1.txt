@@ -1,0 +1,111 @@
+cd tmp ; DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../bin/test_simd_op_check
+Lowering Clamp
+Clamp lowered:
+let test_packssdw_0.v0.v0.extent = ((test_packssdw_0.v0.extent + 7)/8)
+let test_packssdw_0.v0.v0.min = 0
+let test_packssdw_0.v0.v3.extent = 8
+let test_packssdw_0.v0.v3.min = 0
+for (test_packssdw_0.v1, test_packssdw_0.v1.min, test_packssdw_0.v1.extent) {
+  for (test_packssdw_0.v0.v0, 0, test_packssdw_0.v0.v0.extent) {
+    vectorized (test_packssdw_0.v0.v3, 0, 8) {
+      let test_packssdw_0.v0 = (((test_packssdw_0.v0.v0*8) + test_packssdw_0.v0.v3) + test_packssdw_0.v0.min)
+      test_packssdw_0(test_packssdw_0.v0, test_packssdw_0.v1) = i16(max(min(in_i32(test_packssdw_0.v0), 32767), -32768))
+    }
+  }
+}
+
+Successfully generated: packssdw 
+
+
+cd tmp ; DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../bin/test_simd_op_check
+Lowering Clamp
+Clamp lowered:
+let test_packssdw_0.v0.v0.extent = ((test_packssdw_0.v0.extent + 7)/8)
+let test_packssdw_0.v0.v0.min = 0
+let test_packssdw_0.v0.v3.extent = 8
+let test_packssdw_0.v0.v3.min = 0
+for (test_packssdw_0.v1, test_packssdw_0.v1.min, test_packssdw_0.v1.extent) {
+  for (test_packssdw_0.v0.v0, 0, test_packssdw_0.v0.v0.extent) {
+    vectorized (test_packssdw_0.v0.v3, 0, 8) {
+      let test_packssdw_0.v0 = (((test_packssdw_0.v0.v0*8) + test_packssdw_0.v0.v3) + test_packssdw_0.v0.min)
+      test_packssdw_0(test_packssdw_0.v0, test_packssdw_0.v1) = i16(max(min(in_i32(test_packssdw_0.v0), 32767), -32768))
+    }
+  }
+}
+
+packssdw did not generate. Instead we got:
+# BB#11:                                # %test_packssdw_0.v1_loop.preheader
+	cmpl	$8, %ecx
+	jl	.LBB72_16
+# BB#12:                                # %test_packssdw_0.v0.v0_loop.preheader.us.preheader
+	movl	40(%rax), %r9d
+	movq	(%rax), %rax
+	movq	(%rdx), %rdi
+	sarl	$3, %r8d
+	subl	%esi, %r10d
+	xorl	%ecx, %ecx
+	movdqa	.LCPI72_0(%rip), %xmm3
+	movdqa	.LCPI72_1(%rip), %xmm11
+	movdqa	.LCPI72_2(%rip), %xmm4
+	movdqa	.LCPI72_3(%rip), %xmm5
+	movdqa	.LCPI72_4(%rip), %xmm9
+	movdqa	.LCPI72_5(%rip), %xmm8
+	movdqa	.LCPI72_6(%rip), %xmm10
+	.align	16, 0x90
+.LBB72_15:                              # %test_packssdw_0.v0.v0_loop.preheader.us
+                                        # =>This Loop Header: Depth=1
+                                        #     Child Loop BB72_13 Depth 2
+	movl	%r10d, %esi
+	movl	%ecx, %ebx
+	movl	%r8d, %ebp
+	.align	16, 0x90
+.LBB72_13:                              # %test_packssdw_0.v0.v0_loop.us
+                                        #   Parent Loop BB72_15 Depth=1
+                                        # =>  This Inner Loop Header: Depth=2
+	movslq	%esi, %rsi
+	movdqu	16(%rdi,%rsi,4), %xmm7
+	movdqa	%xmm3, %xmm0
+	pcmpgtd	%xmm7, %xmm0
+	pshufb	%xmm11, %xmm0
+	movdqu	(%rdi,%rsi,4), %xmm6
+	movdqa	%xmm3, %xmm1
+	pcmpgtd	%xmm6, %xmm1
+	pshufb	%xmm4, %xmm1
+	por	%xmm0, %xmm1
+	psllw	$15, %xmm1
+	addl	$8, %esi
+	decl	%ebp
+	movslq	%ebx, %rdx
+	leal	8(%rbx), %ebx
+	psraw	$15, %xmm1
+	movdqa	%xmm1, %xmm0
+	punpckhbw	%xmm0, %xmm0    # xmm0 = xmm0[8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15]
+	pslld	$31, %xmm0
+	movdqa	%xmm3, %xmm2
+	blendvps	%xmm7, %xmm2
+	movaps	%xmm2, %xmm7
+	pshufb	%xmm8, %xmm7
+	punpcklbw	%xmm0, %xmm1    # xmm1 = xmm1[0],xmm0[0],xmm1[1],xmm0[1],xmm1[2],xmm0[2],xmm1[3],xmm0[3],xmm1[4],xmm0[4],xmm1[5],xmm0[5],xmm1[6],xmm0[6],xmm1[7],xmm0[7]
+	pslld	$31, %xmm1
+	movdqa	%xmm1, %xmm0
+	movdqa	%xmm3, %xmm1
+	blendvps	%xmm6, %xmm1
+	movaps	%xmm1, %xmm6
+	pshufb	%xmm10, %xmm6
+	por	%xmm7, %xmm6
+	pcmpgtd	%xmm5, %xmm2
+	pshufb	%xmm11, %xmm2
+	pcmpgtd	%xmm5, %xmm1
+	pshufb	%xmm4, %xmm1
+	por	%xmm2, %xmm1
+	psllw	$15, %xmm1
+	psraw	$15, %xmm1
+	movdqa	%xmm1, %xmm0
+	movdqa	%xmm9, %xmm1
+	pblendvb	%xmm6, %xmm1
+	movdqu	%xmm1, (%rax,%rdx,2)
+	jne	.LBB72_13
+# BB#14:                                # %test_packssdw_0.v0.v0_after_loop.us
+
+Successfully generated: 
+make: *** [test_simd_op_check] Error 255

@@ -93,7 +93,23 @@ void check_clamp(std::string s, Image<uint8_t> output, int k) {
     }
 }
 
-void compare(std::string s, Func norm_nobound, Func part_nobound, int k) {
+int dowrap(int x, int lo, int hi) { return((x - lo + (hi - lo + 1)) % (hi - lo + 1) + lo); }
+
+void check_wrap(std::string s, Image<uint8_t> output, int k) {
+    for (int i = 0; i < WIDTH; i++) {
+        for (int j = 0; j < HEIGHT; j++) {
+            uint8_t val;
+            val = input(dowrap(i-k,0,WIDTH-1),dowrap(j-k,0,HEIGHT-1)) +
+                  input(dowrap(i+k,0,WIDTH-1),dowrap(j+k,0,HEIGHT-1));
+            if (val != output(i,j)) {
+                printf ("Error: %s(%d,%d) is %d, expected %d\n", s.c_str(), i, j, output(i,j), val);
+            }
+        }
+    }
+}
+
+void compare(std::string s, Func norm_nobound, Func part_nobound, 
+             void (*check)(std::string, Image<uint8_t>, int), int k) {
 
 # if CHECK_EFFECTIVE
     Internal::Stmt stmt = part_nobound.compile_to_stmt();
@@ -105,8 +121,8 @@ void compare(std::string s, Func norm_nobound, Func part_nobound, int k) {
     Image<uint8_t> r1 = norm_nobound.realize(1280,1280);
     Image<uint8_t> r2 = part_nobound.realize(1280,1280);
     
-    check_clamp(s + " norm", r1, k);
-    check_clamp(s + " part", r2, k);
+    (*check)(s + " norm", r1, k);
+    (*check)(s + " part", r2, k);
     
     // For some reason, the first call to realize
     // in this manner with a specified buffer is slow.
@@ -149,7 +165,8 @@ void compare(std::string s, Func norm_nobound, Func part_nobound, int k) {
     
 }
 
-void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func &f, int k) {
+void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, 
+           void (*check)(std::string, Image<uint8_t>, int), int k) {
     int N = 1;
     Var x("x"), y("y"), yi("yi");
     Interval xpart(xlo, xhi);
@@ -164,7 +181,7 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
         part(x,y) = e;
         norm;
         part.partition();
-        compare(prefix + "", norm, part, k);
+        compare(prefix + "", norm, part, check, k);
     }
     
     {
@@ -173,7 +190,7 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).partition();
-        compare(prefix + "_b", norm, part, k);
+        compare(prefix + "_b", norm, part, check, k);
     }
 # endif
 #if 1
@@ -183,16 +200,16 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8).partition();
-        compare(prefix + "_b_v8", norm, part, k);
+        compare(prefix + "_b_v8", norm, part, check, k);
     }
-    
+
     {
         Func norm(prefix + "_v8"), part(prefix + "_v8_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.vectorize(x,8);
         part.vectorize(x,8).partition();
-        compare(prefix + "_v8", norm, part, k);
+        compare(prefix + "_v8", norm, part, check, k);
     }
 # endif
 # if 1
@@ -202,10 +219,10 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).partition(x,xpart).partition(y,true).vectorize(x,8);
-        compare(prefix + "_b_v8_m", norm, part, k);
+        compare(prefix + "_b_v8_m", norm, part, check, k);
     }
 # endif
-# if 0
+# if 1
     {
         // Manual partition without bound does not work because the partition is specified
         // in the output image dimension, which is unknown to the code generator.
@@ -215,18 +232,18 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
         part(x,y) = e;
         norm.vectorize(x,8);
         part.partition(x,xpart).partition(y,true).vectorize(x,8);
-        compare(prefix + "_v8_m", norm, part, k);
+        compare(prefix + "_v8_m", norm, part, check, k);
     }
     
-#endif
-#if 1
+# endif
+# if 1
     {
         Func norm(prefix + "_b_p1"), part(prefix + "_b_p1_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).partition();
-        compare(prefix + "_b_p1", norm, part, k);
+        compare(prefix + "_b_p1", norm, part, check, k);
     }
     
     {
@@ -235,7 +252,7 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
         part(x,y) = e;
         norm.parallel(y);
         part.parallel(y).partition();
-        compare(prefix + "_p1", norm, part, k);
+        compare(prefix + "_p1", norm, part, check, k);
     }
     
     {
@@ -244,25 +261,27 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,4).parallel(y);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,4).parallel(y).partition();
-        compare(prefix + "_b_p4", norm, part, k);
+        compare(prefix + "_b_p4", norm, part, check, k);
     }
-    
+# endif
+# if 1
     {
         Func norm(prefix + "_p4"), part(prefix + "_p4_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.split(y,y,yi,4).parallel(y);
         part.split(y,y,yi,4).parallel(y).partition();
-        compare(prefix + "_p4", norm, part, k);
+        compare(prefix + "_p4", norm, part, check, k);
     }
-    
+# endif
+# if 1  
     {
         Func norm(prefix + "_b_p8"), part(prefix + "_b_p8_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,8).parallel(y);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,8).parallel(y).partition();
-        compare(prefix + "_b_p8", norm, part, k);
+        compare(prefix + "_b_p8", norm, part, check, k);
     }
     
     {
@@ -271,7 +290,7 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
         part(x,y) = e;
         norm.split(y,y,yi,8).parallel(y);
         part.split(y,y,yi,8).parallel(y).partition();
-        compare(prefix + "_p8", norm, part, k);
+        compare(prefix + "_p8", norm, part, check, k);
     }
 
     {
@@ -280,7 +299,7 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,16).parallel(y);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,16).parallel(y).partition();
-        compare(prefix + "_b_p16", norm, part, k);
+        compare(prefix + "_b_p16", norm, part, check, k);
     }
     
     {
@@ -289,7 +308,7 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
         part(x,y) = e;
         norm.split(y,y,yi,16).parallel(y);
         part.split(y,y,yi,16).parallel(y).partition();
-        compare(prefix + "_p16", norm, part, k);
+        compare(prefix + "_p16", norm, part, check, k);
     }
 #endif
 #if 1
@@ -299,7 +318,7 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,2);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,2).partition();
-        compare(prefix + "_b_p1_u2", norm, part, k);
+        compare(prefix + "_b_p1_u2", norm, part, check, k);
     }
     
     {
@@ -308,7 +327,7 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
         part(x,y) = e;
         norm.parallel(y).unroll(x,2);
         part.parallel(y).unroll(x,2).partition();
-        compare(prefix + "_p1_u2", norm, part, k);
+        compare(prefix + "_p1_u2", norm, part, check, k);
     }
 #endif
 #if 1
@@ -318,7 +337,7 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,4);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,4).partition();
-        compare(prefix + "_b_p1_u4", norm, part, k);
+        compare(prefix + "_b_p1_u4", norm, part, check, k);
     }
     
     {
@@ -327,7 +346,7 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
         part(x,y) = e;
         norm.parallel(y).unroll(x,4);
         part.parallel(y).unroll(x,4).partition();
-        compare(prefix + "_p1_u4", norm, part, k);
+        compare(prefix + "_p1_u4", norm, part, check, k);
     }
     
     {
@@ -336,7 +355,7 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,8);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,8).partition();
-        compare(prefix + "_b_p1_u8", norm, part, k);
+        compare(prefix + "_b_p1_u8", norm, part, check, k);
     }
     
     {
@@ -345,7 +364,7 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
         part(x,y) = e;
         norm.parallel(y).unroll(x,8);
         part.parallel(y).unroll(x,8).partition();
-        compare(prefix + "_p1_u8", norm, part, k);
+        compare(prefix + "_p1_u8", norm, part, check, k);
     }
     
     {
@@ -354,7 +373,7 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,4).parallel(y).unroll(x,8);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,4).parallel(y).unroll(x,8).partition();
-        compare(prefix + "_b_p4_u8", norm, part, k);
+        compare(prefix + "_b_p4_u8", norm, part, check, k);
     }
     
     {
@@ -363,7 +382,7 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
         part(x,y) = e;
         norm.split(y,y,yi,4).parallel(y).unroll(x,8);
         part.split(y,y,yi,4).parallel(y).unroll(x,8).partition();
-        compare(prefix + "_p4_u8", norm, part, k);
+        compare(prefix + "_p4_u8", norm, part, check, k);
     }
     
 #endif
@@ -373,6 +392,9 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, Func 
 # define CODEVIEW_1D 0
 # define CODEVIEW_2D 0
 # define SPEED_CLAMP 1
+# define SPEED_MOD 1
+# define SPEED_WRAP 0
+
 main () {
     // Start by generating an input image. 1MP in size.
     Func init("init");
@@ -398,7 +420,7 @@ main () {
     std::cout << global_options;
     for (int k = the_diag; k <= the_diag; k++) {
         std::ostringstream ss;
-        ss << "clamp_" << k;
+        ss << "f1d_" << k;
         Expr e = input1d(clamp(x-k,0,WIDTH-1)) + input1d(clamp(x+k,0,WIDTH-1));
         Func s_v8(ss.str() + "_s_v8");
         s_v8(x) = e;
@@ -417,7 +439,7 @@ main () {
     std::cout << global_options;
     for (int k = the_diag; k <= the_diag; k++) {
         std::ostringstream ss;
-        ss << "clamp_" << k;
+        ss << "f2d_" << k;
         Expr e = input(clamp(x-k,0,WIDTH-1),clamp(y-k,0,WIDTH-1)) + input(clamp(x+k,0,WIDTH-1),clamp(y+k,0,WIDTH-1));
         Func s_p4_u8(ss.str() + "_s_p4_u8");
         s_p4_u8(x,y) = e;
@@ -430,9 +452,21 @@ main () {
     // 2-D simple diagonal case: good for speed testing.
     for (int k = 1; k <= max_diag; k++) {
         std::ostringstream ss;
-        ss << "diag_" << k;
+        ss << "clamp_" << k;
         Expr e = input(clamp(x-k,0,WIDTH-1),clamp(y-k,0,HEIGHT-1)) + input(clamp(x+k,0,WIDTH-1),clamp(y+k,0,HEIGHT-1));
-        test(ss.str(),e,k,WIDTH-1-k,k,HEIGHT-1-k,undefined, k);
+        test(ss.str(),e,k,WIDTH-1-k,k,HEIGHT-1-k, check_clamp, k);
+    }
+# endif
+
+# if SPEED_MOD
+    // 2-D simple diagonal case: good for speed testing.
+    for (int k = 1; k <= max_diag; k++) {
+        std::ostringstream ss;
+        ss << "mod_" << k;
+        Func b;
+        b(x,y) = input(x%WIDTH,y%HEIGHT);
+        Expr e = b(x-k,y-k) + b(x+k,y+k);
+        test(ss.str(),e,k,WIDTH-1-k,k,HEIGHT-1-k, check_wrap, k);
     }
 # endif
 
@@ -443,7 +477,7 @@ main () {
         ss << "diag_" << k;
         Func b = Border::wrap(input);
         Expr e = b(x-k,y-k) + b(x+k,y+k);
-        test(ss.str(),e,k,WIDTH-1-k,k,HEIGHT-1-k,undefined, k);
+        test(ss.str(),e,k,WIDTH-1-k,k,HEIGHT-1-k, check_wrap, k);
     }
 # endif
 
