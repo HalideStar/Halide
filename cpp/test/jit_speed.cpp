@@ -45,6 +45,7 @@ using namespace Halide;
 
 # define SCHEDULE_SPLIT_INDEX 1
 # define SCHEDULE_BOUND 2
+# define SCHEDULE_ROOT_BORDER 4
 
 # define BORDER_CLAMP 0
 # define BORDER_MOD 1
@@ -78,13 +79,13 @@ std::string the_name;
 std::string data_type;
 std::string base_name;
 int parameter_n;
-int schedule_bound, schedule_splitindex, schedule_vector;
+int schedule_bound, schedule_splitindex, schedule_vector, schedule_root_border;
 std::string border_mode;
 
 void print_data(double jit, double stmt, double execute, int hits, int misses) {
-    printf ("%s,%s,%s,%s,%s,%d,%s,%d,%d,%d,%.1f,%.1f,%.1f,%d,%d\n", model.c_str(), version.c_str(), the_name.c_str(), 
+    printf ("%s,%s,%s,%s,%s,%d,%s,%d,%d,%d,%d,%.1f,%.1f,%.1f,%d,%d\n", model.c_str(), version.c_str(), the_name.c_str(), 
             data_type.c_str(), base_name.c_str(), parameter_n, border_mode.c_str(), schedule_bound, schedule_splitindex, 
-            schedule_vector, jit, stmt, execute, hits, misses);
+            schedule_root_border, schedule_vector, jit, stmt, execute, hits, misses);
     fflush (stdout);
 }
 
@@ -107,7 +108,7 @@ Func build_basic(std::string name, ImageParam a, Image<T> b, int n, int bdr, int
 }
 
 template<typename T>
-Func border_handled(Image<T> b, int bdr) {
+Func border_handled(Image<T> b, int bdr, int schedule) {
     Func border("border");
     if (bdr == BORDER_CLAMP) {
         border(x,y) = b(clamp(x,0,WIDTH-1), clamp(y,0,HEIGHT-1));
@@ -116,13 +117,20 @@ Func border_handled(Image<T> b, int bdr) {
     } else {
         assert(0 && "Invalid bdr selector");
     }
+    if (schedule & SCHEDULE_ROOT_BORDER) {
+        border.compute_root();
+        // No point in applying bound to the border handled because
+        // the whole idea is to make it bigger, and I would need to specify how much bigger
+# if HAS_PARTITION
+        if (schedule & SCHEDULE_SPLIT_INDEX) border.partition();
+# endif
     return border;
 }
 
 template<typename T>
 Func build_blur(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec) {
     Func h("h"), f(name);
-    Func border = border_handled(b, bdr);
+    Func border = border_handled(b, bdr, schedule);
     h(x,y) = border(x-1,y) + border(x,y) + border(x+1,y);
     f(x,y) = (h(x,y-1) + h(x,y) + h(x,y+1)) / 9;
     if (schedule & SCHEDULE_BOUND) f.bound(x,0,WIDTH).bound(y,0,HEIGHT);
@@ -151,7 +159,7 @@ template<typename T>
 Func build_conv_n(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec) {
     Func f(name);
     int mult = 23;
-    Func in = border_handled(b, bdr);
+    Func in = border_handled(b, bdr, schedule);
     Expr e = in(x-n/2,y) * mult;
     for (int i = 1; i < n; i++) {
         mult = mult + (i % 7) + ((i * i) % 3) + 1; // Monotonic increasing multipliers, randomised
@@ -170,7 +178,7 @@ template<typename T>
 Func build_diag_n(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec) {
     Func f(name);
     int mult = 23;
-    Func in = border_handled(b, bdr);
+    Func in = border_handled(b, bdr, schedule);
     f(x,y) = in(x-n,y-n) + in(x+n,y+n);
     if (schedule & SCHEDULE_BOUND) f.bound(x,0,WIDTH).bound(y,0,HEIGHT);
     if (vec > 0) f.vectorize(x,vec);
@@ -186,7 +194,8 @@ int testcount = 0;
 template<typename T>
 void test(std::string basename, 
         Func (*builder)(std::string name, ImageParam, Image<T>, int, int, int, int), 
-        int n = 0, int bdr = BORDER_CLAMP, int schedule = 0, int vec = 0) {
+        int n, int bdr, int schedule, int vec, int vec_only) {
+    if (vec_only && vec == 0) return; // This is not even a test - it would be a repeat.
     std::ostringstream ss;
     if (type_of<T>().is_uint()) ss << "u" << type_of<T>().bits;
     if (type_of<T>().is_int()) ss << "i" << type_of<T>().bits;
@@ -198,6 +207,7 @@ void test(std::string basename,
     parameter_n = n;
     if (schedule & SCHEDULE_BOUND) { ss << "_b"; schedule_bound = 1; } else { schedule_bound = 0; }
     if (schedule & SCHEDULE_SPLIT_INDEX) { ss << "_s"; schedule_splitindex = 1; } else { schedule_splitindex = 0; }
+    if (schedule & SCHEDULE_ROOT_BORDER) { ss << "_r"; schedule_root_border = 1; } else { schedule_root_border = 0; }
     if (vec > 0) ss << "_v" << vec;
     if (bdr == BORDER_CLAMP) { ss << "_clamp"; border_mode = "clamp"; }
     else if (bdr == BORDER_MOD) { ss << "_mod"; border_mode = "mod"; }
@@ -333,63 +343,61 @@ void test(std::string basename,
 }
 
 template<typename T>
-void do_tests(int bdr, int vec) {
+void do_conv_n(int bdr, int schedule, int vec, int vec_only) {
+    test<T>("conv", build_conv_n, 3, bdr, schedule, vec, vec_only);
+    test<T>("conv", build_conv_n, 5, bdr, schedule, vec, vec_only);
+    test<T>("conv", build_conv_n, 10, bdr, schedule, vec, vec_only);
+    test<T>("conv", build_conv_n, 20, bdr, schedule, vec, vec_only);
+    test<T>("conv", build_conv_n, 40, bdr, schedule, vec, vec_only);
+    test<T>("conv", build_conv_n, 80, bdr, schedule, vec, vec_only);
+}
+
+template<typename T>
+void do_tests(int bdr, int vec, int vec_only = 0) {
     //test<T>("basic", build_basic, 0, bdr);
     //test<T>("basic", build_basic, 0, bdr, 0, vec);
     const int max_diag = 2;
     for (int k = 1; k <= max_diag; k++)
-        test<T>("diag", build_diag_n, k, bdr, 0, 0);
+        test<T>("diag", build_diag_n, k, bdr, 0, 0, vec_only);
     for (int k = 1; k <= max_diag; k++)
-        test<T>("diag", build_diag_n, k, bdr, 0, vec);
+        test<T>("diag", build_diag_n, k, bdr, 0, vec, vec_only);
 # if HAS_PARTITION
     for (int k = 1; k <= max_diag; k++)
-        test<T>("diag", build_diag_n, k, bdr, SCHEDULE_SPLIT_INDEX, 0);
+        test<T>("diag", build_diag_n, k, bdr, SCHEDULE_SPLIT_INDEX, 0, vec_only);
     for (int k = 1; k <= max_diag; k++)
-        test<T>("diag", build_diag_n, k, bdr, SCHEDULE_SPLIT_INDEX, vec);
+        test<T>("diag", build_diag_n, k, bdr, SCHEDULE_SPLIT_INDEX, vec, vec_only);
 # endif
     for (int k = 1; k <= max_diag; k++)
-        test<T>("diag", build_diag_n, k, bdr, SCHEDULE_BOUND, 0);
+        test<T>("diag", build_diag_n, k, bdr, SCHEDULE_BOUND, 0, vec_only);
     for (int k = 1; k <= max_diag; k++)
-        test<T>("diag", build_diag_n, k, bdr, SCHEDULE_BOUND, vec);
+        test<T>("diag", build_diag_n, k, bdr, SCHEDULE_BOUND, vec, vec_only);
 # if HAS_PARTITION
     for (int k = 1; k <= max_diag; k++)
-        test<T>("diag", build_diag_n, k, bdr, SCHEDULE_BOUND | SCHEDULE_SPLIT_INDEX, 0);
+        test<T>("diag", build_diag_n, k, bdr, SCHEDULE_BOUND | SCHEDULE_SPLIT_INDEX, 0, vec_only);
     for (int k = 1; k <= max_diag; k++)
-        test<T>("diag", build_diag_n, k, bdr, SCHEDULE_BOUND | SCHEDULE_SPLIT_INDEX, vec);
+        test<T>("diag", build_diag_n, k, bdr, SCHEDULE_BOUND | SCHEDULE_SPLIT_INDEX, vec, vec_only);
 # endif
-    test<T>("blur", build_blur, 0, bdr);
-    test<T>("blur", build_blur, 0, bdr, 0, vec);
+    test<T>("blur", build_blur, 0, bdr, 0, 0, vec_only);
+    test<T>("blur", build_blur, 0, bdr, 0, vec, vec_only);
 # if HAS_PARTITION
-    test<T>("blur", build_blur, 0, bdr, SCHEDULE_SPLIT_INDEX);
-    test<T>("blur", build_blur, 0, bdr, SCHEDULE_SPLIT_INDEX, vec);
+    test<T>("blur", build_blur, 0, bdr, SCHEDULE_SPLIT_INDEX, 0, vec_only);
+    test<T>("blur", build_blur, 0, bdr, SCHEDULE_SPLIT_INDEX, vec, vec_only);
 # endif
-    test<T>("conv", build_conv_n, 5, bdr);
-    test<T>("conv", build_conv_n, 10, bdr);
-    test<T>("conv", build_conv_n, 20, bdr);
-    test<T>("conv", build_conv_n, 40, bdr);
-    test<T>("conv", build_conv_n, 80, bdr);
-    test<T>("conv", build_conv_n, 5, bdr, 0, vec);
-    test<T>("conv", build_conv_n, 10, bdr, 0, vec);
-    test<T>("conv", build_conv_n, 20, bdr, 0, vec);
-    test<T>("conv", build_conv_n, 40, bdr, 0, vec);
-    test<T>("conv", build_conv_n, 80, bdr, 0, vec);
+    do_conv_n<T>(bdr, 0, 0, vec_only);
+    do_conv_n<T>(bdr, SCHEDULE_ROOT_BORDER, 0, vec_only);
+    do_conv_n<T>(bdr, 0, vec, vec_only);
+    do_conv_n<T>(bdr, SCHEDULE_ROOT_BORDER, vec, vec_only);
 # if HAS_PARTITION
-    test<T>("conv", build_conv_n, 5, bdr, SCHEDULE_SPLIT_INDEX);
-    test<T>("conv", build_conv_n, 10, bdr, SCHEDULE_SPLIT_INDEX);
-    test<T>("conv", build_conv_n, 20, bdr, SCHEDULE_SPLIT_INDEX);
-    test<T>("conv", build_conv_n, 40, bdr, SCHEDULE_SPLIT_INDEX);
-    test<T>("conv", build_conv_n, 80, bdr, SCHEDULE_SPLIT_INDEX);
-    test<T>("conv", build_conv_n, 5, bdr, SCHEDULE_SPLIT_INDEX, vec);
-    test<T>("conv", build_conv_n, 10, bdr, SCHEDULE_SPLIT_INDEX, vec);
-    test<T>("conv", build_conv_n, 20, bdr, SCHEDULE_SPLIT_INDEX, vec);
-    test<T>("conv", build_conv_n, 40, bdr, SCHEDULE_SPLIT_INDEX, vec);
-    test<T>("conv", build_conv_n, 80, bdr, SCHEDULE_SPLIT_INDEX, vec);
+    do_conv_n<T>(bdr, SCHEDULE_SPLIT_INDEX, 0, vec_only);
+    do_conv_n<T>(bdr, SCHEDULE_SPLIT_INDEX | SCHEDULE_ROOT_BORDER, 0, vec_only);
+    do_conv_n<T>(bdr, SCHEDULE_SPLIT_INDEX, vec, vec_only);
+    do_conv_n<T>(bdr, SCHEDULE_SPLIT_INDEX | SCHEDULE_ROOT_BORDER, vec, vec_only);
 # endif
-    test<T>("simplify", build_simplify_n, 5, bdr);
-    test<T>("simplify", build_simplify_n, 10, bdr);
-    test<T>("simplify", build_simplify_n, 20, bdr);
-    test<T>("simplify", build_simplify_n, 40, bdr);
-    test<T>("simplify", build_simplify_n, 80, bdr);
+    test<T>("simplify", build_simplify_n, 5, bdr, 0, 0, vec_only);
+    test<T>("simplify", build_simplify_n, 10, bdr, 0, 0, vec_only);
+    test<T>("simplify", build_simplify_n, 20, bdr, 0, 0, vec_only);
+    test<T>("simplify", build_simplify_n, 40, bdr, 0, 0, vec_only);
+    test<T>("simplify", build_simplify_n, 80, bdr, 0, 0, vec_only);
 }
 
 
@@ -424,11 +432,17 @@ int main(int argc, char **argv) {
 
     do_tests<uint8_t>(BORDER_CLAMP, 8);
     do_tests<uint8_t>(BORDER_MOD, 8);
-    //do_tests<uint8_t>(16);
-    //do_tests<float>(4);
-    //do_tests<int>(4);
-    //do_tests<uint16_t>(8);
-    
+# if 0
+    do_tests<uint8_t>(BORDER_CLAMP, 16, 1);
+    do_tests<uint8_t>(BORDER_MOD, 16, 1);
+    do_tests<float>(BORDER_CLAMP, 4);
+    do_tests<float>(BORDER_MOD, 4);
+    do_tests<int>(BORDER_CLAMP, 4);
+    do_tests<int>(BORDER_MOD, 4);
+    do_tests<uint16_t>(BORDER_CLAMP, 8);
+    do_tests<uint16_t>(BORDER_MOD, 8);
+# endif
+
     // id -2 prints out a list of IDs that can be used in a loop to execute all tests in turn.
     // It does no tests.
     if (testid == -2) {
