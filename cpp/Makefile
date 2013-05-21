@@ -124,7 +124,7 @@ TESTS = $(shell ls test/*.cpp)
 ERROR_TESTS = $(shell ls test/error/*.cpp)
 
 # TODO: move this implementation into Makefile.tests which contains a .NOTPARALLEL rule?
-tests: $(TESTS:test/%.cpp=test_%) test_jit_speed_fast $(ERROR_TESTS:test/error/%.cpp=error_%)
+tests: $(TESTS:test/%.cpp=test_%) $(ERROR_TESTS:test/error/%.cpp=error_%)
 
 bin/test_internal: test/internal.cpp bin/lib$(NAME).so
 	$(CXX) $(CXX_FLAGS)  $< -Isrc -Lbin -l$(NAME) -lpthread -ldl -o $@	
