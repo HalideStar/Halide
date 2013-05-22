@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <Halide.h>
+#include <string>
 #include <string.h>
 #include <signal.h>
 #include <iostream>
@@ -13,7 +14,7 @@
 #include "mtrand/mtrand.cpp"
 
 using namespace Halide;
-//using namespace std;
+using namespace std;
 
 template<typename A>
 const char *string_of_type();
@@ -63,6 +64,10 @@ double currentTime() {
 # define SCHEDULE_INPUT_PARAM 8
 // Apply compute_root to the first dimension before 2nd dimension processing
 # define SCHEDULE_ROOT_DIM_1 16
+// Make y parallel in blocks
+# define SCHEDULE_PARALLEL_1 32
+# define SCHEDULE_PARALLEL_4 64
+# define SCHEDULE_PARALLEL_16 128
 
 # define BORDER_CLAMP 0
 # define BORDER_MOD 1
@@ -139,12 +144,15 @@ public:
     std::string data_type; // Data type u8, i32, f32, etc.
     std::string base_name; // Base name of the generated function.
     int parameter_n; // Parameter specifying size of the generated function.  e.g. conv(n)
-    int schedule_bound, schedule_splitindex, schedule_root_border; // Schedule options
-    int schedule_vector; 
+    std::string schedule_bound, schedule_splitindex, schedule_root_border, schedule_root_dim_1; // Schedule options
+    int schedule_vector, schedule_parallel_y, schedule_unroll_x; 
     std::string border; // The type of border.  Such as clamp, mod, etc.
     std::string input_type; // image or param
-    std::string name; // The name of the generated function.
     int dimensionality; // 1 or 2 D function
+    std::string name; // The name of the generated function.
+    
+    // Priority selection
+ 
     
     DataCollector() {
         max_data_count = 1;
@@ -152,6 +160,9 @@ public:
     }
     
     void set_data_info(Type t, std::string basename, int n, int bdr, int schedule, int vec, int dimensions) {
+        // NOTE: To prevent data interpretation errors, unimplemented features must NOT set option variables here.
+        // However, all implemented features must be fully implemented and MUSE set option variables here.
+        
         std::ostringstream ss;
         if (t.is_uint()) ss << "u" << t.bits;
         if (t.is_int()) ss << "i" << t.bits;
@@ -172,11 +183,19 @@ public:
         parameter_n = n;
         
         // Set schedule options
-        if (schedule & SCHEDULE_BOUND) { ss << "_b"; schedule_bound = 1; } else { schedule_bound = 0; }
-        if (schedule & SCHEDULE_SPLIT_INDEX) { ss << "_s"; schedule_splitindex = 1; } else { schedule_splitindex = 0; }
-        if (schedule & SCHEDULE_ROOT_BORDER) { ss << "_r"; schedule_root_border = 1; } else { schedule_root_border = 0; }
+        if (schedule & SCHEDULE_BOUND) { ss << "_b"; schedule_bound = "bound"; } else { schedule_bound = "nobound"; }
+        if (schedule & SCHEDULE_SPLIT_INDEX) { ss << "_s"; schedule_splitindex = "iss"; } else { schedule_splitindex = "noiss"; }
+        if (schedule & SCHEDULE_ROOT_BORDER) { ss << "_rb"; schedule_root_border = "rootborder"; } else { schedule_root_border = "norootborder"; }
+        schedule_root_dim_1 = "norootdim1";
+        if (schedule & SCHEDULE_ROOT_DIM_1) { ss << "_r1"; schedule_root_dim_1 = "rootdim1"; } else { schedule_root_dim_1 = "norootdim1"; }
         if (vec > 0) ss << "_v" << vec;
         schedule_vector = vec;
+        schedule_parallel_y = 0;
+        // Unimplemented...
+        //if (schedule & SCHEDULE_PARALLEL_1) { ss << "_p1"; schedule_parallel_y = 1; }
+        //if (schedule & SCHEDULE_PARALLEL_4) { ss << "_p4"; schedule_parallel_y = 4; }
+        //if (schedule & SCHEDULE_PARALLEL_16) { ss << "_p16"; schedule_parallel_y = 16; }
+        schedule_unroll_x = 0; // Not yet implemented.  No unrolling is default.
         
         // Set border
         if (bdr == BORDER_CLAMP) { ss << "_clamp"; border = "clamp"; }
@@ -184,7 +203,9 @@ public:
         else { assert(0 && "Unknown border mode"); }
         
         // Set input_type
-        if (schedule & SCHEDULE_INPUT_PARAM) { ss << "_p"; input_type = "param"; } else { input_type = "image"; }
+        input_type = "image";
+        // Unimplemented...
+        //if (schedule & SCHEDULE_INPUT_PARAM) { ss << "_param"; input_type = "param"; } else { input_type = "image"; }
         
         // Set name
         name = ss.str();
@@ -194,10 +215,10 @@ public:
     std::string data_id() {
         std::ostringstream ss;
         ss << model << "," << version << "," << name << ","
-           << data_type << "," << base_name << "," << parameter_n << ","
+           << data_type << "," << base_name << "," << parameter_n << "," << dimensionality << ","
            << border << "," << schedule_bound << "," << schedule_splitindex << ","
            << schedule_root_border << "," << schedule_vector << "," << input_type << ","
-           << dimensionality << ","
+           << schedule_parallel_y << "," << schedule_unroll_x << ","
            << "," << "," << "," << 0 << "," << 0 << "," << 0; // Future expansion - three string and three int fields.
         return ss.str();
     }
@@ -264,6 +285,151 @@ public:
 
 
 DataCollector collector; // The one object for data collection
+
+class PriorityManager {
+    map<string,int> data_type;
+    map<string,int> base_name;
+    map<int,int> parameter_n;
+    map<string,int> schedule_bound;
+    map<string,int> schedule_splitindex;
+    map<string,int> schedule_root_border;
+    map<string,int> schedule_root_dim_1;
+    map<int,int> schedule_vector;
+    map<int,int> schedule_parallel_y;
+    map<int,int> schedule_unroll_x;
+    map<string,int> border;
+    map<int,int> dimensionality;
+    
+    int priority;
+    
+    // Priorities are 1<<first_priority, 1<<(first_priority-1), ...
+    // If not found but required, returns neg_priority which is
+    // big enough that it overrides all other positive priorities added together
+    // but small enough that you can add it together first_priority times without overflow.
+    const int first_priority;
+    const int neg_priority;
+    
+public:
+    PriorityManager() : first_priority(24), neg_priority((1<<first_priority)*-2) {
+        priority = first_priority;
+    }
+    
+    int next_priority() { assert(priority > 0); return (1 << priority--); }
+    
+    template<typename T>
+    int lookup(map<T,int> m, T key) {
+        typename map<T,int>::iterator it;
+        it = m.find(key);
+        // If required but not found, return neg_priority.
+        if (it == m.end()) return m.size() > 0 ? neg_priority : 0; 
+        return it->second;
+    }
+    
+    // Return the priority of the current item. 0 means not selected.  1 means default selected.
+    int p(DataCollector &c) {
+        int pri = 0;
+        pri += lookup(data_type, c.data_type);
+        pri += lookup(base_name, c.base_name);
+        //std::cerr << "Looking up n " << c.parameter_n << " ==> " << lookup(parameter_n, c.parameter_n) << "\n";
+        pri += lookup(parameter_n, c.parameter_n);
+        pri += lookup(schedule_bound, c.schedule_bound);
+        pri += lookup(schedule_splitindex, c.schedule_splitindex);
+        pri += lookup(schedule_root_border, c.schedule_root_border);
+        pri += lookup(schedule_root_dim_1, c.schedule_root_dim_1);
+        pri += lookup(schedule_vector, c.schedule_vector);
+        pri += lookup(schedule_parallel_y, c.schedule_parallel_y);
+        pri += lookup(schedule_unroll_x, c.schedule_unroll_x);
+        pri += lookup(border, c.border);
+        pri += lookup(dimensionality, c.dimensionality);
+        if (pri < 0) return 0;
+        if (pri == 0) return 1; // All default selections.
+        return pri;
+    }
+    
+    int stoi(string s) {
+        int v = atoi(s.c_str());
+        return v;
+    }
+    
+    int option(string opt, string param) {
+        if (opt == "-type") {
+            if (param == "f32" || param == "f64" || param == "i32" || param == "i16" || param == "i8" ||
+                param == "u32" || param == "u16" || param == "u8") {
+                data_type[param] = next_priority();
+                return 1; // Used the param
+            } else {
+                std::cerr << "Unknown data type " << param << "\n";
+                assert(0);
+            }
+        } else if (opt == "-f32") { data_type["f32"] = next_priority(); 
+        } else if (opt == "-f64") { data_type["f64"] = next_priority(); 
+        } else if (opt == "-i32") { data_type["i32"] = next_priority();
+        } else if (opt == "-i16") { data_type["i16"] = next_priority(); 
+        } else if (opt == "-i8") { data_type["i8"] = next_priority(); 
+        } else if (opt == "-u32") { data_type["u32"] = next_priority(); 
+        } else if (opt == "-u16") { data_type["u16"] = next_priority();
+        } else if (opt == "-u8") { data_type["u8"] = next_priority();
+        } else if (opt == "-func") {
+            assert(param != "" && "Empty parameter to -func");
+            base_name[param] = next_priority();
+            return 1;
+        } else if (opt == "-blur") { base_name["blur"] = next_priority(); 
+        } else if (opt == "-conv") { base_name["conv"] = next_priority(); 
+        } else if (opt == "-diag") { base_name["diag"] = next_priority(); 
+        } else if (opt == "-n") {
+            int n = stoi(param);
+            assert(n > 0);
+            parameter_n[n] = next_priority();
+            return 1;
+        } else if (opt == "-bound") {
+            schedule_bound["bound"] = next_priority();
+        } else if (opt == "-nobound") {
+            schedule_bound["nobound"] = next_priority();
+        } else if (opt == "-iss") {
+            schedule_splitindex["iss"] = next_priority();
+        } else if (opt == "-noiss") {
+            schedule_splitindex["noiss"] = next_priority();
+        } else if (opt == "-rootborder" || opt == "-rb") {
+            schedule_root_border["rootborder"] = next_priority();
+        } else if (opt == "-norootborder" || opt == "-norb") {
+            schedule_root_border["norootborder"] = next_priority();
+        } else if (opt == "-rootdim1" || opt == "-r1") {
+            schedule_root_border["rootdim1"] = next_priority();
+        } else if (opt == "-norootdim1" || opt == "-nor1") {
+            schedule_root_border["norootdim1"] = next_priority();
+        } else if (opt == "-vector" || opt == "-vec") {
+            int vec = stoi(param);
+            schedule_vector[vec] = next_priority();
+            return 1;
+        } else if (opt == "-parallel" || opt == "-p") {
+            int par = stoi(param);
+            schedule_parallel_y[par] = next_priority();
+            return 1;
+        } else if (opt == "-unroll" || opt == "-u") {
+            int un = stoi(param);
+            schedule_unroll_x[un] = next_priority();
+            return 1;
+        } else if (opt == "-border") {
+            assert(param != "" && "Empty parameter to -border");
+            border[param] = next_priority();
+            return 1;
+        } else if (opt == "-clamp") { border["clamp"] = next_priority(); 
+        } else if (opt == "-mod") { border["mod"] = next_priority(); 
+        } else if (opt == "-dim") {
+            int dim = stoi(param);
+            dimensionality[dim] = next_priority();
+            return 1;
+        } else if (opt == "-1d") { dimensionality[1] = next_priority(); 
+        } else if (opt == "-2d") { dimensionality[2] = next_priority(); 
+        } else if (opt[0] == '-') {
+            std::cerr << "Unknown option " << opt << "\n";
+            assert(0);
+        }
+        return 0;
+    }
+};
+
+PriorityManager priority;
 
 class Random {
     MTRand_int32 rand;
@@ -438,7 +604,13 @@ template<typename T>
 Func build_general(Expr (*pixel)(Func,int,int), Expr (*final)(Expr,int), std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec, int dimensionality) {
     Func h("h"), f(name);
     Func in = border_handled(b, bdr, schedule);
-    unique.reset(n);
+    // Unique number generation.
+    // Depends on size n of the operator and on the iteration number during data collection.
+    // However, for a particular iteration, all programs will be identical.
+    // Also, note that the same numbers will be generated for different programs.
+    // And, finally, that the same numbers will be generated for different dimensionality
+    // if n is the same.
+    unique.reset(n * 1000 + collector.data_count());
     int m = dim(n, dimensionality);
     Expr e = (*pixel)(in,-m/2,0);   // e.g. in(x-m/2, y)
     for (int i = 1; i < m; i++) {
@@ -446,9 +618,9 @@ Func build_general(Expr (*pixel)(Func,int,int), Expr (*final)(Expr,int), std::st
     }
     if (dimensionality == 2) {
         h(x,y) = e;
-        Expr ev = (*pixel)(h,0,-m/2);
+        Expr ev = (*pixel)(h,0,-m/2); // e.g. h(x,y-m/2)
         for (int i = 1; i < m; i++) {
-            ev = ev + (*pixel)(h,0,i-m/2);
+            ev = ev + (*pixel)(h,0,i-m/2); // e.g. h(x,y+(i-m/2))
         }
         f(x,y) = (*final)(ev, n);  // e.g. ev / n
         if (schedule & SCHEDULE_ROOT_DIM_1) h.compute_root();
@@ -487,8 +659,19 @@ Func build_diag_n(std::string name, ImageParam a, Image<T> b, int n, int bdr, in
     return f;
 }
 
+int new_check(int check, double MinMeasureTime, double delta, int max) {
+    int c = check * (MinMeasureTime * 1.5) / delta;
+    if (c <= check) c = check + 1;
+    if (c >= max) c = max;
+    return c;
+}
+
 // Counts the calls to test, so each test gets a unique ID.
 int testcount = 0;
+// Tracks the maximum priority so that we can focus on the most important tests.
+int max_priority = 0;
+// Tracks the minimum data count so we can focus on missing data.
+int min_data_count = (1<<30); // A big enough number
 
 template<typename T>
 void test(std::string basename, 
@@ -498,14 +681,30 @@ void test(std::string basename,
     collector.set_data_info(type_of<T>(), basename, n, bdr, schedule, vec, dimensionality);
     
     testcount++;
+    
+    int pri = priority.p(collector);
+    if (pri == 0) return; // Not selected by priority options
+    
+    if (pri > max_priority) {
+        max_priority = pri;
+        ids.clear(); // Forget any accumulated ids of lower priority
+    }
+    if (pri < max_priority) return; // Not selected based on priority
 
+    // Check to see whether this test has already been done sufficient times.
+    // Only works if data file has been selected with -f option.
+    int dc = collector.data_count();
+    if (dc >= collector.max_data_count)
+        return;
+    if (dc < min_data_count) {
+        min_data_count = dc;
+        ids.clear(); // Forget any accumulated ids with higher data count.
+    }
+        
     if (listing) {
         std::cout << testcount << " " << collector.name << "\n";
         return;
     }
-    // Check to see whether this test has already been done sufficient times.
-    if (collector.data_count() >= collector.max_data_count)
-        return;
     if (list_ids) {
         ids.push_back(testcount);
         return;
@@ -526,28 +725,34 @@ void test(std::string basename,
     }
     
     double t1, t2;
-    t1 = currentTime();
 
     Func f;
 
     int count, check = 1;
     alarm(timelimit);
     signal(SIGALRM, alarm_handler);
-    for (count = 0; count < (logging ? 1 : 100); count++) {
+    const double MinMeasureTime = 2000.0;
+    int max_jit = logging ? 1 : 100;
+    t1 = currentTime();
+    for (count = 0; ; ) {
+        count++;
         f = (*builder)(collector.name, a, b, n, bdr, schedule, vec, dimensionality);
         f.compile_jit();
         if (count >= check) {
-            t2 = currentTime();
-            if (t2 - t1 > 2000.0)
+            t2 = currentTime(); // Record the end time.
+            double delta = t2 - t1;
+            if (delta > MinMeasureTime || count >= max_jit)
                 break;
+            if (delta < MinMeasureTime / 10.0) delta = MinMeasureTime / 10.0;
             if (check == 1) {
                 alarm(0);
-                check = 4;
-            } else check = check * 2;
+            }
+            check = new_check(check, MinMeasureTime, delta, max_jit);
+            t1 = currentTime();
+            count = 0;
         }
     }    
 
-    t2 = currentTime();
     double jit = (t2 - t1) / count;
     
     alarm(0);
@@ -560,22 +765,24 @@ void test(std::string basename,
     if (logging) {
         stmt = 0.0;
     } else {
-        t1 = currentTime();
         check = 1;
-        for (count = 0; count < (logging ? 1 : 100); count++) {
+        int max_stmt = logging ? 1 : 1000;
+        t1 = currentTime();
+        for (count = 0; ; ) {
+            count++;
             (*builder)(collector.name, a, b, n, bdr, schedule, vec, dimensionality).compile_to_stmt();
             if (count >= check) {
-                t2 = currentTime();
-                if (t2 - t1 > 2000.0)
+                t2 = currentTime(); // Record the end time.
+                double delta = t2 - t1;
+                if (delta > MinMeasureTime || count >= max_stmt)
                     break;
-                if (check == 1) {
-                    alarm(0);
-                    check = 4;
-                } else check = check * 2;
+                if (delta < MinMeasureTime / 10.0) delta = MinMeasureTime / 10.0;
+                check = new_check(check, MinMeasureTime, delta, max_stmt);
+                t1 = currentTime();
+                count = 0;
             }
         }    
 
-        t2 = currentTime();
         stmt = (t2 - t1) / count;
     }
 # endif
@@ -605,19 +812,23 @@ void test(std::string basename,
         }
     }
     // Now to estimate execution time.
+    check = logging ? 1 : 4;
+    int max_exec = logging ? 1 : 1000000;
     t1 = currentTime();
-    check = 4;
-    for (count = 0; count < (logging ? 1 : 1000); count++) {
+    for (count = 0; ; ) {
+        count++;
         f.realize(d);
         if (count >= check) {
-            t2 = currentTime();
-            if (t2 - t1 > 2000.0)
+            t2 = currentTime(); // Record the end time.
+            double delta = t2 - t1;
+            if (delta > MinMeasureTime || count >= max_exec)
                 break;
-            check = check * 2;
+            if (delta < MinMeasureTime / 10.0) delta = MinMeasureTime / 10.0;
+            check = new_check(check, MinMeasureTime, delta, max_exec);
+            t1 = currentTime();
+            count = 0;
         }
     }
-    
-    t2 = currentTime();
     double execute = (t2 - t1) / count;
     
     int hits = 0, misses = 0;
@@ -631,8 +842,10 @@ void test(std::string basename,
 
 template<typename T>
 void do_conv_n(int bdr, int schedule, int vec, int dimensionality, int vec_only) {
-    test<T>("conv", build_conv_n, 3, bdr, schedule, vec, dimensionality, vec_only);
-    test<T>("conv", build_conv_n, 5, bdr, schedule, vec, dimensionality, vec_only);
+    if (dimensionality == 1) {
+        test<T>("conv", build_conv_n, 3, bdr, schedule, vec, dimensionality, vec_only);
+        test<T>("conv", build_conv_n, 5, bdr, schedule, vec, dimensionality, vec_only);
+    }
     test<T>("conv", build_conv_n, 9, bdr, schedule, vec, dimensionality, vec_only);
     test<T>("conv", build_conv_n, 16, bdr, schedule, vec, dimensionality, vec_only);
     test<T>("conv", build_conv_n, 25, bdr, schedule, vec, dimensionality, vec_only);
@@ -642,8 +855,10 @@ void do_conv_n(int bdr, int schedule, int vec, int dimensionality, int vec_only)
 
 template<typename T>
 void do_blur_n(int bdr, int schedule, int vec, int dimensionality, int vec_only) {
-    test<T>("blur", build_blur_n, 3, bdr, schedule, vec, dimensionality, vec_only);
-    test<T>("blur", build_blur_n, 5, bdr, schedule, vec, dimensionality, vec_only);
+    if (dimensionality == 1) {
+        test<T>("blur", build_blur_n, 3, bdr, schedule, vec, dimensionality, vec_only);
+        test<T>("blur", build_blur_n, 5, bdr, schedule, vec, dimensionality, vec_only);
+    }
     test<T>("blur", build_blur_n, 9, bdr, schedule, vec, dimensionality, vec_only);
     test<T>("blur", build_blur_n, 16, bdr, schedule, vec, dimensionality, vec_only);
     test<T>("blur", build_blur_n, 25, bdr, schedule, vec, dimensionality, vec_only);
@@ -737,7 +952,7 @@ int main(int argc, char **argv) {
             // Parse time limit.
             sscanf(argv[i+1], "%d", &timelimit);
             i++;
-        } else if (strcmp(argv[i], "-m") == 0 && i < argc - 1) { // Specify CPU model string
+        } else if (strcmp(argv[i], "-cpu") == 0 && i < argc - 1) { // Specify CPU model string
             model = argv[i+1];
             i++;
         } else if (strcmp(argv[i], "-v") == 0 && i < argc - 1) { // Specify Halide version string
@@ -748,7 +963,7 @@ int main(int argc, char **argv) {
             collector.read_file();
             collector.open();
             i++;
-        } else if (strcmp(argv[i], "-n") == 0 && i < argc - 1) { // Number of repetitions required for data collection
+        } else if (strcmp(argv[i], "-count") == 0 && i < argc - 1) { // Number of repetitions required for data collection
             sscanf(argv[i+1], "%d", &collector.max_data_count);
             i++;
         } else if (strcmp(argv[i], "-ids") == 0) { // List the IDs of experiments waiting to be performed
@@ -756,6 +971,12 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "-exp") == 0 && i < argc - 1) { // Select experiment group number.
             sscanf(argv[i+1], "%d", &experiment_group);
             i++;
+        } else if (argv[i][0] == '-') {
+            if (i < argc - 1) {
+                if (priority.option(argv[i], argv[i+1])) i++;
+            } else {
+                priority.option(argv[i], "");
+            }
         } else {
             // Parse test ID number to be run.
             sscanf(argv[i], "%d", &testid);
@@ -772,7 +993,7 @@ int main(int argc, char **argv) {
     }
     
     if (experiment_group == 0) {
-        for (int dim = 1; dim < 2; dim++) {
+        for (int dim = 1; dim <= 2; dim++) {
             do_tests<uint8_t>(BORDER_CLAMP, 8, dim);
             do_tests<uint8_t>(BORDER_MOD, 8, dim);
             //do_tests<uint8_t>(BORDER_CLAMP, 16, dim, 1);
