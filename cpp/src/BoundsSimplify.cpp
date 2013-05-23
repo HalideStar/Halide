@@ -52,6 +52,7 @@ public:
             code_logger.log() << "Could not bounds simplify Mod\n";
             Super::visit(op);
         }
+        code_logger.log() << "BoundsSimplify Mod result: " << expr << "\n";
     }
 
 	//LH
@@ -76,6 +77,7 @@ public:
             code_logger.log() << "Could not bounds simplify Clamp\n";
             Super::visit(op);
         }
+        code_logger.log() << "BoundsSimplify Clamp result: " << expr << "\n";
     }
 
     void visit(const Min *op) {
@@ -94,6 +96,7 @@ public:
             code_logger.log() << "Could not bounds simplify Min\n";
             Super::visit(op);
         }
+        code_logger.log() << "BoundsSimplify Min result: " << expr << "\n";
     }
 
     void visit(const Max *op) {
@@ -112,6 +115,7 @@ public:
             code_logger.log() << "Could not bounds simplify Max\n";
             Super::visit(op);
         }
+        code_logger.log() << "BoundsSimplify Max result: " << expr << "\n";
     }
 
     void visit(const Select *op) {
@@ -129,6 +133,7 @@ public:
             code_logger.log() << "Could not bounds simplify Select\n";
             Super::visit(op);
         }
+        code_logger.log() << "BoundsSimplify Select result: " << expr << "\n";
     }
           
 # if 0
