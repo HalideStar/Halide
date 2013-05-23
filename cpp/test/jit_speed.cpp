@@ -65,9 +65,22 @@ double currentTime() {
 // Apply compute_root to the first dimension before 2nd dimension processing
 # define SCHEDULE_ROOT_DIM_1 16
 // Make y parallel in blocks
+// Three bits are allocated for codes.
+# define SCHEDULE_PARALLEL (32|64|128)
+# define SCHEDULE_PARALLEL_NONE 0
 # define SCHEDULE_PARALLEL_1 32
 # define SCHEDULE_PARALLEL_4 64
-# define SCHEDULE_PARALLEL_16 128
+# define SCHEDULE_PARALLEL_16 96
+// Upcast the data for processing, and downcast it afterwards
+// Two bits are allocated for codes.
+# define SCHEDULE_UPCAST (256|512)
+# define SCHEDULE_UPCAST_NONE 0
+# define SCHEDULE_UPCAST_SAME 256
+# define SCHEDULE_UPCAST_INT 512
+# define SCHEDULE_UPCAST_FLOAT (512|256)
+// Apply root to the upcast of the border handled input
+# define SCHEDULE_ROOT_UPCAST 1024
+
 
 # define BORDER_CLAMP 0
 # define BORDER_MOD 1
@@ -146,6 +159,7 @@ public:
     int parameter_n; // Parameter specifying size of the generated function.  e.g. conv(n)
     std::string schedule_bound, schedule_splitindex, schedule_root_border, schedule_root_dim_1; // Schedule options
     int schedule_vector, schedule_parallel_y, schedule_unroll_x; 
+    std::string schedule_upcast, schedule_root_upcast;
     std::string border; // The type of border.  Such as clamp, mod, etc.
     std::string input_type; // image or param
     int dimensionality; // 1 or 2 D function
@@ -192,10 +206,18 @@ public:
         schedule_vector = vec;
         schedule_parallel_y = 0;
         // Unimplemented...
-        //if (schedule & SCHEDULE_PARALLEL_1) { ss << "_p1"; schedule_parallel_y = 1; }
-        //if (schedule & SCHEDULE_PARALLEL_4) { ss << "_p4"; schedule_parallel_y = 4; }
-        //if (schedule & SCHEDULE_PARALLEL_16) { ss << "_p16"; schedule_parallel_y = 16; }
+        //int s = schedule * SCHEDULE_PARALLEL
+        //if (s == SCHEDULE_PARALLEL_1) { ss << "_p1"; schedule_parallel_y = 1; }
+        //if (s == SCHEDULE_PARALLEL_4) { ss << "_p4"; schedule_parallel_y = 4; }
+        //if (s == SCHEDULE_PARALLEL_16) { ss << "_p16"; schedule_parallel_y = 16; }
         schedule_unroll_x = 0; // Not yet implemented.  No unrolling is default.
+        
+        int s = schedule & SCHEDULE_UPCAST;
+        if (s == SCHEDULE_UPCAST_NONE) { schedule_upcast = "noup"; }
+        else if (s == SCHEDULE_UPCAST_SAME) { ss << "_us"; schedule_upcast = "upsame"; }
+        else if (s == SCHEDULE_UPCAST_INT) { ss << "_ui"; schedule_upcast = "upint"; }
+        else if (s == SCHEDULE_UPCAST_FLOAT) { ss << "_uf"; schedule_upcast = "upfloat"; }
+        if (schedule & SCHEDULE_ROOT_UPCAST) { ss << "_rup"; schedule_root_upcast = "rootup"; } else { schedule_root_upcast = "norootup"; }
         
         // Set border
         if (bdr == BORDER_CLAMP) { ss << "_clamp"; border = "clamp"; }
@@ -216,9 +238,11 @@ public:
         std::ostringstream ss;
         ss << model << "," << version << "," << name << ","
            << data_type << "," << base_name << "," << parameter_n << "," << dimensionality << ","
+           << schedule_root_dim_1 << ","
            << border << "," << schedule_bound << "," << schedule_splitindex << ","
            << schedule_root_border << "," << schedule_vector << "," << input_type << ","
            << schedule_parallel_y << "," << schedule_unroll_x << ","
+           << schedule_upcast << "," << schedule_root_upcast << ","
            << "," << "," << "," << 0 << "," << 0 << "," << 0; // Future expansion - three string and three int fields.
         return ss.str();
     }
@@ -535,8 +559,12 @@ public:
 UniqueInt unique;
 
 template<typename T>
-Func build_basic(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec) {
+Func build_basic(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec, int dimensionality) {
     Func f(name);
+    assert(n == 0 && "Func basic does not support n != 0");
+    assert(bdr == 0 && "Func basic does not support bdr != 0");
+    assert(schedule == 0 && "Func basic does not support schedule != 0");
+    assert(dimensionality == 1 && "Func basic does not support dimensionality other than 1");
     f(x) = a(x) + b(x);
     if (vec > 0) f.vectorize(x,vec);
     return f;
@@ -544,7 +572,10 @@ Func build_basic(std::string name, ImageParam a, Image<T> b, int n, int bdr, int
 
 template<typename T>
 Func build_simplify_n(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec, int dimensionality) {
-    assert(dimensionality == 1);
+    assert(dimensionality == 1 && "Func simplify_n does not support dimensionality other than 1");
+    assert((schedule & SCHEDULE_BOUND) == schedule && "Func simplify_n does not support schedule");
+    assert(bdr == 0 && "Func simplify_n does not support border");
+    assert(vec == 0 && "Func simplify_n does not support vectorisation");
     Func f(name);
     unique.reset(n);
     Expr e = a(x,y) * unique.i();
@@ -554,6 +585,51 @@ Func build_simplify_n(std::string name, ImageParam a, Image<T> b, int n, int bdr
     f(x,y) = e;
     if (schedule & SCHEDULE_BOUND) f.bound(x,0,WIDTH).bound(y,0,HEIGHT);
     return f;
+}
+
+// Upcast a function of type t under control of schedule
+Func upcast(Func in, int schedule, Type t) {
+    Func upcast("upcast");
+    int s = schedule & SCHEDULE_UPCAST;
+    if (s == SCHEDULE_UPCAST_NONE) {
+        assert ((schedule & SCHEDULE_ROOT_UPCAST) == 0 && "Root upcast incompatible with no upcast");
+        return in; // No upcasting.
+    }
+    // Apart from SCHEDULE_UPCAST_NONE, an actual upcast must occur.
+    // We dont want things that appear different to actually be the same.
+    if (s == SCHEDULE_UPCAST_FLOAT) {
+        assert(! t.is_float() && "Cannot upcast float to float");
+        int bits = t.bits;
+        if (bits < 32) bits = 32;
+        upcast = cast(Float(bits), in);
+    } else if (s == SCHEDULE_UPCAST_INT) {
+        assert(! t.is_float() && "Cannot upcast float to int");
+        assert(t.bits < 64 && "Cannot upcast 64 bits");
+        int bits = t.bits * 2;
+        upcast = cast(Int(bits), in);
+    } else if (s == SCHEDULE_UPCAST_SAME) {
+        assert(! t.is_float() && "Cannot upcast float to same");
+        assert(t.bits < 64 && "Cannot upcast 64 bits");
+        Type u = t;
+        int bits = t.bits * 2;
+        u.bits = bits;
+        upcast = cast(u, in);
+    }
+    if (schedule & SCHEDULE_ROOT_UPCAST) {
+        upcast.compute_root();
+# if HAS_PARTITION
+        if (schedule & SCHEDULE_SPLIT_INDEX) upcast.partition();
+# endif
+    }
+    return upcast;
+}
+
+// Downcast an expression to type t.  If it is already of type t, nothing happens.
+Expr downcast(Type t, Expr e) {
+    if (e.type() != t)
+        return cast(t, e);
+    else
+        return e;
 }
 
 template<typename T>
@@ -574,8 +650,13 @@ Func border_handled(Image<T> b, int bdr, int schedule) {
         if (schedule & SCHEDULE_SPLIT_INDEX) border.partition();
 # endif
     }
-    return border;
+    // Upcast may be performed.
+    Func up = upcast(border, schedule, type_of<T>());
+    return up;
 }
+
+// All the schedule bits that are (almost fully) handled by border_handled
+# define SCHEDULE_BORDER_HANDLED (SCHEDULE_ROOT_BORDER|SCHEDULE_UPCAST|SCHEDULE_ROOT_UPCAST)
 
 Expr subscript(Func in, int xdelta, int ydelta) {
     if (xdelta == 0 && ydelta == 0) return in(x, y);
@@ -602,6 +683,9 @@ Expr conv_final(Expr e, int n) {
 
 template<typename T>
 Func build_general(Expr (*pixel)(Func,int,int), Expr (*final)(Expr,int), std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec, int dimensionality) {
+    assert((schedule & (SCHEDULE_BOUND | SCHEDULE_BORDER_HANDLED | SCHEDULE_ROOT_DIM_1 | 
+                        SCHEDULE_BOUND | SCHEDULE_SPLIT_INDEX)) == schedule && 
+           "build_general does not support schedule");
     Func h("h"), f(name);
     Func in = border_handled(b, bdr, schedule);
     // Unique number generation.
@@ -622,10 +706,10 @@ Func build_general(Expr (*pixel)(Func,int,int), Expr (*final)(Expr,int), std::st
         for (int i = 1; i < m; i++) {
             ev = ev + (*pixel)(h,0,i-m/2); // e.g. h(x,y+(i-m/2))
         }
-        f(x,y) = (*final)(ev, n);  // e.g. ev / n
+        f(x,y) = downcast(type_of<T>(), (*final)(ev, n));  // e.g. ev / n
         if (schedule & SCHEDULE_ROOT_DIM_1) h.compute_root();
     } else {
-        f(x,y) = (*final) (e, n);  // e.g. e / n
+        f(x,y) = downcast(type_of<T>(), (*final) (e, n));  // e.g. e / n
     }
     if (schedule & SCHEDULE_BOUND) f.bound(x,0,WIDTH).bound(y,0,HEIGHT);
     if (vec > 0) f.vectorize(x,vec);
@@ -646,11 +730,34 @@ Func build_conv_n(std::string name, ImageParam a, Image<T> b, int n, int bdr, in
 }
 
 template<typename T>
+Func build_sobel(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec, int dimensionality) {
+    assert(dimensionality == 2 && "Sobel is only defined for dimensionality 2");
+    assert((schedule & (SCHEDULE_BORDER_HANDLED | SCHEDULE_SPLIT_INDEX | SCHEDULE_BOUND)) == schedule &&
+        "Func sobel does not implement schedule");
+    Func in = border_handled(b, bdr, schedule); // Data type upcast can be done if required.
+    //std::cerr << in << "\n";
+    Func h("h"), v("v"), sobel("sobel");
+    h(x,y) = in(x-1,y-1) + 2 * in(x-1,y) + in(x-1,y+1) - in(x+1,y-1) - 2 * in(x+1,y) - in(x+1,y+1);
+    v(x,y) = in(x-1,y-1) + 2 * in(x,y-1) + in(x+1,y-1) - in(x-1,y+1) - 2 * in(x,y+1) - in(x+1,y+1);
+    sobel(x,y) = downcast(type_of<T>(), (abs(h(x,y)) + abs(v(x,y)))/4);
+    if (schedule & SCHEDULE_BOUND) sobel.bound(x,0,WIDTH).bound(y,0,HEIGHT);
+    if (vec > 0) sobel.vectorize(x,vec);
+# if HAS_PARTITION
+    if (schedule & SCHEDULE_SPLIT_INDEX) {
+        sobel.partition();
+    }
+# endif
+    return sobel;
+}
+
+template<typename T>
 Func build_diag_n(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec, int dimensionality) {
+    assert(dimensionality == 2 && "diag is only defined for dimensionality 2");
+    assert((schedule & (SCHEDULE_BORDER_HANDLED | SCHEDULE_SPLIT_INDEX | SCHEDULE_BOUND)) == schedule &&
+        "Func diag does not implement schedule");
     Func f(name);
-    assert(dimensionality == 2);
     Func in = border_handled(b, bdr, schedule);
-    f(x,y) = in(x-n,y-n) + in(x+n,y+n);
+    f(x,y) = downcast(type_of<T>(), in(x-n,y-n) + in(x+n,y+n));
     if (schedule & SCHEDULE_BOUND) f.bound(x,0,WIDTH).bound(y,0,HEIGHT);
     if (vec > 0) f.vectorize(x,vec);
 # if HAS_PARTITION
@@ -682,33 +789,41 @@ void test(std::string basename,
     
     testcount++;
     
+    // Check to see whether this test has already been done sufficient times.
+    // Only works if data file has been selected with -f option.
+    if (! logging) {
+        int dc = collector.data_count();
+        if (dc >= collector.max_data_count)
+            return;
+        if (dc < min_data_count) {
+            min_data_count = dc;
+            ids.clear(); // Forget any accumulated ids with higher data count.
+        }
+    }
+    
+    // Looking at tests that do not have enough data, compute the priority.
+    // If the priority is zero, the test is deselected.
     int pri = priority.p(collector);
     if (pri == 0) return; // Not selected by priority options
     
-    if (pri > max_priority) {
-        max_priority = pri;
-        ids.clear(); // Forget any accumulated ids of lower priority
+    // If the priority is higher than seen before (and requiring data to be collected)
+    // then only accept tests of that priority or higher.  Works best with accumulated ids.
+    if (! logging) {
+        if (pri > max_priority) {
+            max_priority = pri;
+            ids.clear(); // Forget any accumulated ids of lower priority
+        }
+        if (pri < max_priority) return; // Not selected based on priority
+        if (listing) {
+            std::cout << testcount << " " << collector.name << "\n";
+            return;
+        }
+        if (list_ids) {
+            ids.push_back(testcount);
+            return;
+        }
     }
-    if (pri < max_priority) return; // Not selected based on priority
 
-    // Check to see whether this test has already been done sufficient times.
-    // Only works if data file has been selected with -f option.
-    int dc = collector.data_count();
-    if (dc >= collector.max_data_count)
-        return;
-    if (dc < min_data_count) {
-        min_data_count = dc;
-        ids.clear(); // Forget any accumulated ids with higher data count.
-    }
-        
-    if (listing) {
-        std::cout << testcount << " " << collector.name << "\n";
-        return;
-    }
-    if (list_ids) {
-        ids.push_back(testcount);
-        return;
-    }
     if (testcount != testid && testid != -1) return; // Skip this test.  ID -1 means do all.
     
     ImageParam a(type_of<T>(), 2);
@@ -725,7 +840,6 @@ void test(std::string basename,
     }
     
     double t1, t2;
-
     Func f;
 
     int count, check = 1;
@@ -794,8 +908,9 @@ void test(std::string basename,
     
     if (schedule != 0 && ! logging) {
         // Compute the preferred output using the builder with no
-        // schedule.
-        (*builder)(collector.name, a, b, n, bdr, 0, 0, dimensionality).realize(ref);
+        // schedule.  Except: preserve upcast because that is necessary for correct results. 
+        // Also preserve SCHEDULE_INPUT_PARAM.
+        (*builder)(collector.name, a, b, n, bdr, schedule & (SCHEDULE_UPCAST | SCHEDULE_INPUT_PARAM), 0, dimensionality).realize(ref);
         
         for (int i = 0; i < WIDTH; i++) {
             for (int j = 0; j < HEIGHT; j++) {
@@ -892,12 +1007,25 @@ void do_diag(int bdr, int vec, int dimensionality, int vec_only) {
 }
 
 template<typename T>
+void do_sobel(int bdr, int vec, int dimensionality, int vec_only) {
+    int up[] = { SCHEDULE_UPCAST_INT, SCHEDULE_UPCAST_FLOAT };
+    for (int i = 0; i < 3; i++) {
+        if (up[i] == SCHEDULE_UPCAST_FLOAT && type_of<T>().is_float()) continue; // Skip this case
+        test<T>("sobel", build_sobel, 9, bdr, up[i], 0, dimensionality, vec_only);
+        test<T>("sobel", build_sobel, 9, bdr, up[i], vec, dimensionality, vec_only);
+        test<T>("sobel", build_sobel, 9, bdr, up[i] | SCHEDULE_BOUND, 0, dimensionality, vec_only);
+        test<T>("sobel", build_sobel, 9, bdr, up[i] | SCHEDULE_BOUND, vec, dimensionality, vec_only);
+# if HAS_PARTITION
+        test<T>("sobel", build_sobel, 9, bdr, up[i] | SCHEDULE_SPLIT_INDEX, 0, dimensionality, vec_only);
+        test<T>("sobel", build_sobel, 9, bdr, up[i] | SCHEDULE_SPLIT_INDEX, vec, dimensionality, vec_only);
+        test<T>("sobel", build_sobel, 9, bdr, up[i] | SCHEDULE_BOUND | SCHEDULE_SPLIT_INDEX, 0, dimensionality, vec_only);
+        test<T>("sobel", build_sobel, 9, bdr, up[i] | SCHEDULE_BOUND | SCHEDULE_SPLIT_INDEX, vec, dimensionality, vec_only);
+# endif
+    }
+}
+
+template<typename T>
 void do_tests(int bdr, int vec, int dimensionality, int vec_only = 0) {
-    //test<T>("basic", build_basic, 0, bdr);
-    //test<T>("basic", build_basic, 0, bdr, 0, vec);
-    if (dimensionality == 2)
-        do_diag<T>(bdr, vec, dimensionality, vec_only);
-    
     do_blur_n<T>(bdr, 0, 0, dimensionality, vec_only);
     do_blur_n<T>(bdr, SCHEDULE_ROOT_BORDER, 0, dimensionality, vec_only);
     do_blur_n<T>(bdr, 0, vec, dimensionality, vec_only);
@@ -909,16 +1037,24 @@ void do_tests(int bdr, int vec, int dimensionality, int vec_only = 0) {
     do_blur_n<T>(bdr, SCHEDULE_SPLIT_INDEX | SCHEDULE_ROOT_BORDER, vec, dimensionality, vec_only);
 # endif
 
-    do_conv_n<T>(bdr, 0, 0, dimensionality, vec_only);
-    do_conv_n<T>(bdr, SCHEDULE_ROOT_BORDER, 0, dimensionality, vec_only);
-    do_conv_n<T>(bdr, 0, vec, dimensionality, vec_only);
-    do_conv_n<T>(bdr, SCHEDULE_ROOT_BORDER, vec, dimensionality, vec_only);
+    for (int sbound = 0; sbound < 2; sbound++) {
+	int sb = sbound * SCHEDULE_BOUND;
+        for (int srootborder = 0; srootborder < 2; srootborder++) {
+            int srb = srootborder * SCHEDULE_ROOT_BORDER | sb;
+            for (int dovec = 0; dovec < 2; dovec++) {
+                int vv = dovec * vec;
+                do_conv_n<T>(bdr, srb, vv, dimensionality, vec_only);
 # if HAS_PARTITION
-    do_conv_n<T>(bdr, SCHEDULE_SPLIT_INDEX, 0, dimensionality, vec_only);
-    do_conv_n<T>(bdr, SCHEDULE_SPLIT_INDEX | SCHEDULE_ROOT_BORDER, 0, dimensionality, vec_only);
-    do_conv_n<T>(bdr, SCHEDULE_SPLIT_INDEX, vec, dimensionality, vec_only);
-    do_conv_n<T>(bdr, SCHEDULE_SPLIT_INDEX | SCHEDULE_ROOT_BORDER, vec, dimensionality, vec_only);
+                do_conv_n<T>(bdr, srb | SCHEDULE_SPLIT_INDEX, vv, dimensionality, vec_only);
 # endif
+            }
+        }
+    }
+
+    if (dimensionality == 2) {
+	do_diag<T>(bdr, vec, dimensionality, vec_only);
+        do_sobel<T>(bdr, vec, dimensionality, vec_only);
+    }
 
     if (dimensionality == 1) {
         test<T>("simplify", build_simplify_n, 5, bdr, 0, 0, dimensionality, vec_only);
