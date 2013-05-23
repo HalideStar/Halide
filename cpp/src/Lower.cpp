@@ -771,6 +771,7 @@ Stmt do_loop_partition(Stmt s, int section) {
 		log(1) << "Performing bounds analysis simplification...\n";
 		s = simplify(s);
         code_logger.log(s, "simplify");
+        code_logger.section("bounds_simplify");
 		s = bounds_simplify(s);
 		log(2) << "Bounds Simplify:\n" << s << '\n';
 		code_logger.log(s, "bounds_simplify");

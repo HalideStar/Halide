@@ -544,11 +544,14 @@ Stmt loop_partition(Stmt s) {
     LoopPartition loop_part;
     s = simplify(s); // Must be fully simplified first
     code_logger.log(s, "simplify");
+    code_logger.section("pre_solver");
     Stmt pre = LoopPreSolver().mutate(s);
     code_logger.log(pre, "pre_solver");
+    code_logger.section("solved");
     Stmt solved = solver(pre);
     code_logger.log(solved, "solved");
     loop_part.solved = solved;
+    code_logger.section("loop_partition");
     s = loop_part.mutate(s);
     code_logger.log(s, "loop_partition");
     return s;
