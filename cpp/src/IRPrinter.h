@@ -4,6 +4,7 @@
 #include "IRVisitor.h"
 #include "Type.h"
 #include "IR.h"
+#include "IR.h"
 #include "Interval.h"
 #include "InfInterval.h"
 #include "DomainInference.h"
@@ -60,6 +61,10 @@ namespace Internal {
 /** Emit a halide statement on an output stream (such as std::cout) in
  * a human-readable form */
 std::ostream &operator<<(std::ostream &stream, Stmt);
+
+/** Emit a halide for loop type (vectorized, serial, etc) in a human
+ * readable form */
+std::ostream &operator<<(std::ostream &stream, const For::ForType &);
 
 std::ostream &operator<<(std::ostream &out, const PartitionInfo &info);
 

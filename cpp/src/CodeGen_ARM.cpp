@@ -11,36 +11,20 @@
 #include "Param.h"
 #include "Simplify.h"
 #include "integer_division_table.h"
-
-#include <llvm/Config/config.h>
-
-// Temporary affordance to compile with both llvm 3.2 and 3.3.
-// Protected as at least one installation of llvm elides version macros.
-#if defined(LLVM_VERSION_MINOR) && LLVM_VERSION_MINOR < 3
-#include <llvm/Value.h>
-#include <llvm/Module.h>
-#include <llvm/Function.h>
-#include <llvm/TargetTransformInfo.h>
-#include <llvm/DataLayout.h>
-#include <llvm/IRBuilder.h>
-#include <llvm/Support/IRReader.h>
-#else
-#include <llvm/IR/Value.h>
-#include <llvm/IR/Module.h>
-#include <llvm/IR/Function.h>
-#include <llvm/Analysis/TargetTransformInfo.h>
-#include <llvm/IR/DataLayout.h>
-#include <llvm/IR/IRBuilder.h>
-#include <llvm/Bitcode/ReaderWriter.h>
-#endif
-
-#include <llvm/Support/MemoryBuffer.h>
-
+#include "LLVM_Headers.h"
 
 extern "C" unsigned char halide_internal_initmod_arm[];
 extern "C" int halide_internal_initmod_arm_length;
 extern "C" unsigned char halide_internal_initmod_arm_android[];
 extern "C" int halide_internal_initmod_arm_android_length;
+
+#if WITH_NATIVE_CLIENT
+extern "C" unsigned char halide_internal_initmod_arm_nacl[];
+extern "C" int halide_internal_initmod_arm_nacl_length;
+#else
+static void *halide_internal_initmod_arm_nacl = 0;
+static int halide_internal_initmod_arm_nacl_length = 0;
+#endif
 
 namespace Halide { 
 namespace Internal {
@@ -51,13 +35,18 @@ using std::ostringstream;
 
 using namespace llvm;
 
-CodeGen_ARM::CodeGen_ARM(bool android) : CodeGen_Posix(), use_android(android) {
+CodeGen_ARM::CodeGen_ARM(uint32_t options) : CodeGen_Posix(),
+					     use_android(options & ARM_Android),
+                                             use_nacl(options & ARM_NaCl) {
     assert(llvm_ARM_enabled && "llvm build not configured with ARM target enabled.");
+    #if !(WITH_NATIVE_CLIENT)
+    assert(!use_nacl && "llvm build not configured with native client enabled.");
+    #endif
 }
 
 void CodeGen_ARM::compile(Stmt stmt, string name, const vector<Argument> &args) {
 
-    if (module && owns_module) delete module;
+    init_module();
 
     StringRef sb;
 
@@ -67,18 +56,26 @@ void CodeGen_ARM::compile(Stmt stmt, string name, const vector<Argument> &args) 
         sb = StringRef((char *)halide_internal_initmod_arm_android, 
                        halide_internal_initmod_arm_android_length);
     } else {
-        assert(halide_internal_initmod_arm_length && "initial module for arm is empty");
-        sb = StringRef((char *)halide_internal_initmod_arm, halide_internal_initmod_arm_length);
+	if (use_nacl) {
+            assert(halide_internal_initmod_arm_nacl_length && "initial module for ARM_nacl is empty");
+            sb = StringRef((char *)halide_internal_initmod_arm_nacl, halide_internal_initmod_arm_nacl_length);
+	} else {
+	    assert(halide_internal_initmod_arm_length && "initial module for arm is empty");
+	    sb = StringRef((char *)halide_internal_initmod_arm, halide_internal_initmod_arm_length);
+	}
     }
     MemoryBuffer *bitcode_buffer = MemoryBuffer::getMemBuffer(sb);
 
     // Parse it    
-    module = ParseBitcodeFile(bitcode_buffer, context);
+    module = ParseBitcodeFile(bitcode_buffer, *context);
 
     // Fix the target triple. The initial module was probably compiled for x86
+
     log(1) << "Target triple of initial module: " << module->getTargetTriple() << "\n";
     if (use_android) {
         module->setTargetTriple("arm-linux-eabi");
+    } else if (use_nacl) {
+        module->setTargetTriple("arm-nacl");        
     } else {
         module->setTargetTriple("arm-linux-gnueabihf");
     }
@@ -1061,7 +1058,7 @@ void CodeGen_ARM::visit(const Load *op) {
         for (int i = 0; i < stride->value; i++) {
             type_vec[i] = elem_type;
         }
-        llvm::StructType *result_type = StructType::get(context, type_vec);
+        llvm::StructType *result_type = StructType::get(*context, type_vec);
 
         ostringstream prefix;
         prefix << "vld" << stride->value << ".";

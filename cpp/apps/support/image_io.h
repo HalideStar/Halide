@@ -112,7 +112,7 @@ Image<T> load_png(std::string filename) {
     _assert((bit_depth == 8) || (bit_depth == 16), "Can only handle 8-bit or 16-bit pngs\n");
 
     // convert the data to T
-    //im.markHostDirty();
+
     int c_stride = im.stride(2);
     T *ptr = (T*)im.data();
     if (bit_depth == 8) {
@@ -147,6 +147,7 @@ Image<T> load_png(std::string filename) {
 
     png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
 
+    im.set_host_dirty();
     return im;
 } 
 
@@ -156,6 +157,8 @@ void save_png(Image<T> im, std::string filename) {
     png_infop info_ptr;
     png_bytep *row_pointers;
     png_byte color_type;
+
+    im.copy_to_host();
 
     _assert(im.channels() > 0 && im.channels() < 5,
            "Can't write PNG files that have other than 1, 2, 3, or 4 channels\n");

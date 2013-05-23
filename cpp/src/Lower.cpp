@@ -103,13 +103,17 @@ Stmt build_provide_loop_nest(string buffer, string prefix, vector<Expr> site, Ex
     // Define the function args in terms of the loop variables using the splits
     for (size_t i = 0; i < s.splits.size(); i++) {
         const Schedule::Split &split = s.splits[i];
-        Expr inner = new Variable(Int(32), prefix + split.inner);
         Expr outer = new Variable(Int(32), prefix + split.outer);
-        Expr old_min = new Variable(Int(32), prefix + split.old_var + ".min");
-        // stmt = new LetStmt(prefix + split.old_var, outer * split.factor + inner + old_min, stmt);
-        stmt = substitute(prefix + split.old_var, outer * split.factor + inner + old_min, stmt);
+        if (!split.is_rename) {
+            Expr inner = new Variable(Int(32), prefix + split.inner);
+            Expr old_min = new Variable(Int(32), prefix + split.old_var + ".min");
+            // stmt = new LetStmt(prefix + split.old_var, outer * split.factor + inner + old_min, stmt);
+            stmt = substitute(prefix + split.old_var, outer * split.factor + inner + old_min, stmt);
+        } else {
+            stmt = substitute(prefix + split.old_var, outer, stmt);
+        }
     }
-            
+       
     // Build the loop nest
     for (size_t i = 0; i < s.dims.size(); i++) {
         const Schedule::Dim &dim = s.dims[i];
@@ -127,12 +131,18 @@ Stmt build_provide_loop_nest(string buffer, string prefix, vector<Expr> site, Ex
     for (size_t i = s.splits.size(); i > 0; i--) {
         const Schedule::Split &split = s.splits[i-1];
         Expr old_var_extent = new Variable(Int(32), prefix + split.old_var + ".extent");
-        Expr inner_extent = split.factor;
-        Expr outer_extent = (old_var_extent + split.factor - 1)/split.factor;
-        stmt = new LetStmt(prefix + split.inner + ".min", 0, stmt);
-        stmt = new LetStmt(prefix + split.inner + ".extent", inner_extent, stmt);
-        stmt = new LetStmt(prefix + split.outer + ".min", 0, stmt);
-        stmt = new LetStmt(prefix + split.outer + ".extent", outer_extent, stmt);            
+        Expr old_var_min = new Variable(Int(32), prefix + split.old_var + ".min");
+        if (!split.is_rename) {
+            Expr inner_extent = split.factor;
+            Expr outer_extent = (old_var_extent + split.factor - 1)/split.factor;
+            stmt = new LetStmt(prefix + split.inner + ".min", 0, stmt);
+            stmt = new LetStmt(prefix + split.inner + ".extent", inner_extent, stmt);
+            stmt = new LetStmt(prefix + split.outer + ".min", 0, stmt);
+            stmt = new LetStmt(prefix + split.outer + ".extent", outer_extent, stmt);            
+        } else {
+            stmt = new LetStmt(prefix + split.outer + ".min", old_var_min, stmt);
+            stmt = new LetStmt(prefix + split.outer + ".extent", old_var_extent, stmt);
+        }
     }
 
     return stmt;
@@ -256,14 +266,15 @@ class IsCalledInStmt : public IRVisitor {
 
 public:
     bool result;
-    IsCalledInStmt(Function f, Stmt s) : func(f.name()), result(false) {
-        s.accept(this);
+    IsCalledInStmt(Function f) : func(f.name()), result(false) {
     }
     
 };
 
 bool function_is_called_in_stmt(Function f, Stmt s) {
-    return IsCalledInStmt(f, s).result;
+    IsCalledInStmt is_called(f);
+    s.accept(&is_called);
+    return is_called.result;
 }
 
 // Inject the allocation and realization of a function into an
@@ -446,7 +457,6 @@ private:
 /* Find all the internal halide calls in an expr */
 class FindCalls : public IRVisitor {
 public:
-    FindCalls(Expr e) {e.accept(this);}
     map<string, Function> calls;
 
     using IRVisitor::visit;
@@ -497,22 +507,24 @@ public:
     struct Result {
         Buffer image;
         Parameter param;
+        Type type;
     };
 
-    FindBuffers(Stmt s) {s.accept(this);}
     map<string, Result> buffers;
 
     using IRVisitor::visit;
 
     void visit(const Call *op) {
-        IRVisitor::visit(op);
+        IRVisitor::visit(op);        
         if (op->image.defined()) {
             Result r;
             r.image = op->image;
+            r.type = op->type.element_of();
             buffers[op->name] = r;
         } else if (op->param.defined()) {
             Result r;
             r.param = op->param;
+            r.type = op->type.element_of();
             buffers[op->name] = r;
         }
     }
@@ -526,7 +538,8 @@ void populate_environment(Function f, map<string, Function> &env, bool recursive
         return;
     }
             
-    FindCalls calls(f.value());
+    FindCalls calls;
+    f.value().accept(&calls);
 
     // Consider reductions
     if (f.is_reduction()) {
@@ -646,9 +659,11 @@ Stmt schedule_functions(Stmt s, const vector<string> &order,
 // on inputs or outputs, and that the inputs and outputs conform to
 // the format required (e.g. stride.0 must be 1).
 Stmt add_image_checks(Stmt s, Function f) {
-    map<string, FindBuffers::Result> bufs = FindBuffers(s).buffers;    
+    FindBuffers finder;
+    s.accept(&finder);
+    map<string, FindBuffers::Result> bufs = finder.buffers;    
 
-    bufs[f.name()];
+    bufs[f.name()].type = f.value().type();
 
     map<string, Region> regions = regions_touched(s);
     for (map<string, FindBuffers::Result>::iterator iter = bufs.begin();
@@ -656,6 +671,17 @@ Stmt add_image_checks(Stmt s, Function f) {
         const string &name = iter->first;
         Buffer &image = iter->second.image;
         Parameter &param = iter->second.param;
+        Type type = iter->second.type;
+
+        // Check the elem size matches the internally-understood type
+        {
+            Expr elem_size = new Variable(Int(32), name + ".elem_size");
+            int correct_size = type.bits / 8;
+            ostringstream error_msg;
+            error_msg << "Element size for " << name << " should be " << correct_size;
+            Stmt check = new AssertStmt(elem_size == type.bits / 8, error_msg.str()); 
+            s = new Block(check, s);
+        }
 
         // Bounds checking can be disabled via HL_DISABLE_BOUNDS_CHECKING
         const char *disable = getenv("HL_DISABLE_BOUNDS_CHECKING");

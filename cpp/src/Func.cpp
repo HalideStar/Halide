@@ -55,6 +55,13 @@ Func::Func(Expr e) : func(unique_name('f')),
     (*this)() = e;
 }
 
+/*
+Func::Func(Buffer b) : func(unique_name('f')),
+                       error_handler(NULL), 
+                       custom_malloc(NULL), 
+                       custom_free(NULL), 
+                       custom_do_par_for(NULL), 
+                       custom_do_task(NULL) {
 void Func::constructor(Buffer b) {
     func = Function(unique_name('f'));
     error_handler = NULL;
@@ -68,6 +75,7 @@ void Func::constructor(Buffer b) {
     }
     (*this)() = new Internal::Call(b, args);
 }
+*/
 
 Func::Func(Buffer b) {    
     constructor(b);
@@ -102,72 +110,97 @@ int Func::dimensions() const {
     return (int)func.args().size();
 }
 
-FuncRefVar Func::operator()() {
+FuncRefVar Func::operator()() const {
     // Bulk up the argument list using implicit vars
     vector<Var> args;
     add_implicit_vars(args);
     return FuncRefVar(func, args);
 }
 
-FuncRefVar Func::operator()(Var x) {
+FuncRefVar Func::operator()(Var x) const {
     // Bulk up the argument list using implicit vars
     vector<Var> args = vec(x);
     add_implicit_vars(args);
     return FuncRefVar(func, args);
 }
 
-FuncRefVar Func::operator()(Var x, Var y) {
+FuncRefVar Func::operator()(Var x, Var y) const {
     vector<Var> args = vec(x, y);
     add_implicit_vars(args);
     return FuncRefVar(func, args);
 }
 
-FuncRefVar Func::operator()(Var x, Var y, Var z) {
+FuncRefVar Func::operator()(Var x, Var y, Var z) const{
     vector<Var> args = vec(x, y, z);
     add_implicit_vars(args);
     return FuncRefVar(func, args);
 }
 
-FuncRefVar Func::operator()(Var x, Var y, Var z, Var w) {
+FuncRefVar Func::operator()(Var x, Var y, Var z, Var w) const {
     vector<Var> args = vec(x, y, z, w);
     add_implicit_vars(args);
     return FuncRefVar(func, args);
 }
 
-FuncRefVar Func::operator()(vector<Var> args) {
+FuncRefVar Func::operator()(Var x, Var y, Var z, Var w, Var u) const {
+    vector<Var> args = vec(x, y, z, w, u);
+    add_implicit_vars(args);
+    return FuncRefVar(func, args);
+}
+
+FuncRefVar Func::operator()(Var x, Var y, Var z, Var w, Var u, Var v) const {
+  vector<Var> args = vec(x, y, z, w, u, v);
+    add_implicit_vars(args);
+    return FuncRefVar(func, args);
+}
+
+FuncRefVar Func::operator()(vector<Var> args) const {
     add_implicit_vars(args);
     return FuncRefVar(func, args);
 }
  
-FuncRefExpr Func::operator()(Expr x) {
+FuncRefExpr Func::operator()(Expr x) const {
     vector<Expr> args = vec(x);
     add_implicit_vars(args);
     return FuncRefExpr(func, args);
 }
 
-FuncRefExpr Func::operator()(Expr x, Expr y) {
+FuncRefExpr Func::operator()(Expr x, Expr y) const {
     vector<Expr> args = vec(x, y);
     add_implicit_vars(args);
     return FuncRefExpr(func, args);
 }
 
-FuncRefExpr Func::operator()(Expr x, Expr y, Expr z) {
+FuncRefExpr Func::operator()(Expr x, Expr y, Expr z) const {
     vector<Expr> args = vec(x, y, z);
     add_implicit_vars(args);
     return FuncRefExpr(func, args);
 }
 
-FuncRefExpr Func::operator()(Expr x, Expr y, Expr z, Expr w) {
+FuncRefExpr Func::operator()(Expr x, Expr y, Expr z, Expr w) const {
     vector<Expr> args = vec(x, y, z, w);
     add_implicit_vars(args);
     return FuncRefExpr(func, args);
 }  
 
-FuncRefExpr Func::operator()(vector<Expr> args) {
+FuncRefExpr Func::operator()(Expr x, Expr y, Expr z, Expr w, Expr u) const {
+  vector<Expr> args = vec(x, y, z, w, u);
+    add_implicit_vars(args);
+    return FuncRefExpr(func, args);
+}  
+
+FuncRefExpr Func::operator()(Expr x, Expr y, Expr z, Expr w, Expr u, Expr v) const {
+    vector<Expr> args = vec(x, y, z, w, u, v);
+    add_implicit_vars(args);
+    return FuncRefExpr(func, args);
+}  
+
+FuncRefExpr Func::operator()(vector<Expr> args) const {
     add_implicit_vars(args);
     return FuncRefExpr(func, args);
 }
 
+void Func::add_implicit_vars(vector<Var> &args) const {
 FuncRefKernel Func::operator[](Expr x) {
     return FuncRefKernel(func, vec(x));
 }
@@ -202,7 +235,7 @@ void Func::add_implicit_vars(vector<Var> &args) {
     }
 }
     
-void Func::add_implicit_vars(vector<Expr> &args) {
+void Func::add_implicit_vars(vector<Expr> &args) const {
     int i = 0;
     while ((int)args.size() < dimensions()) {
         Internal::log(2) << "Adding implicit var " << i << " to call to " << name() << "\n";
@@ -221,10 +254,13 @@ bool var_name_match(string candidate, string var) {
 void ScheduleHandle::set_dim_type(Var var, For::ForType t) {
     bool found = false;
     vector<Schedule::Dim> &dims = schedule.dims;
-    for (size_t i = 0; (!found) && i < dims.size(); i++) {
+    for (size_t i = 0; i < dims.size(); i++) {
         if (var_name_match(dims[i].var, var.name())) {
             found = true;
             dims[i].for_type = t;
+        } else if (t == For::Vectorized) {
+            assert(dims[i].for_type != For::Vectorized && 
+                   "Can't vectorize across more than one variable");
         }
     }
     
@@ -236,7 +272,22 @@ void ScheduleHandle::set_dim_type(Var var, For::ForType t) {
         }
         Internal::log(0) << "\n";
     }
-    assert(found && "Could not find dimension in argument list for function");
+    if (!found) {
+        std::cerr << "Could not find dimension " 
+                  << var.name() 
+                  << " to mark as " << t
+                  << " in argument list for function\n";
+        dump_argument_list();
+        assert(false);
+    }
+}
+
+void ScheduleHandle::dump_argument_list() {
+    std::cerr << "Argument list:";
+    for (size_t i = 0; i < schedule.dims.size(); i++) {
+        std::cerr << " " << schedule.dims[i].var;
+    }
+    std::cerr << "\n";
 }
 
 ScheduleHandle &ScheduleHandle::split(Var old, Var outer, Var inner, Expr factor) {
@@ -265,10 +316,42 @@ ScheduleHandle &ScheduleHandle::split(Var old, Var outer, Var inner, Expr factor
         }
     }
         
-    assert(found && "Could not find dimension in argument list for function");
+    if (!found) {
+        std::cerr << "Could not find split dimension in argument list: " 
+                  << old.name() 
+                  << "\n";
+        dump_argument_list();
+        assert(false);
+    }
+
         
     // Add the split to the splits list
-    Schedule::Split split = {old_name, outer_name, inner_name, factor};
+    Schedule::Split split = {old_name, outer_name, inner_name, factor, false};
+    schedule.splits.push_back(split);
+    return *this;
+}
+
+ScheduleHandle &ScheduleHandle::rename(Var old_var, Var new_var) {
+    // Replace the old dimension with the new dimensions in the dims list
+    bool found = false;
+    vector<Schedule::Dim> &dims = schedule.dims;
+    for (size_t i = 0; (!found) && i < dims.size(); i++) {
+        if (var_name_match(dims[i].var, old_var.name())) {
+            found = true;
+            dims[i].var += "." + new_var.name();
+        }
+    }
+     
+    if (!found) {
+        std::cerr << "Could not find rename dimension in argument list: " 
+                  << old_var.name() 
+                  << "\n";
+        dump_argument_list();
+        assert(false);
+    }
+        
+    // Add the rename to the splits list
+    Schedule::Split split = {old_var.name(), old_var.name() + "." + new_var.name(), "", 1, true};
     schedule.splits.push_back(split);
     return *this;
 }
@@ -352,6 +435,11 @@ ScheduleHandle &ScheduleHandle::reorder(Var x, Var y, Var z, Var w, Var t) {
     return reorder(x, y).reorder(x, z).reorder(x, w).reorder(x, t).reorder(y, z, w, t);
 }
 
+ScheduleHandle &ScheduleHandle::cuda_threads(Var tx) {
+    parallel(tx);
+    rename(tx, Var("threadidx"));
+    return *this;
+}
 namespace {
 void record_partition(Internal::Schedule &schedule, Var var, PartitionInfo info) {
     bool found = false;
@@ -372,6 +460,106 @@ void record_partition(Internal::Schedule &schedule, Var var, PartitionInfo info)
         Internal::log(0) << "\n";
     }
     assert(found && "Could not find dimension in argument list for function");
+
+ScheduleHandle &ScheduleHandle::cuda_threads(Var tx, Var ty) {
+    parallel(tx);
+    parallel(ty);
+    rename(tx, Var("threadidx"));
+    rename(ty, Var("threadidy"));
+    return *this;
+}
+
+ScheduleHandle &ScheduleHandle::cuda_threads(Var tx, Var ty, Var tz) {
+    parallel(tx);
+    parallel(ty);
+    parallel(tz);
+    rename(tx, Var("threadidx"));
+    rename(ty, Var("threadidy"));
+    rename(tz, Var("threadidz"));
+    return *this;
+}
+
+ScheduleHandle &ScheduleHandle::cuda_blocks(Var tx) {
+    parallel(tx);
+    rename(tx, Var("blockidx"));
+    return *this;
+}
+
+ScheduleHandle &ScheduleHandle::cuda_blocks(Var tx, Var ty) {
+    parallel(tx);
+    parallel(ty);
+    rename(tx, Var("blockidx"));
+    rename(ty, Var("blockidy"));
+    return *this;
+}
+
+ScheduleHandle &ScheduleHandle::cuda_blocks(Var tx, Var ty, Var tz) {
+    parallel(tx);
+    parallel(ty);
+    parallel(tz);
+    rename(tx, Var("blockidx"));
+    rename(ty, Var("blockidy"));
+    rename(tz, Var("blockidz"));
+    return *this;
+}
+
+ScheduleHandle &ScheduleHandle::cuda(Var bx, Var tx) {
+    return cuda_blocks(bx).cuda_threads(tx);
+}
+
+ScheduleHandle &ScheduleHandle::cuda(Var bx, Var by, 
+                                     Var tx, Var ty) {
+    return cuda_blocks(bx, by).cuda_threads(tx, ty);
+}
+
+ScheduleHandle &ScheduleHandle::cuda(Var bx, Var by, Var bz, 
+                                     Var tx, Var ty, Var tz) {
+    return cuda_blocks(bx, by, bz).cuda_threads(tx, ty, tz);
+}
+
+ScheduleHandle &ScheduleHandle::cuda_tile(Var x, int x_size) {
+    Var bx("blockidx"), tx("threadidx");
+    split(x, bx, tx, x_size);
+    parallel(bx);
+    parallel(tx);
+    return *this;
+}
+
+
+ScheduleHandle &ScheduleHandle::cuda_tile(Var x, Var y, 
+                                          int x_size, int y_size) {
+    Var bx("blockidx"), by("blockidy"), tx("threadidx"), ty("threadidy");
+    tile(x, y, bx, by, tx, ty, x_size, y_size);
+    parallel(bx);
+    parallel(by);
+    parallel(tx);
+    parallel(ty);
+    return *this;
+}
+
+ScheduleHandle &ScheduleHandle::cuda_tile(Var x, Var y, Var z, 
+                                          int x_size, int y_size, int z_size) {
+    Var bx("blockidx"), by("blockidy"), bz("blockidz"),
+        tx("threadidx"), ty("threadidy"), tz("threadidz");
+    split(x, bx, tx, x_size);
+    split(y, by, ty, y_size);
+    split(z, bz, tz, z_size);
+    // current order is:
+    // tx bx ty by tz bz
+    reorder(ty, bx);
+    // tx ty bx by tz bz
+    reorder(tz, bx);
+    // tx ty tz by bx bz
+    reorder(bx, by);
+    // tx ty tz bx by bz
+    parallel(bx);
+    parallel(by);
+    parallel(bz);
+    parallel(tx);
+    parallel(ty);
+    parallel(tz);
+    return *this;
+}
 
     return;
 }
@@ -399,6 +587,11 @@ ScheduleHandle &ScheduleHandle::partition_all(bool auto_partition_all) {
 
 Func &Func::split(Var old, Var outer, Var inner, Expr factor) {
     ScheduleHandle(func.schedule()).split(old, outer, inner, factor);
+    return *this;
+}
+
+Func &Func::rename(Var old_name, Var new_name) {
+    ScheduleHandle(func.schedule()).rename(old_name, new_name);
     return *this;
 }
 
@@ -459,6 +652,66 @@ Func &Func::reorder(Var x, Var y, Var z, Var w) {
 
 Func &Func::reorder(Var x, Var y, Var z, Var w, Var t) {
     ScheduleHandle(func.schedule()).reorder(x, y, z, w, t);
+    return *this;
+}
+
+Func &Func::cuda_threads(Var tx) {
+    ScheduleHandle(func.schedule()).cuda_threads(tx);
+    return *this;
+}
+
+Func &Func::cuda_threads(Var tx, Var ty) {
+    ScheduleHandle(func.schedule()).cuda_threads(tx, ty);
+    return *this;
+}
+
+Func &Func::cuda_threads(Var tx, Var ty, Var tz) {
+    ScheduleHandle(func.schedule()).cuda_threads(tx, ty, tz);
+    return *this;
+}
+
+Func &Func::cuda_blocks(Var bx) {
+    ScheduleHandle(func.schedule()).cuda_blocks(bx);
+    return *this;
+}
+
+Func &Func::cuda_blocks(Var bx, Var by) {
+    ScheduleHandle(func.schedule()).cuda_blocks(bx, by);
+    return *this;
+}
+
+Func &Func::cuda_blocks(Var bx, Var by, Var bz) {
+    ScheduleHandle(func.schedule()).cuda_blocks(bx, by, bz);
+    return *this;
+}
+
+Func &Func::cuda(Var bx, Var tx) {
+    ScheduleHandle(func.schedule()).cuda(bx, tx);
+    return *this;
+}
+
+Func &Func::cuda(Var bx, Var by, Var tx, Var ty) {
+    ScheduleHandle(func.schedule()).cuda(bx, by, tx, ty);
+    return *this;
+}
+
+Func &Func::cuda(Var bx, Var by, Var bz, Var tx, Var ty, Var tz) {
+    ScheduleHandle(func.schedule()).cuda(bx, by, bz, tx, ty, tz);
+    return *this;
+}
+
+Func &Func::cuda_tile(Var x, int x_size) {
+    ScheduleHandle(func.schedule()).cuda_tile(x, x_size);
+    return *this;
+}
+
+Func &Func::cuda_tile(Var x, Var y, int x_size, int y_size) {
+    ScheduleHandle(func.schedule()).cuda_tile(x, y, x_size, y_size);
+    return *this;
+}
+
+Func &Func::cuda_tile(Var x, Var y, Var z, int x_size, int y_size, int z_size) {
+    ScheduleHandle(func.schedule()).cuda_tile(x, y, z, x_size, y_size, z_size);
     return *this;
 }
 
@@ -674,7 +927,7 @@ public:
 };
 }
 
-void FuncRefVar::add_implicit_vars(vector<string> &a, Expr e) {
+void FuncRefVar::add_implicit_vars(vector<string> &a, Expr e) const {
     CountImplicitVars count(e);
     Internal::log(2) << "Adding " << count.count << " implicit vars to LHS of " << func.name() << "\n";
     for (int i = 0; i < count.count; i++) {
@@ -740,6 +993,7 @@ FuncRefExpr::FuncRefExpr(Internal::Function f, const vector<string> &a) : func(f
     }
 }
     
+void FuncRefExpr::add_implicit_vars(vector<Expr> &a, Expr e) const {
 FuncRefKernel::FuncRefKernel(Internal::Function f, const vector<Expr> &a) : func(f), args(a) {
     for (size_t i = 0; i < args.size(); i++) {
         args[i] = cast<int>(args[i]);
@@ -832,132 +1086,7 @@ Buffer Func::realize(int x_size, int y_size, int z_size, int w_size) {
     return buf;
 }
 
-# if 0
-Buffer Func::realize() {
-    assert(value().defined() && "Can't realize undefined function");
-    Type t = value().type();
-    Buffer buf(t, x_size, y_size, z_size, w_size);
-    realize(buf);
-    return buf;
-}
-#endif
-
-void Func::compile_to_stmt() {
-    assert(value().defined() && "Can't compile undefined function");    
-
-    if (!lowered.defined()) lowered = Halide::Internal::lower(func);
-    return;
-}
-
-void Func::compile_to_bitcode(const string &filename, vector<Argument> args, const string &fn_name) {
-    Argument me(name(), true, Int(1));
-    args.push_back(me);
-
-    StmtCompiler cg;
-    cg.compile(lowered, fn_name.empty() ? name() : fn_name, args);
-    cg.compile_to_bitcode(filename);
-}
-
-void Func::compile_to_object(const string &filename, vector<Argument> args, const string &fn_name) {
-    assert(value().defined() && "Can't compile undefined function");    
-
-    if (!lowered.defined()) lowered = Halide::Internal::lower(func);
-    Argument me(name(), true, Int(1));
-    args.push_back(me);
-
-    StmtCompiler cg;
-    cg.compile(lowered, fn_name.empty() ? name() : fn_name, args);
-    cg.compile_to_native(filename, false);
-}
-
-void Func::compile_to_header(const string &filename, vector<Argument> args, const string &fn_name) {    
-    Argument me(name(), true, Int(1));
-    args.push_back(me);
-
-    ofstream header(filename.c_str());
-    CodeGen_C cg(header);
-    cg.compile_header(fn_name.empty() ? name() : fn_name, args);
-}
-
-void Func::compile_to_c(const string &filename, vector<Argument> args, const string &fn_name) {    
-    Argument me(name(), true, Int(1));
-    args.push_back(me);
-
-    if (!lowered.defined()) lowered = Halide::Internal::lower(func);
-    ofstream header(filename.c_str());
-    CodeGen_C cg(header);
-    cg.compile(lowered, fn_name.empty() ? name() : fn_name, args);
-}
-
-void Func::compile_to_file(const string &filename_prefix, vector<Argument> args) {
-    compile_to_header(filename_prefix + ".h", args, filename_prefix);
-    compile_to_object(filename_prefix + ".o", args, filename_prefix);
-}
-
-void Func::compile_to_file(const string &filename_prefix) {
-    compile_to_file(filename_prefix, vector<Argument>());
-}
-
-void Func::compile_to_file(const string &filename_prefix, Argument a) {
-    compile_to_file(filename_prefix, Internal::vec(a));    
-}
-
-void Func::compile_to_file(const string &filename_prefix, Argument a, Argument b) {
-    compile_to_file(filename_prefix, Internal::vec(a, b));    
-}
-
-void Func::compile_to_file(const string &filename_prefix, Argument a, Argument b, Argument c) {
-    compile_to_file(filename_prefix, Internal::vec(a, b, c));    
-}
-
-void Func::compile_to_file(const string &filename_prefix, Argument a, Argument b, Argument c, Argument d) {
-    compile_to_file(filename_prefix, Internal::vec(a, b, c, d));    
-}
-
-void Func::compile_to_file(const string &filename_prefix, Argument a, Argument b, Argument c, Argument d, Argument e) {
-    compile_to_file(filename_prefix, Internal::vec(a, b, c, d, e));    
-}
-
-void Func::compile_to_assembly(const string &filename, vector<Argument> args, const string &fn_name) {
-    assert(value().defined() && "Can't compile undefined function");    
-
-    if (!lowered.defined()) lowered = Halide::Internal::lower(func);
-    Argument me(name(), true, Int(1));
-    args.push_back(me);
-
-    StmtCompiler cg;
-    cg.compile(lowered, fn_name.empty() ? name() : fn_name, args);
-    cg.compile_to_native(filename, true);
-}
-
-void Func::set_error_handler(void (*handler)(char *)) {
-    error_handler = handler;
-    if (compiled_module.set_error_handler) {
-        compiled_module.set_error_handler(handler);
-    }
-}
-
-void Func::set_custom_allocator(void *(*cust_malloc)(size_t), void (*cust_free)(void *)) {
-    custom_malloc = cust_malloc;
-    custom_free = cust_free;
-    if (compiled_module.set_custom_allocator) {
-        compiled_module.set_custom_allocator(cust_malloc, cust_free);
-    }
-}
-
-void Func::set_custom_do_par_for(void (*cust_do_par_for)(void (*)(int, uint8_t *), int, int, uint8_t *)) {
-    custom_do_par_for = cust_do_par_for;
-    if (compiled_module.set_custom_do_par_for) {
-        compiled_module.set_custom_do_par_for(cust_do_par_for);
-    }
-}
-
-void Func::set_custom_do_task(void (*cust_do_task)(void (*)(int, uint8_t *), int, uint8_t *)) {
-    custom_do_task = cust_do_task;
-    if (compiled_module.set_custom_do_task) {
-        compiled_module.set_custom_do_task(cust_do_task);
-    }
-}
+namespace {
 
 class InferArguments : public IRVisitor {
 public:
@@ -985,7 +1114,7 @@ private:
             return;
         }
 
-        Argument arg(arg_name, true, Int(1));
+        Argument arg(arg_name, true, op->type);
         bool already_included = false;
         for (size_t i = 0; i < arg_types.size(); i++) {
             if (arg_types[i].name == op->name) {
@@ -1033,6 +1162,187 @@ private:
     }
 };
 
+/** Check that all the necessary arguments are in an args vector */
+void validate_arguments(const vector<Argument> &args, Stmt lowered) {
+    InferArguments infer_args;
+    lowered.accept(&infer_args);
+    const vector<Argument> &required_args = infer_args.arg_types;
+
+    for (size_t i = 0; i < required_args.size(); i++) {
+        const Argument &arg = required_args[i];
+        bool found = false;
+        for (size_t j = 0; !found && j < args.size(); j++) {
+            if (args[j].name == arg.name) {
+                found = true;
+            }
+        }
+        if (!found) {
+            std::cerr << "Generated code refers to ";
+            if (arg.is_buffer) std::cerr << "image ";
+            std::cerr << "parameter " << arg.name 
+                      << ", which was not found in the argument list\n";
+
+            std::cerr << "\nArgument list specified: ";
+            for (size_t i = 0; i < args.size(); i++) {
+                std::cerr << args[i].name << " ";
+            }
+            std::cerr << "\n\nParameters referenced in generated code: ";
+            for (size_t i = 0; i < required_args.size(); i++) {
+                std::cerr << required_args[i].name << " ";
+            }
+            std::cerr << "\n\n";
+            assert(false);
+        }
+    }
+}
+};
+
+
+void Func::compile_to_bitcode(const string &filename, vector<Argument> args, const string &fn_name) {
+# if 0
+Buffer Func::realize() {
+    assert(value().defined() && "Can't realize undefined function");
+    Type t = value().type();
+    Buffer buf(t, x_size, y_size, z_size, w_size);
+    realize(buf);
+    return buf;
+}
+#endif
+
+void Func::compile_to_stmt() {
+    assert(value().defined() && "Can't compile undefined function");    
+
+    if (!lowered.defined()) {
+        lowered = Halide::Internal::lower(func);
+    }
+
+    validate_arguments(args, lowered);
+
+    Argument me(name(), true, value().type());
+    if (!lowered.defined()) lowered = Halide::Internal::lower(func);
+    return;
+}
+
+void Func::compile_to_bitcode(const string &filename, vector<Argument> args, const string &fn_name) {
+    Argument me(name(), true, Int(1));
+    args.push_back(me);
+
+    StmtCompiler cg;
+    cg.compile(lowered, fn_name.empty() ? name() : fn_name, args);
+    cg.compile_to_bitcode(filename);
+}
+
+void Func::compile_to_object(const string &filename, vector<Argument> args, const string &fn_name) {
+    assert(value().defined() && "Can't compile undefined function");    
+
+    if (!lowered.defined()) {
+        lowered = Halide::Internal::lower(func);
+    }
+
+    validate_arguments(args, lowered);
+
+    Argument me(name(), true, value().type());
+    args.push_back(me);
+
+    StmtCompiler cg;
+    cg.compile(lowered, fn_name.empty() ? name() : fn_name, args);
+    cg.compile_to_native(filename, false);
+}
+
+void Func::compile_to_header(const string &filename, vector<Argument> args, const string &fn_name) {    
+    Argument me(name(), true, value().type());
+    args.push_back(me);
+
+    ofstream header(filename.c_str());
+    CodeGen_C cg(header);
+    cg.compile_header(fn_name.empty() ? name() : fn_name, args);
+}
+
+void Func::compile_to_c(const string &filename, vector<Argument> args, const string &fn_name) {    
+    if (!lowered.defined()) {
+        lowered = Halide::Internal::lower(func);
+    }
+
+    validate_arguments(args, lowered);
+
+    Argument me(name(), true, value().type());
+    args.push_back(me);
+
+    ofstream header(filename.c_str());
+    CodeGen_C cg(header);
+    cg.compile(lowered, fn_name.empty() ? name() : fn_name, args);
+}
+
+void Func::compile_to_file(const string &filename_prefix, vector<Argument> args) {
+    compile_to_header(filename_prefix + ".h", args, filename_prefix);
+    compile_to_object(filename_prefix + ".o", args, filename_prefix);
+}
+
+void Func::compile_to_file(const string &filename_prefix) {
+    compile_to_file(filename_prefix, vector<Argument>());
+}
+
+void Func::compile_to_file(const string &filename_prefix, Argument a) {
+    compile_to_file(filename_prefix, Internal::vec(a));    
+}
+
+void Func::compile_to_file(const string &filename_prefix, Argument a, Argument b) {
+    compile_to_file(filename_prefix, Internal::vec(a, b));    
+}
+
+void Func::compile_to_file(const string &filename_prefix, Argument a, Argument b, Argument c) {
+    compile_to_file(filename_prefix, Internal::vec(a, b, c));    
+}
+
+void Func::compile_to_file(const string &filename_prefix, Argument a, Argument b, Argument c, Argument d) {
+    compile_to_file(filename_prefix, Internal::vec(a, b, c, d));    
+}
+
+void Func::compile_to_file(const string &filename_prefix, Argument a, Argument b, Argument c, Argument d, Argument e) {
+    compile_to_file(filename_prefix, Internal::vec(a, b, c, d, e));    
+}
+
+void Func::compile_to_assembly(const string &filename, vector<Argument> args, const string &fn_name) {
+    assert(value().defined() && "Can't compile undefined function");    
+
+    if (!lowered.defined()) lowered = Halide::Internal::lower(func);
+    Argument me(name(), true, value().type());
+    args.push_back(me);
+
+    StmtCompiler cg;
+    cg.compile(lowered, fn_name.empty() ? name() : fn_name, args);
+    cg.compile_to_native(filename, true);
+}
+
+void Func::set_error_handler(void (*handler)(char *)) {
+    error_handler = handler;
+    if (compiled_module.set_error_handler) {
+        compiled_module.set_error_handler(handler);
+    }
+}
+
+void Func::set_custom_allocator(void *(*cust_malloc)(size_t), void (*cust_free)(void *)) {
+    custom_malloc = cust_malloc;
+    custom_free = cust_free;
+    if (compiled_module.set_custom_allocator) {
+        compiled_module.set_custom_allocator(cust_malloc, cust_free);
+    }
+}
+
+void Func::set_custom_do_par_for(void (*cust_do_par_for)(void (*)(int, uint8_t *), int, int, uint8_t *)) {
+    custom_do_par_for = cust_do_par_for;
+    if (compiled_module.set_custom_do_par_for) {
+        compiled_module.set_custom_do_par_for(cust_do_par_for);
+    }
+}
+
+void Func::set_custom_do_task(void (*cust_do_task)(void (*)(int, uint8_t *), int, uint8_t *)) {
+    custom_do_task = cust_do_task;
+    if (compiled_module.set_custom_do_task) {
+        compiled_module.set_custom_do_task(cust_do_task);
+    }
+}
+
 void Func::realize(Buffer dst) {
     if (!compiled_module.wrapped_function) compile_jit();
 
@@ -1068,9 +1378,11 @@ void Func::realize(Buffer dst) {
     Internal::log(2) << "Calling jitted function\n";
     compiled_module.wrapped_function(&(arg_values[0]));    
     Internal::log(2) << "Back from jitted function\n";
+
+    dst.set_source_module(compiled_module);
 }
 
-void Func::compile_jit() {
+void *Func::compile_jit() {
     assert(value().defined() && "Can't realize undefined function");
     
     if (!lowered.defined()) lowered = Halide::Internal::lower(func);
@@ -1079,7 +1391,7 @@ void Func::compile_jit() {
     InferArguments infer_args;
     lowered.accept(&infer_args);
     
-    Argument me(name(), true, Int(1));
+    Argument me(name(), true, value().type());
     infer_args.arg_types.push_back(me);
     arg_values = infer_args.arg_values;
     arg_values.push_back(NULL); // A spot to put the address of the output buffer
@@ -1104,6 +1416,7 @@ void Func::compile_jit() {
     
     compiled_module = cg.compile_to_function_pointers();    
 
+    return compiled_module.function;
 }
 
 void Func::test() {

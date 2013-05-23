@@ -5,7 +5,6 @@ using namespace Halide;
 
 Func add2(Func in) {
     Func a("ext");
-    
     a = in + 2;
     return a;
 }
@@ -23,18 +22,22 @@ int main(int argc, char **argv) {
     Image<int> out1 = ext1.realize(10);
     Image<int> out2 = ext2.realize(10);
 
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < 10; i++) {
         assert(out1(i) == i + 1 && "Incorrect result from call to ext1");
+    }
 
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < 10; i++) {
         assert(out2(i) == i + 2 && "Incorrect result from call to ext2");
+    }
 
-    Func ext3 = add2(out1);
-    
+    Func out1_as_func(out1);
+    Func ext3 = add2(out1_as_func);
+
     Image<int> out3 = ext3.realize(10);
     
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < 10; i++) {
         assert(out3(i) == i + 3 && "Incorrect result from call to add2");
+    }
 
     printf("Success!\n");
 

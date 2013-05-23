@@ -70,14 +70,14 @@ int main(int argc, char **argv) {
 
     // Get its laplacian pyramid
     Func lPyramid[J];
-    lPyramid[J-1] = gPyramid[J-1];
+    lPyramid[J-1](x, y, k) = gPyramid[J-1](x, y, k);
     for (int j = J-2; j >= 0; j--) {
         lPyramid[j](x, y, k) = gPyramid[j](x, y, k) - upsample(gPyramid[j+1])(x, y, k);
     }
 
     // Make the Gaussian pyramid of the input
     Func inGPyramid[J];
-    inGPyramid[0] = gray;
+    inGPyramid[0](x, y) = gray(x, y);
     for (int j = 1; j < J; j++) {
         inGPyramid[j](x, y) = downsample(inGPyramid[j-1])(x, y);
     }        
@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
     
     // Make the Gaussian pyramid of the output
     Func outGPyramid[J];
-    outGPyramid[J-1] = outLPyramid[J-1];
+    outGPyramid[J-1](x, y) = outLPyramid[J-1](x, y);
     for (int j = J-2; j >= 0; j--) {
         outGPyramid[j](x, y) = upsample(outGPyramid[j+1])(x, y) + outLPyramid[j](x, y);
     }    
@@ -112,20 +112,37 @@ int main(int argc, char **argv) {
 
 
     /* THE SCHEDULE */
-
     remap.compute_root();
 
-    Var yi;
-    output.split(y, y, yi, 4).parallel(y).vectorize(x, 4);
-    for (int j = 0; j < 4; j++) {
-        inGPyramid[j].compute_root().split(y, y, yi, 4).parallel(y).vectorize(x, 4);
-        if (j > 0) gPyramid[j].compute_root().parallel(k).vectorize(x, 4);
-        outGPyramid[j].compute_root().split(y, y, yi, 4).parallel(y).vectorize(x, 4);
-    }
-    for (int j = 4; j < J; j++) {
-        inGPyramid[j].compute_root().parallel(y);
-        gPyramid[j].compute_root().parallel(k);
-        outGPyramid[j].compute_root().parallel(y);
+    char *target = getenv("HL_TARGET");
+    if (target && std::string(target) == "ptx") {
+        // gpu schedule
+        output.compute_root().cuda_tile(x, y, 32, 32);
+        for (int j = 0; j < J; j++) {
+            int blockw = 32, blockh = 16;
+            if (j > 3) {
+                blockw = 2;
+                blockh = 2;
+            }
+            if (j > 0) inGPyramid[j].compute_root().cuda_tile(x, y, blockw, blockh);
+            if (j > 0) gPyramid[j].compute_root().reorder(k, x, y).cuda_tile(x, y, blockw, blockh);
+            outGPyramid[j].compute_root().cuda_tile(x, y, blockw, blockh);
+        }
+    } else {
+        // cpu schedule
+        Var yi;
+        output.split(y, y, yi, 4).parallel(y).vectorize(x, 4);
+        gray.compute_root().split(y, y, yi, 4).parallel(y).vectorize(x, 4);
+        for (int j = 0; j < 4; j++) {
+            if (j > 0) inGPyramid[j].compute_root().split(y, y, yi, 4).parallel(y).vectorize(x, 4);
+            if (j > 0) gPyramid[j].compute_root().parallel(k).vectorize(x, 4);
+            outGPyramid[j].compute_root().split(y, y, yi, 4).parallel(y).vectorize(x, 4);
+        }
+        for (int j = 4; j < J; j++) {
+            inGPyramid[j].compute_root().parallel(y);
+            gPyramid[j].compute_root().parallel(k);
+            outGPyramid[j].compute_root().parallel(y);
+        }
     }
 
     output.compile_to_file("local_laplacian", levels, alpha, beta, input);

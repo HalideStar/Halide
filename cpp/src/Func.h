@@ -33,7 +33,7 @@ namespace Halide {
 class FuncRefVar {
     Internal::Function func;
     std::vector<std::string> args;
-    void add_implicit_vars(std::vector<std::string> &args, Expr e);
+    void add_implicit_vars(std::vector<std::string> &args, Expr e) const;
 public:
     FuncRefVar(Internal::Function, const std::vector<Var> &);
         
@@ -87,7 +87,7 @@ public:
 class FuncRefExpr {
     Internal::Function func;
     std::vector<Expr> args;
-    void add_implicit_vars(std::vector<Expr> &args, Expr e);
+    void add_implicit_vars(std::vector<Expr> &args, Expr e) const;
 public:
     FuncRefExpr(Internal::Function, const std::vector<Expr> &);
     FuncRefExpr(Internal::Function, const std::vector<std::string> &);
@@ -157,6 +157,7 @@ public:
 class ScheduleHandle {
     Internal::Schedule &schedule;
     void set_dim_type(Var var, Internal::For::ForType t);
+    void dump_argument_list();
 public:
     ScheduleHandle(Internal::Schedule &s) : schedule(s) {}
 
@@ -235,6 +236,56 @@ public:
      * innermost out */
     EXPORT ScheduleHandle &reorder(Var x, Var y, Var z, Var w, Var t);
 
+    /** Rename a dimension. Equivalent to split with a inner size of one. */
+    EXPORT ScheduleHandle &rename(Var old_name, Var new_name);
+
+    /** Tell Halide that the following dimensions correspond to cuda
+     * thread indices. This is useful if you compute a producer
+     * function within the block indices of a consumer function, and
+     * want to control how that function's dimensions map to cuda
+     * threads. If the selected target is not ptx, this just marks
+     * those dimensions as parallel. */
+    // @{
+    EXPORT ScheduleHandle &cuda_threads(Var thread_x);
+    EXPORT ScheduleHandle &cuda_threads(Var thread_x, Var thread_y);
+    EXPORT ScheduleHandle &cuda_threads(Var thread_x, Var thread_y, Var thread_z);
+    // @}
+
+    /** Tell Halide that the following dimensions correspond to cuda
+     * block indices. This is useful for scheduling stages that will
+     * run serially within each cuda block. If the selected target is
+     * not ptx, this just marks those dimensions as parallel. */
+    // @{
+    EXPORT ScheduleHandle &cuda_blocks(Var block_x);
+    EXPORT ScheduleHandle &cuda_blocks(Var block_x, Var block_y);
+    EXPORT ScheduleHandle &cuda_blocks(Var block_x, Var block_y, Var block_z);
+    // @}
+
+    /** Tell Halide that the following dimensions correspond to cuda
+     * block indices and thread indices. If the selected target is not
+     * ptx, these just mark the given dimensions as parallel. The
+     * dimensions are consumed by this call, so do all other
+     * unrolling, reordering, etc first. */
+    // @{
+    EXPORT ScheduleHandle &cuda(Var block_x, Var thread_x);
+    EXPORT ScheduleHandle &cuda(Var block_x, Var block_y, 
+                                Var thread_x, Var thread_y);
+    EXPORT ScheduleHandle &cuda(Var block_x, Var block_y, Var block_z, 
+                                Var thread_x, Var thread_y, Var thread_z);
+    // @}
+
+    /** Short-hand for tiling a domain and mapping the tile indices
+     * to cuda block indices and the coordinates within each tile to
+     * cuda thread indices. Consumes the variables given, so do all
+     * other scheduling first. */
+    // @{
+    EXPORT ScheduleHandle &cuda_tile(Var x, int x_size);
+    EXPORT ScheduleHandle &cuda_tile(Var x, Var y, int x_size, int y_size);
+    EXPORT ScheduleHandle &cuda_tile(Var x, Var y, Var z,  
+                                     int x_size, int y_size, int z_size);
+    // @}
+
+
     //LH
     /** Partition a loop by specifying bounds for the main loop.
      * Cancels automatic partitioning if previously specified. 
@@ -270,8 +321,8 @@ class Func {
      * up with 'implicit' vars with canonical names. This lets you
      * pass around partially-applied halide functions. */
     // @{
-    void add_implicit_vars(std::vector<Var> &);
-    void add_implicit_vars(std::vector<Expr> &);
+    void add_implicit_vars(std::vector<Var> &) const;
+    void add_implicit_vars(std::vector<Expr> &) const;
     // @}
 
     /** The lowered imperative form of this function. Cached here so
@@ -336,10 +387,12 @@ public:
      * buffer. Has the same dimensionality as the buffer. Useful for
      * passing Images to c++ functions that expect Funcs */
     //@{
-    EXPORT Func(Buffer image);
+    //EXPORT Func(Buffer image);
+    /*
     template<typename T> Func(Image<T> image) {
         constructor(Buffer(image));
     }
+    */
     //@}
     
     /** Reinitialise the current Func object */
@@ -425,8 +478,9 @@ public:
      * normally happens on the first call to realize. If you're
      * running your halide pipeline inside time-sensitive code and
      * wish to avoid including the time taken to compile a pipeline,
-     * then you can call this ahead of time. */
-    EXPORT void compile_jit();
+     * then you can call this ahead of time. Returns the raw function
+     * pointer to the compiled pipeline. */
+    EXPORT void *compile_jit();
 
     /** Set the error handler function that be called in the case of
      * runtime errors during halide pipelines. If you are compiling
@@ -530,12 +584,14 @@ public:
      * enough implicit vars are added to the end of the argument list
      * to make up the difference (see \ref Var::implicit) */
     // @{
-    EXPORT FuncRefVar operator()();
-    EXPORT FuncRefVar operator()(Var x);
-    EXPORT FuncRefVar operator()(Var x, Var y);
-    EXPORT FuncRefVar operator()(Var x, Var y, Var z);
-    EXPORT FuncRefVar operator()(Var x, Var y, Var z, Var w);
-    EXPORT FuncRefVar operator()(std::vector<Var>);
+    EXPORT FuncRefVar operator()() const;
+    EXPORT FuncRefVar operator()(Var x) const;
+    EXPORT FuncRefVar operator()(Var x, Var y) const;
+    EXPORT FuncRefVar operator()(Var x, Var y, Var z) const;
+    EXPORT FuncRefVar operator()(Var x, Var y, Var z, Var w) const;
+    EXPORT FuncRefVar operator()(Var x, Var y, Var z, Var w, Var u) const;
+    EXPORT FuncRefVar operator()(Var x, Var y, Var z, Var w, Var u, Var v) const;
+    EXPORT FuncRefVar operator()(std::vector<Var>) const;
     // @}
 
     /** Either calls to the function, or the left-hand-side of a
@@ -545,11 +601,13 @@ public:
      * the end of the argument list to make up the difference. (see
      * \ref Var::implicit)*/
     // @{
-    EXPORT FuncRefExpr operator()(Expr x);
-    EXPORT FuncRefExpr operator()(Expr x, Expr y);
-    EXPORT FuncRefExpr operator()(Expr x, Expr y, Expr z);
-    EXPORT FuncRefExpr operator()(Expr x, Expr y, Expr z, Expr w);
-    EXPORT FuncRefExpr operator()(std::vector<Expr>);
+    EXPORT FuncRefExpr operator()(Expr x) const;
+    EXPORT FuncRefExpr operator()(Expr x, Expr y) const;
+    EXPORT FuncRefExpr operator()(Expr x, Expr y, Expr z) const;
+    EXPORT FuncRefExpr operator()(Expr x, Expr y, Expr z, Expr w) const;
+    EXPORT FuncRefExpr operator()(Expr x, Expr y, Expr z, Expr w, Expr u) const;
+    EXPORT FuncRefExpr operator()(Expr x, Expr y, Expr z, Expr w, Expr u, Expr v) const;
+    EXPORT FuncRefExpr operator()(std::vector<Expr>) const;
     // @}
     
     /** Construct a RHS call to a function as a kernel.
@@ -562,7 +620,8 @@ public:
     // @)
 
     /** Scheduling calls that control how the domain of this function
-     * is traversed. See the documentation for ScheduleHandle for the meanings */
+     * is traversed. See the documentation for ScheduleHandle for the
+     * meanings. */
     // @{
     EXPORT Func &split(Var old, Var outer, Var inner, Expr factor);
     EXPORT Func &parallel(Var var);
@@ -577,6 +636,23 @@ public:
     EXPORT Func &reorder(Var x, Var y, Var z);
     EXPORT Func &reorder(Var x, Var y, Var z, Var w);
     EXPORT Func &reorder(Var x, Var y, Var z, Var w, Var t);
+    EXPORT Func &rename(Var old_name, Var new_name);
+    EXPORT Func &cuda_threads(Var thread_x);
+    EXPORT Func &cuda_threads(Var thread_x, Var thread_y);
+    EXPORT Func &cuda_threads(Var thread_x, Var thread_y, Var thread_z);
+    EXPORT Func &cuda_blocks(Var block_x);
+    EXPORT Func &cuda_blocks(Var block_x, Var block_y);
+    EXPORT Func &cuda_blocks(Var block_x, Var block_y, Var block_z);
+    EXPORT Func &cuda(Var block_x, Var thread_x);
+    EXPORT Func &cuda(Var block_x, Var block_y, 
+                      Var thread_x, Var thread_y);
+    EXPORT Func &cuda(Var block_x, Var block_y, Var block_z, 
+                      Var thread_x, Var thread_y, Var thread_z);
+    EXPORT Func &cuda_tile(Var x, int x_size);
+    EXPORT Func &cuda_tile(Var x, Var y, 
+                           int x_size, int y_size);
+    EXPORT Func &cuda_tile(Var x, Var y, Var z, 
+                           int x_size, int y_size, int z_size);
     // @}
 
     //LH
@@ -864,7 +940,7 @@ public:
      \endcode
      *
      */
-    operator Expr() {
+    operator Expr() const {
         return (*this)();
     }
 
@@ -880,6 +956,13 @@ public:
     // Dont do this because it prevents using a vector of Func objects.
     //void operator=(Func f);
 
+    /** Define a function to simply call another function. Note that
+     * this is not equivalent to the standard c++ operator=. We opt
+     * instead for consistency with Halide function definition, of
+     * which this is a degenerate case. */
+    void operator=(const Func &f) {
+        (*this)() = f();
+    }
 	//LH
 	/** Get a handle to a specified domain for the purpose of modifying it */
 	EXPORT Domain &set_domain(Domain::DomainType dt);

@@ -9,47 +9,26 @@
 #include "Var.h"
 #include "Param.h"
 #include "integer_division_table.h"
-
-// No msvc warnings from llvm headers please
-#ifdef _WIN32
-#pragma warning(push, 0)
-#endif
-
-#include <llvm/Config/config.h>
-
-// Temporary affordance to compile with both llvm 3.2 and 3.3.
-// Protected as at least one installation of llvm elides version macros.
-#if defined(LLVM_VERSION_MINOR) && LLVM_VERSION_MINOR < 3
-#include <llvm/Value.h>
-#include <llvm/Module.h>
-#include <llvm/Function.h>
-#include <llvm/TargetTransformInfo.h>
-#include <llvm/DataLayout.h>
-#include <llvm/IRBuilder.h>
-#include <llvm/Support/IRReader.h>
-#else
-#include <llvm/IR/Value.h>
-#include <llvm/IR/Module.h>
-#include <llvm/IR/Function.h>
-#include <llvm/Analysis/TargetTransformInfo.h>
-#include <llvm/IR/DataLayout.h>
-#include <llvm/IR/IRBuilder.h>
-#include <llvm/Bitcode/ReaderWriter.h>
-#endif
-
-#include <llvm/Support/MemoryBuffer.h>
-
-
-
-// No msvc warnings from llvm headers please
-#ifdef _WIN32
-#pragma warning(pop)
-#endif
+#include "LLVM_Headers.h"
 
 extern "C" unsigned char halide_internal_initmod_x86[];
 extern "C" int halide_internal_initmod_x86_length;
+extern "C" unsigned char halide_internal_initmod_x86_32[];
+extern "C" int halide_internal_initmod_x86_32_length;
 extern "C" unsigned char halide_internal_initmod_x86_avx[];
 extern "C" int halide_internal_initmod_x86_avx_length;
+
+#if WITH_NATIVE_CLIENT
+extern "C" unsigned char halide_internal_initmod_x86_nacl[];
+extern "C" int halide_internal_initmod_x86_nacl_length;
+extern "C" unsigned char halide_internal_initmod_x86_32_nacl[];
+extern "C" int halide_internal_initmod_x86_32_nacl_length;
+#else
+static void * halide_internal_initmod_x86_nacl = 0;
+static int halide_internal_initmod_x86_nacl_length = 0;
+static void * halide_internal_initmod_x86_32_nacl = 0;
+static int halide_internal_initmod_x86_32_nacl_length = 0;
+#endif
 
 namespace Halide { 
 namespace Internal {
@@ -59,34 +38,64 @@ using std::string;
 
 using namespace llvm;
 
-CodeGen_X86::CodeGen_X86(bool sse_41, bool avx) : CodeGen_Posix(), use_sse_41(sse_41), use_avx(avx) {
+CodeGen_X86::CodeGen_X86(uint32_t options) : CodeGen_Posix(), 
+                                             use_64_bit(options & X86_64Bit), 
+                                             use_sse_41(options & X86_SSE41), 
+                                             use_avx   (options & X86_AVX),
+                                             use_nacl  (options & X86_NaCl) {
     assert(llvm_X86_enabled && "llvm build not configured with X86 target enabled.");
+    #if !(WITH_NATIVE_CLIENT)
+    assert(!use_nacl && "llvm build not configured with native client enabled.");
+    #endif
 }
 
 void CodeGen_X86::compile(Stmt stmt, string name, const vector<Argument> &args) {
 
-    if (module && owns_module) delete module;
+    init_module();
 
     StringRef sb;
 
     if (use_avx) {
         assert(halide_internal_initmod_x86_avx_length && "initial module for x86_avx is empty");
         sb = StringRef((char *)halide_internal_initmod_x86_avx, halide_internal_initmod_x86_avx_length);
+    } else if (!use_64_bit) {
+        if (use_nacl) {
+            assert(halide_internal_initmod_x86_32_nacl_length && "initial module for x86_32_nacl is empty");
+            sb = StringRef((char *)halide_internal_initmod_x86_32_nacl, halide_internal_initmod_x86_32_nacl_length);
+        } else {
+            assert(halide_internal_initmod_x86_32_length && "initial module for x86_32 is empty");
+            sb = StringRef((char *)halide_internal_initmod_x86_32, halide_internal_initmod_x86_32_length);
+        }
     } else {
-        assert(halide_internal_initmod_x86_length && "initial module for x86 is empty");
-        sb = StringRef((char *)halide_internal_initmod_x86, halide_internal_initmod_x86_length);
+        if (use_nacl) {
+            assert(halide_internal_initmod_x86_nacl_length && "initial module for x86_nacl is empty");
+            sb = StringRef((char *)halide_internal_initmod_x86_nacl, halide_internal_initmod_x86_nacl_length);
+        } else {
+            assert(halide_internal_initmod_x86_length && "initial module for x86 is empty");
+            sb = StringRef((char *)halide_internal_initmod_x86, halide_internal_initmod_x86_length);
+        }
     }
     MemoryBuffer *bitcode_buffer = MemoryBuffer::getMemBuffer(sb);
 
     // Parse it    
     std::string errstr;
-    module = ParseBitcodeFile(bitcode_buffer, context, &errstr);
-	if (!module) {
+    module = ParseBitcodeFile(bitcode_buffer, *context, &errstr);
+    if (!module) {
         std::cerr << "Error parsing initial module: " << errstr << "\n";
-	}
+    }
     assert(module && "llvm encountered an error in parsing a bitcode file.");
 
     // Fix the target triple
+    // Let's see if this works to get native client support.
+
+    #if WITH_NATIVE_CLIENT
+    if (use_nacl) {
+        llvm::Triple triple(module->getTargetTriple());
+        triple.setOS(llvm::Triple::NaCl);
+        module->setTargetTriple(triple.str());
+    }
+    #endif
+
     log(1) << "Target triple of initial module: " << module->getTargetTriple() << "\n";
 
     // For now we'll just leave it as whatever the module was

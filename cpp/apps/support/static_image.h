@@ -78,13 +78,13 @@ public:
 
     T *data() {return (T*)contents->buf.host;}
 
-    void markHostDirty() {
+    void set_host_dirty(bool dirty = true) {
         // If you use data directly, you must also call this so that
         // gpu-side code knows that it needs to copy stuff over.
-        contents->buf.host_dirty = true;
+        contents->buf.host_dirty = dirty;
     }
 
-    void copyToHost() {
+    void copy_to_host() {
         if (contents->buf.dev_dirty) {
             halide_copy_to_host(&contents->buf);
             contents->buf.dev_dirty = false;
@@ -105,20 +105,18 @@ public:
         }
     }
 
-    // Warning. This is slower than you might expect
+    /** Make sure you've called copy_to_host before you start
+     * accessing pixels directly. */
     T &operator()(int x, int y = 0, int c = 0) {
-        copyToHost();
-        markHostDirty();
-
         T *ptr = (T *)contents->buf.host;
         int w = contents->buf.extent[0];
         int h = contents->buf.extent[1];
         return ptr[(c*h + y)*w + x];
     }
 
+    /** Make sure you've called copy_to_host before you start
+     * accessing pixels directly */
     const T &operator()(int x, int y = 0, int c = 0) const {
-        copyToHost();
-
         const T *ptr = (const T *)contents->buf.host;
         return ptr[c*contents->buf.stride[2] + y*contents->buf.stride[1] + x*contents->buf.stride[0]];
     }

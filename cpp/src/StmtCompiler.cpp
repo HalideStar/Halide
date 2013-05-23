@@ -1,6 +1,7 @@
 #include "StmtCompiler.h"
 #include "CodeGen.h"
 #include "CodeGen_X86.h"
+#include "CodeGen_PTX_Host.h"
 #include "CodeGen_ARM.h"
 #include <iostream>
 
@@ -31,20 +32,41 @@ StmtCompiler::StmtCompiler(string arch) {
     }
 
     if (arch == "x86") {
-        contents = new CodeGen_X86(true, false);
+        contents = new CodeGen_X86(X86_64Bit | X86_SSE41);
+    } else if (arch == "x86-32") {
+        contents = new CodeGen_X86();
     } else if (arch == "x86-avx") {
-        contents = new CodeGen_X86(true, true);
+        contents = new CodeGen_X86(X86_64Bit | X86_SSE41 | X86_AVX);
+    } else if (arch == "x86-nacl") {
+        contents = new CodeGen_X86(X86_64Bit | X86_SSE41 | X86_NaCl);
+    } else if (arch == "x86-32-nacl") {
+        contents = new CodeGen_X86(X86_NaCl);
+    } else if (arch == "x86-32-sse41-nacl") {
+        contents = new CodeGen_X86(X86_SSE41 | X86_NaCl);
     }
+
 #ifndef _WIN32 // I've temporarily disabled ARM on Windows since it leads to a linking error on halide_internal_initmod_arm stuff (kwampler@adobe.com)
     else if (arch == "arm") {
-        contents = new CodeGen_ARM(false);
+        contents = new CodeGen_ARM();
     } else if (arch == "arm-android") {
-        contents = new CodeGen_ARM(true);
-    } 
+        contents = new CodeGen_ARM(ARM_Android);
+    } else if (arch == "arm-nacl") {
+        contents = new CodeGen_ARM(ARM_NaCl);
+    }
+
+    // GPU backends are disabled on Windows until I'm sure it links, too (@jrk)
+    else if (arch == "ptx") {
+        // equivalent to "x86" on the host side, i.e. x86_64, no AVX
+        contents = new CodeGen_PTX_Host(X86_64Bit | X86_SSE41);
+    }
 #endif // _WIN32
     else {
-        std::cerr << "Unknown target " << arch << std::endl;
-        std::cerr << "Known targets are: x86 x86-avx arm arm-android" << std::endl;
+        std::cerr << "Unknown target " << arch << '\n';
+        std::cerr << "Known targets are: "
+                  << "x86 x86-avx x86-32 arm arm-android " 
+                  << "x86-nacl x86-32-nacl x86-32-sse41-nacl arm-nacl "
+                  << "ptx"
+		  << std::endl;
         assert(false);
     }
 } 
