@@ -37,6 +37,8 @@ BUILD_PREFIX ?= .
 BUILD_DIR=build/$(BUILD_PREFIX)
 BIN_DIR=bin/$(BUILD_PREFIX)
 
+LIB_DIR=lib/$(BUILD_PREFIX)
+
 SOURCE_FILES = CodeGen.cpp CodeGen_Internal.cpp CodeGen_X86.cpp CodeGen_PTX_Host.cpp CodeGen_PTX_Dev.cpp CodeGen_Posix.cpp CodeGen_ARM.cpp IR.cpp IRMutator.cpp IRPrinter.cpp IRVisitor.cpp CodeGen_C.cpp Substitute.cpp ModulusRemainder.cpp Bounds.cpp Derivative.cpp Func.cpp Simplify.cpp IREquality.cpp Util.cpp Function.cpp IROperator.cpp Lower.cpp Log.cpp Parameter.cpp Reduction.cpp RDom.cpp Tracing.cpp RemoveDeadLets.cpp StorageFlattening.cpp VectorizeLoops.cpp UnrollLoops.cpp BoundsInference.cpp IRMatch.cpp StmtCompiler.cpp integer_division_table.cpp SlidingWindow.cpp StorageFolding.cpp InlineReductions.cpp RemoveTrivialForLoops.cpp Deinterleave.cpp DebugToFile.cpp Type.cpp JITCompiledModule.cpp
 
 # The externally-visible header files that go into making Halide.h. Don't include anything here that includes llvm headers.
@@ -45,61 +47,50 @@ HEADER_FILES = Util.h Type.h Argument.h Bounds.h BoundsInference.h Buffer.h buff
 SOURCES = $(SOURCE_FILES:%.cpp=src/%.cpp)
 OBJECTS = $(SOURCE_FILES:%.cpp=$(BUILD_DIR)/%.o)
 HEADERS = $(HEADER_FILES:%.h=src/%.h)
+
+STDLIB_ARCHS = x86 x86_avx x86_32 arm arm_android $(PTX_ARCHS) $(NATIVE_CLIENT_ARCHS)
+
 #LH: List extensions separately to support automatic merging.
 LH_SOURCE_FILES = Border.cpp Clamp.cpp DomainInference.cpp LowerClamp.cpp LoopPartition.cpp Options.cpp Interval.cpp InlineLet.cpp IRCacheMutator.cpp Statistics.cpp CodeLogger.cpp IRLazyScope.cpp Context.cpp IRProcess.cpp InfInterval.cpp BoundsSimplify.cpp IntRange.cpp
 LH_HEADER_FILES = Border.h Clamp.h DomainInference.h LowerClamp.h LoopPartition.h Options.h Interval.h Solver.h InlineLet.h IRCacheMutator.h Statistics.h CodeLogger.h IRLazyScope.h Context.h IRProcess.h InfInterval.h BoundsAnalysis.h BoundsSimplify.h IntRange.h
-
-STDLIB_ARCHS = x86 x86_avx x86_32 arm arm_android $(PTX_ARCHS) $(NATIVE_CLIENT_ARCHS)
 SOURCES = $(LH_SOURCE_FILES:%.cpp=src/%.cpp) $(SOURCE_FILES:%.cpp=src/%.cpp)
-OBJECTS = $(LH_SOURCE_FILES:%.cpp=build/%.o) $(SOURCE_FILES:%.cpp=build/%.o)
+OBJECTS = $(LH_SOURCE_FILES:%.cpp=$(BUILD_DIR)/%.o) $(SOURCE_FILES:%.cpp=$(BUILD_DIR)/%.o)
 GOBJECTS = $(LH_SOURCE_FILES:%.cpp=build_g/%.o) $(SOURCE_FILES:%.cpp=build_g/%.o)
 HEADERS = $(HEADER_FILES:%.h=src/%.h) $(LH_HEADER_FILES:%.h=src/%.h)
+NAME = HalideStar
 
-STDLIB_ARCHS = x86 x86_avx arm arm_android
 
 INITIAL_MODULES = $(STDLIB_ARCHS:%=$(BUILD_DIR)/initmod.%.o)
 
-NAME = HalideStar
-
 .PHONY: all
-all: $(BIN_DIR)/libHalide.a $(BIN_DIR)/libHalide.so include/Halide.h test_internal
-all: bin/lib$(NAME).a bin/lib$(NAME).so include/Halide.h test_internal
+all: $(BIN_DIR)/lib$(NAME).a $(BIN_DIR)/lib$(NAME).so include/Halide.h test_internal
 
-$(BIN_DIR)/libHalide.a: $(OBJECTS) $(INITIAL_MODULES)
+$(BIN_DIR)/lib$(NAME).a: $(OBJECTS) $(INITIAL_MODULES)
 	@-mkdir -p $(BIN_DIR)
 	ld -r -o $(BUILD_DIR)/Halide.o $(OBJECTS) $(INITIAL_MODULES) $(LIBS)
-	rm -f $(BIN_DIR)/libHalide.a
-	ar q $(BIN_DIR)/libHalide.a $(BUILD_DIR)/Halide.o
-	ranlib $(BIN_DIR)/libHalide.a
-debug: lib/libg$(NAME).a include/Halide.h gtest_internal
+	rm -f $(BIN_DIR)/lib$(NAME).a
+	ar q $(BIN_DIR)/lib$(NAME).a $(BUILD_DIR)/Halide.o
+	ranlib $(BIN_DIR)/lib$(NAME).a
 
-bin/lib$(NAME).a: $(OBJECTS) $(INITIAL_MODULES)
-	@-mkdir -p bin
-	ld -r -o build/Halide.o $(OBJECTS) $(INITIAL_MODULES) $(LIBS)
-	rm -f bin/lib$(NAME).a
-	ar q bin/lib$(NAME).a build/Halide.o
-	ranlib bin/lib$(NAME).a
-    
-lib/libg$(NAME).a: $(GOBJECTS) $(INITIAL_MODULES)
-	@-mkdir -p lib
+$(BIN_DIR)/lib$(NAME).so: $(BIN_DIR)/lib$(NAME).a
+	$(CXX) -shared $(OBJECTS) $(INITIAL_MODULES) $(LIBS) -o $(BIN_DIR)/lib$(NAME).so
+
+debug: $(LIB_DIR)/libg$(NAME).a include/Halide.h gtest_internal
+
+$(LIB_DIR)/libg$(NAME).a: $(GOBJECTS) $(INITIAL_MODULES)
+	@-mkdir -p $(LIB_DIR)
 	ld -r -o build_g/Halide.o $(GOBJECTS) $(INITIAL_MODULES) $(LIBS)
-	rm -f lib/libg$(NAME).a
-	ar q lib/libg$(NAME).a build_g/Halide.o
-	ranlib lib/libg$(NAME).a
+	rm -f $(LIB_DIR)/libg$(NAME).a
+	ar q $(LIB_DIR)/libg$(NAME).a build_g/Halide.o
+	ranlib $(LIB_DIR)/libg$(NAME).a
     
-lib/lib$(NAME).a: bin/lib$(NAME).a
-	@-mkdir -p lib
-	cp bin/lib$(NAME).a lib/lib$(NAME).a
-
-$(BIN_DIR)/libHalide.so: $(BIN_DIR)/libHalide.a
-	$(CXX) -shared $(OBJECTS) $(INITIAL_MODULES) $(LIBS) -o $(BIN_DIR)/libHalide.so
-bin/lib$(NAME).so: bin/lib$(NAME).a
-	$(CXX) -shared $(OBJECTS) $(INITIAL_MODULES) $(LIBS) -o bin/lib$(NAME).so
+$(LIB_DIR)/lib$(NAME).a: $(BIN_DIR)/lib$(NAME).a
+	@-mkdir -p $(LIB_DIR)
+	cp $(BIN_DIR)/lib$(NAME).a $(LIB_DIR)/lib$(NAME).a
 
 include/Halide.h: $(HEADERS) $(BIN_DIR)/build_halide_h
 	mkdir -p include
-	cd src; ../$(BIN_DIR)/build_halide_h $(HEADER_FILES) > ../include/Halide.h; cd ..
-	cd src; ../bin/build_halide_h $(HEADER_FILES) $(LH_HEADER_FILES) > ../include/Halide.h; cd ..
+	cd src; ../$(BIN_DIR)/build_halide_h $(HEADER_FILES) $(LH_HEADER_FILES) > ../include/Halide.h; cd ..
 
 $(BIN_DIR)/build_halide_h: src/build_halide_h.cpp
 	g++ $< -o $@
@@ -148,9 +139,6 @@ $(BUILD_DIR)/%.o: src/%.cpp src/%.h $(BUILD_DIR)/llvm_ok
 	$(CXX) $(CXX_FLAGS) -c $< -o $@ -MMD -MP -MF $(BUILD_DIR)/$*.d -MT $(BUILD_DIR)/$*.o 
 # -MF: Specify the file for the generated make rules.
 # -MT: Specify the target for the generated make rules.
-build/%.o: src/%.cpp src/%.h build/llvm_ok
-	@-mkdir -p build
-	$(CXX) $(CXX_FLAGS) -c $< -o $@ -MMD -MP -MF build/$*.d -MT build/$*.o 
 
 build_g/%.o: src/%.cpp src/%.h build/llvm_ok
 	@-mkdir -p build_g
@@ -162,7 +150,7 @@ clean:
 	rm -rf $(BUILD_DIR)/*
 	rm -rf include/*
 	rm -rf doc
-	rm -rf lib/*
+	rm -rf $(LIB_DIR)/*
 	rm -rf build_g/*
 
 .SECONDARY:
@@ -172,79 +160,70 @@ ERROR_TESTS = $(shell ls test/error/*.cpp)
 
 # TODO: move this implementation into Makefile.tests which contains a .NOTPARALLEL rule?
 tests: build_tests run_tests
-tests: test_jit_speed_fast $(TESTS:test/%.cpp=test_%) $(ERROR_TESTS:test/error/%.cpp=error_%)
+tests: test_jit_speed_fast
 
 run_tests: $(TESTS:test/%.cpp=test_%) $(ERROR_TESTS:test/error/%.cpp=error_%)
 build_tests: $(TESTS:test/%.cpp=$(BIN_DIR)/test_%) $(ERROR_TESTS:test/error/%.cpp=$(BIN_DIR)/error_%)
-bin/test_internal: test/internal.cpp bin/lib$(NAME).so
-	$(CXX) $(CXX_FLAGS)  $< -Isrc -Lbin -l$(NAME) -lpthread -ldl -o $@	
 
-$(BIN_DIR)/test_internal: test/internal.cpp $(BIN_DIR)/libHalide.so
-	$(CXX) $(CXX_FLAGS)  $< -Isrc -L$(BIN_DIR) -lHalide -lpthread -ldl -o $@	
-bin/test_%: test/%.cpp bin/lib$(NAME).so include/Halide.h
-	$(CXX) $(TEST_CXX_FLAGS) -O3 $<  -Iinclude -Lbin -l$(NAME) -lpthread -ldl -o $@	
+$(BIN_DIR)/test_internal: test/internal.cpp $(BIN_DIR)/lib$(NAME).so
+	$(CXX) $(CXX_FLAGS)  $< -Isrc -L$(BIN_DIR) -l$(NAME) -lpthread -ldl -o $@	
 
-$(BIN_DIR)/test_%: test/%.cpp $(BIN_DIR)/libHalide.so include/Halide.h
-	$(CXX) $(TEST_CXX_FLAGS) -O3 $<  -Iinclude -L$(BIN_DIR) -lHalide -lpthread -ldl -o $@	
-bin/test_jit_speed: test/jit_speed.cpp bin/lib$(NAME).so include/Halide.h
-	$(CXX) $(TEST_CXX_FLAGS) -O3 $<  -DHALIDE_NEW=1 -DHALIDE_VERSION=999999 -Iinclude -Lbin -l$(NAME) -lpthread -ldl -o $@	
+$(BIN_DIR)/test_%: test/%.cpp $(BIN_DIR)/lib$(NAME).so include/Halide.h
+	$(CXX) $(TEST_CXX_FLAGS) -O3 $<  -Iinclude -L$(BIN_DIR) -l$(NAME) -lpthread -ldl -o $@	
 
-$(BIN_DIR)/error_%: test/error/%.cpp $(BIN_DIR)/libHalide.so include/Halide.h
-	$(CXX) $(TEST_CXX_FLAGS) -O3 $<  -Iinclude -L$(BIN_DIR) -lHalide -lpthread -ldl -o $@	
+$(BIN_DIR)/error_%: test/error/%.cpp $(BIN_DIR)/lib$(NAME).so include/Halide.h
+	$(CXX) $(TEST_CXX_FLAGS) -O3 $<  -Iinclude -L$(BIN_DIR) -l$(NAME) -lpthread -ldl -o $@	
+
+$(BIN_DIR)/test_jit_speed: test/jit_speed.cpp $(BIN_DIR)/lib$(NAME).so include/Halide.h
+	$(CXX) $(TEST_CXX_FLAGS) -O3 $<  -DHALIDE_NEW=1 -DHALIDE_VERSION=999999 -Iinclude -L$(BIN_DIR) -l$(NAME) -lpthread -ldl -o $@	
 
 test_%: $(BIN_DIR)/test_%
-bin/error_%: test/error/%.cpp bin/lib$(NAME).so include/Halide.h
-	$(CXX) $(TEST_CXX_FLAGS) -O3 $<  -Iinclude -Lbin -l$(NAME) -lpthread -ldl -o $@	
+	@-mkdir -p tmp
+	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) ../$<
+	@-echo
+
 
 #LH: Compilation with debugging option and static link of debugging library
 gtests: $(TESTS:test/%.cpp=gtest_%)
 
-bin/gtest_internal: test/internal.cpp lib/libg$(NAME).a
-	$(CXX) -g $< -Isrc -Llib -lg$(NAME) -lpthread -ldl -o $@	
+$(BIN_DIR)/gtest_internal: test/internal.cpp $(LIB_DIR)/libg$(NAME).a
+	$(CXX) -g $< -Isrc -L$(LIB_DIR) -lg$(NAME) -lpthread -ldl -o $@	
 
-bin/gtest_%: test/%.cpp lib/libg$(NAME).a include/Halide.h
-	$(CXX) -g $(TEST_CXX_FLAGS) $<  -Iinclude -Llib -lg$(NAME) -lpthread -ldl -o $@	
+$(BIN_DIR)/gtest_%: test/%.cpp $(LIB_DIR)/libg$(NAME).a include/Halide.h
+	$(CXX) -g $(TEST_CXX_FLAGS) $<  -Iinclude -L$(LIB_DIR) -lg$(NAME) -lpthread -ldl -o $@	
     
-test_jit_stress: bin/test_jit_stress
+test_jit_stress: $(BIN_DIR)/test_jit_stress
 	@-mkdir -p tmp
-	cd tmp ; HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
+	cd tmp ; HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) ../$<
 	@-echo
 
-test_jit_speed_fast: bin/test_jit_speed
+test_jit_speed_fast: $(BIN_DIR)/test_jit_speed
 	@-mkdir -p tmp
-	cd tmp ; HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
+	cd tmp ; HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) ../$<
 	@-echo
 
-test_jit_speed: bin/test_jit_speed
+test_jit_speed: $(BIN_DIR)/test_jit_speed
 	@-mkdir -p tmp
-	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$< -log 5
+	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) ../$< -log 5
 	@-echo
 
-test_%: bin/test_%
+gdbtest_%: $(BIN_DIR)/test_%
 	@-mkdir -p tmp
-	cd tmp ; DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) ../$<
-	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
+	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) gdb ../$<
 	@-echo
 
 error_%: $(BIN_DIR)/error_%
-gdbtest_%: bin/test_%
-	@-mkdir -p tmp
-	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin gdb ../$<
-	@-echo
-
-error_%: bin/error_%
 	@-mkdir -p tmp
 	cd tmp ; DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) ../$< 2>&1 | egrep --q "Assertion.*failed"
 	@-echo
 
-gtest_%: bin/gtest_%
+gtest_%: $(BIN_DIR)/gtest_%
 	@-mkdir -p tmp
-	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
+	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) ../$<
 	@-echo
 
 .PHONY: test_apps
-test_apps: $(BIN_DIR)/libHalide.a
-test_apps: bin/lib$(NAME).a
+test_apps: $(BIN_DIR)/lib$(NAME).a
 	make -C apps/bilateral_grid clean
 	make -C apps/bilateral_grid out.png
 	make -C apps/local_laplacian clean

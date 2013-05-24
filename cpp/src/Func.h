@@ -387,12 +387,10 @@ public:
      * buffer. Has the same dimensionality as the buffer. Useful for
      * passing Images to c++ functions that expect Funcs */
     //@{
-    //EXPORT Func(Buffer image);
-    /*
+    EXPORT Func(Buffer image);
     template<typename T> Func(Image<T> image) {
         constructor(Buffer(image));
     }
-    */
     //@}
     
     /** Reinitialise the current Func object */
@@ -954,15 +952,13 @@ public:
     
     //LH
     // Dont do this because it prevents using a vector of Func objects.
-    //void operator=(Func f);
-
     /** Define a function to simply call another function. Note that
      * this is not equivalent to the standard c++ operator=. We opt
      * instead for consistency with Halide function definition, of
      * which this is a degenerate case. */
-    void operator=(const Func &f) {
-        (*this)() = f();
-    }
+    //void operator=(const Func &f) {
+    //    (*this)() = f();
+    //}
 	//LH
 	/** Get a handle to a specified domain for the purpose of modifying it */
 	EXPORT Domain &set_domain(Domain::DomainType dt);

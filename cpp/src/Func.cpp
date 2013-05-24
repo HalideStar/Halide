@@ -62,6 +62,14 @@ Func::Func(Buffer b) : func(unique_name('f')),
                        custom_free(NULL), 
                        custom_do_par_for(NULL), 
                        custom_do_task(NULL) {
+    vector<Expr> args;
+    for (int i = 0; i < b.dimensions(); i++) {
+        args.push_back(Var::implicit(i));
+    }
+    (*this)() = new Internal::Call(b, args);
+}
+*/
+
 void Func::constructor(Buffer b) {
     func = Function(unique_name('f'));
     error_handler = NULL;
@@ -75,7 +83,6 @@ void Func::constructor(Buffer b) {
     }
     (*this)() = new Internal::Call(b, args);
 }
-*/
 
 Func::Func(Buffer b) {    
     constructor(b);
@@ -200,7 +207,6 @@ FuncRefExpr Func::operator()(vector<Expr> args) const {
     return FuncRefExpr(func, args);
 }
 
-void Func::add_implicit_vars(vector<Var> &args) const {
 FuncRefKernel Func::operator[](Expr x) {
     return FuncRefKernel(func, vec(x));
 }
@@ -227,7 +233,7 @@ FuncRefKernel::operator FuncRefExpr() const {
     return FuncRefExpr(func, imp_args);
 }
 
-void Func::add_implicit_vars(vector<Var> &args) {
+void Func::add_implicit_vars(vector<Var> &args) const {
     int i = 0;    
     while ((int)args.size() < dimensions()) {        
         Internal::log(2) << "Adding implicit var " << i << " to call to " << name() << "\n";
@@ -303,7 +309,7 @@ ScheduleHandle &ScheduleHandle::split(Var old, Var outer, Var inner, Expr factor
             outer_name = old_name + "." + outer.name();
             dims[i].var = inner_name;
             //dims.push_back(dims[dims.size()-1]);
-            dims.push_back(Schedule::Dim());
+            dims.push_back(Schedule::Dim()); //LH Push back an empty Dim object
             for (size_t j = dims.size(); j > i+1; j--) {
                 dims[j-1] = dims[j-2];
             }
@@ -460,6 +466,30 @@ void record_partition(Internal::Schedule &schedule, Var var, PartitionInfo info)
         Internal::log(0) << "\n";
     }
     assert(found && "Could not find dimension in argument list for function");
+    return;
+}
+}
+
+ScheduleHandle &ScheduleHandle::partition(Var var, bool auto_partition) {
+    record_partition(schedule, var, PartitionInfo(auto_partition));
+    return *this;
+}
+
+ScheduleHandle &ScheduleHandle::partition(Var var, InfInterval interval) {
+    record_partition(schedule, var, PartitionInfo(interval));
+    return *this;
+}
+
+ScheduleHandle &ScheduleHandle::partition(bool auto_partition) {
+    schedule.auto_partition = auto_partition ? PartitionInfo::Yes : PartitionInfo::No;
+    return *this;
+}
+
+ScheduleHandle &ScheduleHandle::partition_all(bool auto_partition_all) {
+    schedule.auto_partition_all = auto_partition_all ? PartitionInfo::Yes : PartitionInfo::No;
+    return *this;
+}
+
 
 ScheduleHandle &ScheduleHandle::cuda_threads(Var tx, Var ty) {
     parallel(tx);
@@ -558,30 +588,6 @@ ScheduleHandle &ScheduleHandle::cuda_tile(Var x, Var y, Var z,
     parallel(tx);
     parallel(ty);
     parallel(tz);
-    return *this;
-}
-
-    return;
-}
-}
-
-ScheduleHandle &ScheduleHandle::partition(Var var, bool auto_partition) {
-    record_partition(schedule, var, PartitionInfo(auto_partition));
-    return *this;
-}
-
-ScheduleHandle &ScheduleHandle::partition(Var var, InfInterval interval) {
-    record_partition(schedule, var, PartitionInfo(interval));
-    return *this;
-}
-
-ScheduleHandle &ScheduleHandle::partition(bool auto_partition) {
-    schedule.auto_partition = auto_partition ? PartitionInfo::Yes : PartitionInfo::No;
-    return *this;
-}
-
-ScheduleHandle &ScheduleHandle::partition_all(bool auto_partition_all) {
-    schedule.auto_partition_all = auto_partition_all ? PartitionInfo::Yes : PartitionInfo::No;
     return *this;
 }
 
@@ -993,14 +999,13 @@ FuncRefExpr::FuncRefExpr(Internal::Function f, const vector<string> &a) : func(f
     }
 }
     
-void FuncRefExpr::add_implicit_vars(vector<Expr> &a, Expr e) const {
 FuncRefKernel::FuncRefKernel(Internal::Function f, const vector<Expr> &a) : func(f), args(a) {
     for (size_t i = 0; i < args.size(); i++) {
         args[i] = cast<int>(args[i]);
     }
 }
 
-void FuncRefExpr::add_implicit_vars(vector<Expr> &a, Expr e) {
+void FuncRefExpr::add_implicit_vars(vector<Expr> &a, Expr e) const {
     CountImplicitVars f(e);
     // Implicit vars are also allowed in the lhs of a reduction. E.g.:
     // f(x, y) = x+y
@@ -1198,7 +1203,6 @@ void validate_arguments(const vector<Argument> &args, Stmt lowered) {
 };
 
 
-void Func::compile_to_bitcode(const string &filename, vector<Argument> args, const string &fn_name) {
 # if 0
 Buffer Func::realize() {
     assert(value().defined() && "Can't realize undefined function");
@@ -1210,6 +1214,12 @@ Buffer Func::realize() {
 #endif
 
 void Func::compile_to_stmt() {
+    if (!lowered.defined()) lowered = Halide::Internal::lower(func);
+    return;
+}
+
+
+void Func::compile_to_bitcode(const string &filename, vector<Argument> args, const string &fn_name) {
     assert(value().defined() && "Can't compile undefined function");    
 
     if (!lowered.defined()) {
@@ -1219,12 +1229,6 @@ void Func::compile_to_stmt() {
     validate_arguments(args, lowered);
 
     Argument me(name(), true, value().type());
-    if (!lowered.defined()) lowered = Halide::Internal::lower(func);
-    return;
-}
-
-void Func::compile_to_bitcode(const string &filename, vector<Argument> args, const string &fn_name) {
-    Argument me(name(), true, Int(1));
     args.push_back(me);
 
     StmtCompiler cg;

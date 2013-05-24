@@ -55,12 +55,12 @@ bool expr_depends_on_var(Expr e, string v) {
     return depends.result;
 }
 
-bool depends_on_var(Expr e, string var) {
-    ExprDependsOnVar depend(e, var);
-    return depend.result;
-}
+//bool depends_on_var(Expr e, string var) {
+//    ExprDependsOnVar depend(e, var);
+//    return depend.result;
+//}
 
-bool depends_on_var(Stmt s, string var) {
+bool stmt_depends_on_var(Stmt s, string var) {
     ExprDependsOnVar depend(s, var);
     return depend.result;
 }

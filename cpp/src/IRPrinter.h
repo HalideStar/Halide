@@ -4,7 +4,6 @@
 #include "IRVisitor.h"
 #include "Type.h"
 #include "IR.h"
-#include "IR.h"
 #include "Interval.h"
 #include "InfInterval.h"
 #include "DomainInference.h"
