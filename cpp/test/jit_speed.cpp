@@ -54,6 +54,7 @@ double currentTime() {
 # define WIDTH 1024
 # define HEIGHT 1024
 
+/** Schedule options */
 // Apply ISS
 # define SCHEDULE_SPLIT_INDEX 1
 // Apply bound
@@ -81,6 +82,16 @@ double currentTime() {
 // Apply root to the upcast of the border handled input
 # define SCHEDULE_ROOT_UPCAST 1024
 
+
+/** Function stages */
+// The main (last) function 
+# define FUNC_MAIN 1
+// The first dimension (when a separable computation is performed)
+# define FUNC_DIM_1 2
+// The border handler
+# define FUNC_BORDER 3
+// The upcast
+# define FUNC_UPCAST 4
 
 # define BORDER_CLAMP 0
 # define BORDER_MOD 1
@@ -400,6 +411,7 @@ public:
         } else if (opt == "-blur") { base_name["blur"] = next_priority(); 
         } else if (opt == "-conv") { base_name["conv"] = next_priority(); 
         } else if (opt == "-diag") { base_name["diag"] = next_priority(); 
+        } else if (opt == "-sobel") { base_name["sobel"] = next_priority(); 
         } else if (opt == "-n") {
             int n = stoi(param);
             assert(n > 0);
@@ -501,7 +513,7 @@ void alarm_handler(int sig) {
     exit(0);
 }
 
-static Var x("x"), y("y");
+static Var x("x"), y("y"), yi("yi");
 
 int dim(int n, int dimensionality) {
     if (dimensionality <= 1) return n;
@@ -558,6 +570,45 @@ public:
 
 UniqueInt unique;
 
+void do_schedule(Func f, int stage, int schedule, int vec) {
+    if (schedule & SCHEDULE_BOUND) f.bound(x,0,WIDTH).bound(y,0,HEIGHT);
+    if (vec > 0) f.vectorize(x, vec);
+    int sp = schedule & SCHEDULE_PARALLEL;
+    if (sp == SCHEDULE_PARALLEL_1) {
+        f.parallel(y);
+    } else if (sp == SCHEDULE_PARALLEL_4) {
+        f.split(y, y, yi, 4).parallel(y);
+    } else if (sp == SCHEDULE_PARALLEL_16) {
+        f.split(y, y, yi, 16).parallel(y);
+    }
+# if HAS_PARTITION
+    if (schedule & SCHEDULE_SPLIT_INDEX) f.partition(); // Implicitly, this is partition all
+# else
+    assert ((schedule & SCHEDULE_SPLIT_INDEX) == 0 && "Schedule split index not supported");
+# endif
+    int do_root = 0;
+    switch (stage) {
+        case FUNC_MAIN:
+            do_root = 0;
+            break;
+        case FUNC_DIM_1:
+            do_root = schedule & SCHEDULE_ROOT_DIM_1;
+            break;
+        case FUNC_BORDER:
+            do_root = schedule & SCHEDULE_ROOT_BORDER;
+            break;
+        case FUNC_UPCAST:
+            do_root = schedule & SCHEDULE_ROOT_UPCAST;
+            break;
+    }
+    if (do_root) f.compute_root();
+}
+
+// The schedule bits that are handled by calling do_schedule for FUNC_MAIN
+# define SCHEDULE_DO_MAIN (SCHEDULE_BOUND|SCHEDULE_SPLIT_INDEX|SCHEDULE_PARALLEL)
+// The same for DIM_1 that are in addition to the above
+# define SCHEDULE_DO_DIM_1 (SCHEDULE_ROOT_DIM_1)
+
 template<typename T>
 Func build_basic(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec, int dimensionality) {
     Func f(name);
@@ -566,14 +617,14 @@ Func build_basic(std::string name, ImageParam a, Image<T> b, int n, int bdr, int
     assert(schedule == 0 && "Func basic does not support schedule != 0");
     assert(dimensionality == 1 && "Func basic does not support dimensionality other than 1");
     f(x) = a(x) + b(x);
-    if (vec > 0) f.vectorize(x,vec);
+    do_schedule(f, FUNC_MAIN, schedule, vec);
     return f;
 }
 
 template<typename T>
 Func build_simplify_n(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec, int dimensionality) {
     assert(dimensionality == 1 && "Func simplify_n does not support dimensionality other than 1");
-    assert((schedule & SCHEDULE_BOUND) == schedule && "Func simplify_n does not support schedule");
+    assert((schedule & SCHEDULE_BOUND) == schedule && "Func simplify_n does not support schedule other than bound");
     assert(bdr == 0 && "Func simplify_n does not support border");
     assert(vec == 0 && "Func simplify_n does not support vectorisation");
     Func f(name);
@@ -583,12 +634,12 @@ Func build_simplify_n(std::string name, ImageParam a, Image<T> b, int n, int bdr
         e = e + a(x,y) * unique.i();
     }
     f(x,y) = e;
-    if (schedule & SCHEDULE_BOUND) f.bound(x,0,WIDTH).bound(y,0,HEIGHT);
+    do_schedule(f, FUNC_MAIN, schedule, vec);
     return f;
 }
 
-// Upcast a function of type t under control of schedule
-Func upcast(Func in, int schedule, Type t) {
+// Upcast a function of type t under control of schedule.  Vectorisation is done if specified.
+Func upcast(Func in, Type t, int schedule, int vec) {
     Func upcast("upcast");
     int s = schedule & SCHEDULE_UPCAST;
     if (s == SCHEDULE_UPCAST_NONE) {
@@ -615,12 +666,7 @@ Func upcast(Func in, int schedule, Type t) {
         u.bits = bits;
         upcast = cast(u, in);
     }
-    if (schedule & SCHEDULE_ROOT_UPCAST) {
-        upcast.compute_root();
-# if HAS_PARTITION
-        if (schedule & SCHEDULE_SPLIT_INDEX) upcast.partition();
-# endif
-    }
+    do_schedule(upcast, FUNC_UPCAST, schedule, vec);
     return upcast;
 }
 
@@ -632,8 +678,9 @@ Expr downcast(Type t, Expr e) {
         return e;
 }
 
+// Border handling itself is not vectorized, but upcast can be.
 template<typename T>
-Func border_handled(Image<T> b, int bdr, int schedule) {
+Func border_handled(Image<T> b, int bdr, int schedule, int vec) {
     Func border("border");
     if (bdr == BORDER_CLAMP) {
         border(x,y) = b(clamp(x,0,WIDTH-1), clamp(y,0,HEIGHT-1));
@@ -642,16 +689,9 @@ Func border_handled(Image<T> b, int bdr, int schedule) {
     } else {
         assert(0 && "Invalid bdr selector");
     }
-    if (schedule & SCHEDULE_ROOT_BORDER) {
-        border.compute_root();
-        // No point in applying bound to the border handled because
-        // the whole idea is to make it bigger, and I would need to specify how much bigger
-# if HAS_PARTITION
-        if (schedule & SCHEDULE_SPLIT_INDEX) border.partition();
-# endif
-    }
+    do_schedule(border, FUNC_BORDER, schedule, 0); // Border handler is not vectorized
     // Upcast may be performed.
-    Func up = upcast(border, schedule, type_of<T>());
+    Func up = upcast(border, type_of<T>(), schedule, vec);
     return up;
 }
 
@@ -683,11 +723,10 @@ Expr conv_final(Expr e, int n) {
 
 template<typename T>
 Func build_general(Expr (*pixel)(Func,int,int), Expr (*final)(Expr,int), std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec, int dimensionality) {
-    assert((schedule & (SCHEDULE_BOUND | SCHEDULE_BORDER_HANDLED | SCHEDULE_ROOT_DIM_1 | 
-                        SCHEDULE_BOUND | SCHEDULE_SPLIT_INDEX)) == schedule && 
+    assert((schedule & (SCHEDULE_DO_MAIN | SCHEDULE_BORDER_HANDLED | SCHEDULE_DO_DIM_1)) == schedule && 
            "build_general does not support schedule");
     Func h("h"), f(name);
-    Func in = border_handled(b, bdr, schedule);
+    Func in = border_handled(b, bdr, schedule, vec);
     // Unique number generation.
     // Depends on size n of the operator and on the iteration number during data collection.
     // However, for a particular iteration, all programs will be identical.
@@ -707,15 +746,11 @@ Func build_general(Expr (*pixel)(Func,int,int), Expr (*final)(Expr,int), std::st
             ev = ev + (*pixel)(h,0,i-m/2); // e.g. h(x,y+(i-m/2))
         }
         f(x,y) = downcast(type_of<T>(), (*final)(ev, n));  // e.g. ev / n
-        if (schedule & SCHEDULE_ROOT_DIM_1) h.compute_root();
+        do_schedule(h, FUNC_DIM_1, schedule, vec);
     } else {
         f(x,y) = downcast(type_of<T>(), (*final) (e, n));  // e.g. e / n
     }
-    if (schedule & SCHEDULE_BOUND) f.bound(x,0,WIDTH).bound(y,0,HEIGHT);
-    if (vec > 0) f.vectorize(x,vec);
-# if HAS_PARTITION
-    if (schedule & SCHEDULE_SPLIT_INDEX) f.partition();
-# endif
+    do_schedule(f, FUNC_MAIN, schedule, vec);
     return f;
 }
 
@@ -732,37 +767,27 @@ Func build_conv_n(std::string name, ImageParam a, Image<T> b, int n, int bdr, in
 template<typename T>
 Func build_sobel(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec, int dimensionality) {
     assert(dimensionality == 2 && "Sobel is only defined for dimensionality 2");
-    assert((schedule & (SCHEDULE_BORDER_HANDLED | SCHEDULE_SPLIT_INDEX | SCHEDULE_BOUND)) == schedule &&
+    assert((schedule & (SCHEDULE_BORDER_HANDLED | SCHEDULE_DO_MAIN)) == schedule &&
         "Func sobel does not implement schedule");
-    Func in = border_handled(b, bdr, schedule); // Data type upcast can be done if required.
+    Func in = border_handled(b, bdr, schedule, vec); // Data type upcast can be done if required.
     //std::cerr << in << "\n";
     Func h("h"), v("v"), sobel("sobel");
     h(x,y) = in(x-1,y-1) + 2 * in(x-1,y) + in(x-1,y+1) - in(x+1,y-1) - 2 * in(x+1,y) - in(x+1,y+1);
     v(x,y) = in(x-1,y-1) + 2 * in(x,y-1) + in(x+1,y-1) - in(x-1,y+1) - 2 * in(x,y+1) - in(x+1,y+1);
     sobel(x,y) = downcast(type_of<T>(), (abs(h(x,y)) + abs(v(x,y)))/4);
-    if (schedule & SCHEDULE_BOUND) sobel.bound(x,0,WIDTH).bound(y,0,HEIGHT);
-    if (vec > 0) sobel.vectorize(x,vec);
-# if HAS_PARTITION
-    if (schedule & SCHEDULE_SPLIT_INDEX) {
-        sobel.partition();
-    }
-# endif
+    do_schedule(sobel, FUNC_MAIN, schedule, vec);
     return sobel;
 }
 
 template<typename T>
 Func build_diag_n(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec, int dimensionality) {
     assert(dimensionality == 2 && "diag is only defined for dimensionality 2");
-    assert((schedule & (SCHEDULE_BORDER_HANDLED | SCHEDULE_SPLIT_INDEX | SCHEDULE_BOUND)) == schedule &&
+    assert((schedule & (SCHEDULE_BORDER_HANDLED | SCHEDULE_DO_MAIN)) == schedule &&
         "Func diag does not implement schedule");
     Func f(name);
-    Func in = border_handled(b, bdr, schedule);
+    Func in = border_handled(b, bdr, schedule, vec);
     f(x,y) = downcast(type_of<T>(), in(x-n,y-n) + in(x+n,y+n));
-    if (schedule & SCHEDULE_BOUND) f.bound(x,0,WIDTH).bound(y,0,HEIGHT);
-    if (vec > 0) f.vectorize(x,vec);
-# if HAS_PARTITION
-    if (schedule & SCHEDULE_SPLIT_INDEX) f.partition();
-# endif
+    do_schedule(f, FUNC_MAIN, schedule, vec);
     return f;
 }
 
