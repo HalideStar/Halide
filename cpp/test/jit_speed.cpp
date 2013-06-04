@@ -128,6 +128,7 @@ int schedule_sizes[] = { SCHEDULE_SIZE_128, SCHEDULE_SIZE_256, SCHEDULE_SIZE_512
 
 // Set to true when logging/debugging code generation - each function will only be compiled and executed once.
 int logging = 0;
+int iteration_number = 0; // Default iteration for logging.
 std::string model = "unknown";
 std::string version = "unknown";
 
@@ -901,7 +902,7 @@ Func build_general(Expr (*pixel)(Func,int,int), Expr (*final)(Expr,int), std::st
     // And, finally, that the same numbers will be generated for different dimensionality
     // if n is the same.
     // If checking, reuse the same settings as for data item 0.
-    unique.reset(n * 1000 + (check_results ? 0 : collector.data_count()));
+    unique.reset(n * 1000 + (check_results ? 0 : (logging ? iteration_number : collector.data_count())));
     int m = dim(n, dimensionality);
     Expr e = (*pixel)(in,-m/2,0);   // e.g. in(x-m/2, y)
     for (int i = 1; i < m; i++) {
@@ -1036,6 +1037,9 @@ void test(std::string basename,
             ids.push_back(testcount);
             return;
         }
+    } else if (list_ids) {
+        ids.push_back(testcount); // Collect IDS without any consideration of priority
+        return;
     }
 
     if (testcount != testid && testid != -1) return; // Skip this test.  ID -1 means do all.
@@ -1062,6 +1066,19 @@ void test(std::string basename,
     double t1, t2;
     Func f;
     
+# if HAS_COMPILE_STMT
+    // If logging, compile the statement once to get the log files before anything else happens.
+    if (logging) {
+        Internal::Stmt st = (*builder)(collector.name, a, b, n, bdr, schedule, vec, dimensionality).compile_to_stmt();
+        ofstream f;
+        std::string fname = collector.name + ".stmt";
+        f.open(fname.c_str());
+        f << st;
+        f.close();
+        return;
+    }
+# endif
+
     // Build the function a random number of times before starting to use it.
     Func fs[1024];
     int nfs = mt_random.uniform(1024);
@@ -1105,12 +1122,6 @@ void test(std::string basename,
 # if HAS_COMPILE_STMT
     if (logging) {
         stmt = 0.0;
-        Internal::Stmt s = (*builder)(collector.name, a, b, n, bdr, schedule, vec, dimensionality).compile_to_stmt();
-        ofstream f;
-        std::string fname = collector.name + ".stmt";
-        f.open(fname.c_str());
-        f << stmt;
-        f.close();
     } else {
         check = 1;
         int max_stmt = logging ? 1 : 1000;
@@ -1363,6 +1374,9 @@ int main(int argc, char **argv) {
             i++;
         } else if (strcmp(argv[i], "-check") == 0) {
             check_results = 1;
+        } else if (strcmp(argv[i], "-iter") == 0 && i < argc - 1) { // Select iteration number when doing -log option
+            sscanf(argv[i+1], "%d", &iteration_number);
+            i++;
         } else if (argv[i][0] == '-') {
             if (i < argc - 1) {
                 if (priority.option(argv[i], argv[i+1])) i++;
