@@ -222,18 +222,6 @@ InfInterval inverseMax(InfInterval v, InfInterval k) {
     return InfInterval(simplify(select(v.min <= k.min, make_infinity(v.min.type(), -1), v.min)), v.max);
 }
 
-InfInterval inverseAdd(InfInterval v, InfInterval k) {
-    // Compute an interval such that adding the interval k always results
-    // in an interval no bigger than v.
-    return InfInterval(simplify(v.min - k.min), simplify(v.max - k.max));
-}
-
-InfInterval inverseSub(InfInterval v, InfInterval k) {
-    // Compute an interval such that adding the interval k always results
-    // in an interval no bigger than v.
-    return InfInterval(simplify(v.min + k.min), simplify(v.max + k.max));
-}
-
 InfInterval inverseRamp(InfInterval v, InfInterval s, int width) {
     // Compute an interval such that a ramp with base in the result interval
     // and designated stride interval always results in an interval no bigger than v.
@@ -281,7 +269,6 @@ InfInterval inverseRamp(InfInterval v, InfInterval s, int width) {
 // end anonymous namespace
 }
 
-
 class Solver : public Simplify {
 
     // using parent::visit indicates that
@@ -299,17 +286,25 @@ class Solver : public Simplify {
     // Each different mutator must have its own cache.
     // Simplify uses a shared cache, so we need to override that.
     IRCacheMutator::Cache solver_cache;
-    
+
 public:
 
-    Solver() : Simplify(solver_cache) {}
+    // debug tracing
+    int loglevel;
+
+    Solver() : Simplify(solver_cache), loglevel(3) {}
 
 protected:
+    bool equal_bounds(Expr k) {
+        InfInterval b = bounds.bounds(k);
+        return equal(b.min, b.max);
+    }
+    
     virtual void visit(const Solve *op) {
-        log(3) << depth << " Solve simplify " << Expr(op) << "\n";
+        log(loglevel) << depth << " Solve simplify " << Expr(op) << "\n";
         Expr e = mutate(op->body);
         
-        log(3) << depth << " Solve using " << e << "\n";
+        log(loglevel) << depth << " Solve using " << e << "\n";
         //const Solve *solve_e = e.as<Solve>();
         const Add *add_e = e.as<Add>();
         const Sub *sub_e = e.as<Sub>();
@@ -334,15 +329,17 @@ protected:
         } else if (sub_e && is_constant_expr(sub_e->a)) {
             // solve(k - v) --> -solve(v - k) with interval negated
             expr = mutate(-solve(sub_e->b - sub_e->a, v_apply(operator-, op->v)));
-        } else if (mul_e && is_constant_expr(mul_e->b)) {
+        } else if (mul_e && is_constant_expr(mul_e->b) && equal_bounds(mul_e->b)) {
             // solve(v * k) on (a,b) --> solve(v) * k with interval (ceil(a/k), floor(b/k))
             // i.e. For integer types, find all the integers that could be multiplied back up
             // and still be in the range (a,b).  Decimate does this.
+            // DOES NOT HANDLE AN INTERVAL FOR THE CONSTANT EXPRESSION
             expr = mutate(solve(mul_e->a, v_apply(decimate, op->v, mul_e->b)) * mul_e->b);
-        } else if (div_e && is_constant_expr(div_e->b)) {
+        } else if (div_e && is_constant_expr(div_e->b) && equal_bounds(div_e->b)) {
             // solve(v / k) on (a,b) --> solve(v) / k with interval a * k, b * k + (k +/- 1)
             // For integer types, find all the expanded intervals - all the integers that would
             // divide back down to the range (a,b).  Zoom does this.
+            // DOES NOT HANDLE AN INTERVAL FOR THE CONSTANT EXPRESSION
             expr = mutate(solve(div_e->a, v_apply(zoom, op->v, div_e->b)) / div_e->b);
         } else if (min_e && is_constant_expr(min_e->a)) {
             // Min, Max: push outside of Solve nodes.
@@ -373,7 +370,7 @@ protected:
         } else {
             expr = solve(e, op->v);
         }
-        log(3) << depth << " Solve simplified to " << expr << "\n";
+        log(loglevel) << depth << " Solve simplified to " << expr << "\n";
     }
     
     
@@ -383,7 +380,7 @@ protected:
     //virtual void visit(const Variable *op) {
     
 virtual void visit(const Add *op) {
-        log(3) << depth << " XAdd simplify " << Expr(op) << "\n";
+        log(loglevel) << depth << " XAdd simplify " << Expr(op) << "\n";
         Expr a = mutate(op->a), b = mutate(op->b);
         
         const Add *add_a = a.as<Add>();
@@ -436,11 +433,11 @@ virtual void visit(const Add *op) {
             // are reversed by Simplify::visit(Add)
             Simplify::visit(op);
         }
-        log(3) << depth << " XAdd simplified to " << expr << "\n";
+        log(loglevel) << depth << " XAdd simplified to " << expr << "\n";
     }
 
     virtual void visit(const Sub *op) {
-        log(3) << depth << " XSub simplify " << Expr(op) << "\n";
+        log(loglevel) << depth << " XSub simplify " << Expr(op) << "\n";
         Expr a = mutate(op->a), b = mutate(op->b);
         
         // Override default behavior.
@@ -483,11 +480,11 @@ virtual void visit(const Add *op) {
             // are reversed by Simplify::visit(Add)
             Simplify::visit(op);
         }
-        log(3) << depth << " XSub simplified to " << expr << "\n";
+        log(loglevel) << depth << " XSub simplified to " << expr << "\n";
     }
 
     virtual void visit(const Mul *op) {
-        log(3) << depth << " XMul simplify " << Expr(op) << "\n";
+        log(loglevel) << depth << " XMul simplify " << Expr(op) << "\n";
         Expr a = mutate(op->a), b = mutate(op->b);
 
         const Mul *mul_a = a.as<Mul>();
@@ -540,11 +537,11 @@ virtual void visit(const Add *op) {
             // Simplify everything else in the normal way.
             Simplify::visit(op);
         }
-        log(3) << depth << " XMul simplified to " << expr << "\n";
+        log(loglevel) << depth << " XMul simplified to " << expr << "\n";
     }
 
     virtual void visit(const Div *op) {
-        log(3) << depth << " XDiv simplify " << Expr(op) << "\n";
+        log(loglevel) << depth << " XDiv simplify " << Expr(op) << "\n";
         Expr a = mutate(op->a), b = mutate(op->b);
         
         const Mul *mul_a = a.as<Mul>();
@@ -585,7 +582,7 @@ virtual void visit(const Add *op) {
         } else {
             Simplify::visit(op);
         }
-        log(3) << depth << " XDiv simplified to " << expr << "\n";
+        log(loglevel) << depth << " XDiv simplified to " << expr << "\n";
     }
 
     
@@ -727,6 +724,21 @@ void checkSolver(Expr a, Expr b) {
     }
 }
 
+void logSolver(Expr a, Expr b) {
+    Solver s;
+    s.loglevel = 0;
+    a = new TargetVar("x", new TargetVar("y", a, Expr()), Expr());
+    b = new TargetVar("x", new TargetVar("y", b, Expr()), Expr());
+    Expr r = s.simplify(a);
+    if (!equal(b, r)) {
+        std::cout << std::endl << "Solve failure: " << std::endl;
+        std::cout << "Input: " << a << std::endl;
+        std::cout << "Output: " << r << std::endl;
+        std::cout << "Expected output: " << b << std::endl;
+        assert(false);
+    }
+}
+
 void checkInverseRamp(InfInterval comb, InfInterval stride, int width, InfInterval base) {
     InfInterval test = inverseRamp(comb, stride, width);
     if (! equal(test.min, base.min) || ! equal(test.max, base.max)) {
@@ -741,7 +753,7 @@ void checkInverseRamp(InfInterval comb, InfInterval stride, int width, InfInterv
 }
 
 void solver_test() {
-    Var x("x"), y("y"), c("c"), d("d");
+    Var x("x"), y("y"), c("c"), d("d"), k("k");
     
     checkInverseRamp(InfInterval(new Ramp(0,1,8), new Ramp(1,1,8)), InfInterval(1,1), 8, InfInterval(0,1));
     checkInverseRamp(InfInterval(new Ramp(0,1,8), new Ramp(3,2,8)), InfInterval(1,2), 8, InfInterval(0,3));
@@ -809,6 +821,8 @@ void solver_test() {
     checkSolver((x + c) + y, (x + y) + c);
     checkSolver((min(x, 1) + c) + min(y, 1), (min(x, 1) + min(y, 1)) + c);
     checkSolver((min(x, 1) + c) + min(d, 1), min(d, 1) + (min(x, 1) + c)); // Simplify reorders expression
+    
+    //logSolver(solve(2 * x + k + (x + 5), InfInterval(0, 100)), solve(x, InfInterval((-6-k)/3+1,(95-k)/3))*3 + k + 5);
     
     std::cout << "Solve test passed" << std::endl;
 }

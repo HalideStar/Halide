@@ -72,14 +72,17 @@ EXPORT InfInterval unzoom(InfInterval v, Expr b);
 EXPORT InfInterval operator%(InfInterval v, Expr b);
 
 /** Inverse operators 
+ * inverseAdd returns an interval such that adding b yields the original interval.  This is equivalent to subtraction.
+ * inverseSub returns an interval such that subtracting b yields the original interval.  Equivalent to addition.
  * inverseMul returns an interval such that multiplication by b does not exceed
  *    the original interval.  This is equivalent to decimate.
  * inverseDiv returns an interval such that dividing it back down yields the original interval.
  *    Both zoom and operator* are candidates for this operation.
+ *    Zoom is preferred if you are talking about indices, because it represents replicating each pixel n times.
  */
-inline InfInterval inverseAdd(InfInterval v, Expr b) { return operator-(v,b); }
-inline InfInterval inverseSub(InfInterval v, Expr b) { return operator+(v,b); }
-inline InfInterval inverseMul(InfInterval v, Expr b) { return decimate(v, b); }
+EXPORT InfInterval inverseAdd(InfInterval v, Expr b);
+EXPORT InfInterval inverseSub(InfInterval v, Expr b);
+EXPORT InfInterval inverseMul(InfInterval v, Expr b);
 
 /** Operators on two InfIntervals */
 EXPORT InfInterval operator+(InfInterval u, InfInterval v);
@@ -91,6 +94,13 @@ EXPORT InfInterval min(InfInterval u, InfInterval v);
 EXPORT InfInterval max(InfInterval u, InfInterval v);
 EXPORT InfInterval intersection(InfInterval u, InfInterval v);
 EXPORT InfInterval infinterval_union(InfInterval u, InfInterval v);
+
+/** Inverse operators
+ * r = inverseAdd(u,v) is such that u = r + v
+ * r = inverseSub(u,v) is such that u = r - v
+ */
+EXPORT InfInterval inverseAdd(InfInterval u, InfInterval v);
+EXPORT InfInterval inverseSub(InfInterval u, InfInterval v);
 
 namespace Internal {
 EXPORT void infinterval_test();

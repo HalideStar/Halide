@@ -118,6 +118,10 @@ InfInterval unzoom(InfInterval v, Expr b) {
     return InfInterval(simplify(newmin), simplify(newmax));
 }
 
+InfInterval inverseAdd(InfInterval v, Expr b) { return operator-(v,b); }
+InfInterval inverseSub(InfInterval v, Expr b) { return operator+(v,b); }
+InfInterval inverseMul(InfInterval v, Expr b) { return decimate(v, b); }
+
 # if 0
 InfInterval operator%(InfInterval v, Expr b) { 
     return InfInterval(simplify(v.min % b), simplify(v.max % b)); 
@@ -227,6 +231,25 @@ InfInterval infinterval_union(InfInterval u, InfInterval v) {
     return InfInterval(simplify(min(u.min, v.min)), simplify(max(u.max, v.max)));
 }
 
+InfInterval inverseAdd(InfInterval v, InfInterval k) {
+    // Compute an interval such that adding the interval k always results
+    // in an interval no bigger than v.
+    // (v.min, v.max) = (r.min + k.min, r.max + k.max)
+    // r.min = v.min - k.min
+    // r.max = v.max - k .max
+    return InfInterval(simplify(v.min - k.min), simplify(v.max - k.max));
+}
+
+InfInterval inverseSub(InfInterval v, InfInterval k) {
+    // Compute an interval such that subtracting the interval k always results
+    // in an interval no bigger than v.
+    // (v.min, v.max) = (r.min - k.max, r.max - k.min)
+    // r.min = v.min + k.max
+    // r.max = v.max + k.min
+    return InfInterval(simplify(v.min + k.max), simplify(v.max + k.min));
+}
+
+
 namespace Internal {
 
 namespace {
@@ -284,6 +307,32 @@ namespace {
         }
         check(a, "zoomdiv", div, r, a);
     }
+    
+    void checkaddinv(InfInterval a, InfInterval b) {
+        // Check that if you add two intervals and then apply inverse add
+        // you get back the original
+        InfInterval z = a + b;
+        InfInterval r = inverseAdd(z, b);
+        if (! equal(r.min, a.min) || ! equal(r.max, a.max)) {
+            std::cout << "InfInterval inverseAdd test failed\n";
+            std::cout << "  " << a << " + " << b << " --> " << z << "\n";
+            std::cout << "  inverseAdd(" << z << ", " << b << ") --> " << r << "\n";
+            assert(0);
+        }
+    }
+    
+    void checksubinv(InfInterval a, InfInterval b) {
+        // Check that if you subtract two intervals and then apply inverse subtract
+        // you get back the original
+        InfInterval z = a - b;
+        InfInterval r = inverseSub(z, b);
+        if (! equal(r.min, a.min) || ! equal(r.max, a.max)) {
+            std::cout << "InfInterval inverseSub test failed\n";
+            std::cout << "  " << a << " - " << b << " --> " << z << "\n";
+            std::cout << "  inverseSub(" << z << ", " << b << ") --> " << r << "\n";
+            assert(0);
+        }
+    }
 }
 
 void infinterval_test () {
@@ -339,6 +388,10 @@ void infinterval_test () {
     checkdecimate(v5, -8);
     checkdecimate(v6, -8);
     checkdecimate(v7, -8);
+    checkaddinv(v1, v2);
+    checkaddinv(v3, vb);
+    checksubinv(v1, v2);
+    checksubinv(v3, vb);
     std::cout << "InfInterval operations test passed\n";
 }
 }
