@@ -1105,6 +1105,12 @@ void test(std::string basename,
 # if HAS_COMPILE_STMT
     if (logging) {
         stmt = 0.0;
+        Internal::Stmt s = (*builder)(collector.name, a, b, n, bdr, schedule, vec, dimensionality).compile_to_stmt();
+        ofstream f;
+        std::string fname = collector.name + ".stmt";
+        f.open(fname.c_str());
+        f << stmt;
+        f.close();
     } else {
         check = 1;
         int max_stmt = logging ? 1 : 1000;
