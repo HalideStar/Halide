@@ -181,11 +181,12 @@ extern "C" {
 
 // Convert a CIMG image to a buffer_t for halide
 buffer_t halideBufferOfImage(Image &im) {
-    buffer_t buf = {(uint8_t *)im.data(), 0, false, false, 
+    buffer_t buf = {0, (uint8_t *)im.data(), 
                     {im.width(), im.height(), 1, 1}, 
                     {1, im.width(), 0, 0}, 
                     {0, 0, 0, 0}, 
-                    sizeof(int16_t)};
+                    sizeof(int16_t), 
+                    false, false};
     return buf;
 }
 
@@ -209,16 +210,26 @@ Image blur_halide(Image &in) {
     return out;
 }
 
+Image make_log() {
+    Image input(32, 32);
+    Image out(32, 32);
+    buffer_t inbuf = halideBufferOfImage(input);
+    buffer_t outbuf = halideBufferOfImage(out);
+    for (int i = 0; i < 10; i++) {
+        halide_blur(&inbuf, &outbuf);
+    }
+    return out;
+}
 
 int main(int argc, char **argv) {
-    Image input(6400, 4864);
+
+    Image input(6400, 4800);
 
     for (int y = 0; y < input.height(); y++) {
         for (int x = 0; x < input.width(); x++) {
             input(x, y) = rand() & 0xfff;
         }
     }
-
 
     Image blurry = blur(input);
     float slow_time = (t2.tv_sec - t1.tv_sec) + (t2.tv_usec - t1.tv_usec) / 1000000.0f;
@@ -228,18 +239,19 @@ int main(int argc, char **argv) {
 
     //Image speedy2 = blur_fast2(input);
     //float fast_time2 = (t2.tv_sec - t1.tv_sec) + (t2.tv_usec - t1.tv_usec) / 1000000.0f;
-    
+
     Image halide = blur_halide(input);
     float halide_time = (t2.tv_sec - t1.tv_sec) + (t2.tv_usec - t1.tv_usec) / 1000000.0f;
-
+    
     // fast_time2 is always slower than fast_time, so skip printing it
     printf("times: %f %f %f\n", slow_time, fast_time, halide_time);
-
+    /*
     for (int y = 64; y < input.height() - 64; y++) {
         for (int x = 64; x < input.width() - 64; x++) {
             if (blurry(x, y) != speedy(x, y) || blurry(x, y) != halide(x, y))
                 printf("difference at (%d,%d): %d %d %d\n", x, y, blurry(x, y), speedy(x, y), halide(x, y));
         }
     }
+    */
     return 0;
 }

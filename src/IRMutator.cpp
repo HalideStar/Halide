@@ -1,0 +1,333 @@
+#include "IRMutator.h"
+#include "Log.h"
+#include "IRPrinter.h"
+#include "Options.h"
+
+namespace Halide {
+namespace Internal {
+
+using std::vector;
+
+IRMutator::IRMutator() : depth(0), maxdepth(global_options.mutator_depth_limit), failing(false) {
+}
+
+Expr IRMutator::mutate(Expr e) {
+    if (failing) {
+        // When depth has been exceeded, dont process new requests.
+        expr = e;
+        stmt = Stmt();
+        return e;
+    }
+    depth++;
+    if (depth > maxdepth) {
+        log(0) << "Warning: Mutator exceeded recursion depth of " << maxdepth << "\n";
+        log(0) << "  in expression: " << e << "\n";
+        failing = true;
+        return e;
+    } 
+    if (e.defined()) {
+        process(e);
+    } else {
+        expr = Expr();
+    }
+    stmt = Stmt();
+    depth--;
+    // When depth has been exceeded, recursively print expressions as mutate calls are returning.
+    if (failing) log(0) << "  in expression: " << e << "\n";
+    return expr;
+}
+
+Stmt IRMutator::mutate(Stmt s) {
+    if (failing) {
+        stmt = s;
+        expr = Expr();
+        return s;
+    }
+    depth++;
+    if (depth > maxdepth) {
+        log(0) << "Warning: Mutator exceeded recursion depth of " << maxdepth << "\n";
+        log(0) << "  in statement: " << s << "\n";
+        maxdepth = maxdepth * 10;
+        failing = true;
+    }
+    if (s.defined()) {
+        process(s);
+    } else {
+        stmt = Stmt();
+    }
+    expr = Expr();
+    depth--;
+    if (failing) log(0) << "  in statement: " << s << "\n";
+    return stmt;
+}
+
+namespace {
+template<typename T> 
+void mutate_binary_operator(IRMutator *mutator, const T *op, Expr *expr, Stmt *stmt) {
+    Expr a = mutator->mutate(op->a);
+    Expr b = mutator->mutate(op->b);
+    if (a.same_as(op->a) && 
+        b.same_as(op->b)) *expr = op;
+    else *expr = T::make(a, b);            
+    *stmt = NULL;
+}
+}
+
+void IRMutator::visit(const IntImm *op)   {expr = op;}
+void IRMutator::visit(const FloatImm *op) {expr = op;}
+void IRMutator::visit(const Variable *op) { /*std::cout << "Variable mutate\n";*/ expr = op;}
+
+void IRMutator::visit(const Cast *op) {
+    Expr value = mutate(op->value);
+    if (value.same_as(op->value)) expr = op;
+    else expr = Cast::make(op->type, value);
+}
+
+void IRMutator::visit(const BitAnd *op)  {mutate_binary_operator(this, op, &expr, &stmt);} //LH
+void IRMutator::visit(const BitOr *op)   {mutate_binary_operator(this, op, &expr, &stmt);} //LH
+void IRMutator::visit(const BitXor *op)  {mutate_binary_operator(this, op, &expr, &stmt);} //LH
+//LH
+void IRMutator::visit(const SignFill *op) {
+    Expr a = mutate(op->value);
+    if (a.same_as(op->value)) expr = op;
+    else expr = new SignFill(a);
+}
+//LH
+void IRMutator::visit(const Clamp *op) {
+    Expr a = mutate(op->a);
+	Expr min = mutate(op->min);
+	Expr max = mutate(op->max);
+	Expr p1;
+	if (op->clamptype == Internal::Clamp::Tile)
+	    p1 = mutate(op->p1);
+	else
+		p1 = op->p1;
+    if (a.same_as(op->a) &&
+	    min.same_as(op->min) &&
+		max.same_as(op->max) &&
+		p1.same_as(op->p1)) expr = op;
+    else expr = new Clamp(op->clamptype,a,min,max,p1);
+}
+
+void IRMutator::visit(const Add *op)     {mutate_binary_operator(this, op, &expr, &stmt);}
+void IRMutator::visit(const Sub *op)     {mutate_binary_operator(this, op, &expr, &stmt);}
+void IRMutator::visit(const Mul *op)     {mutate_binary_operator(this, op, &expr, &stmt);}
+void IRMutator::visit(const Div *op)     {mutate_binary_operator(this, op, &expr, &stmt);}
+void IRMutator::visit(const Mod *op)     {mutate_binary_operator(this, op, &expr, &stmt);}
+void IRMutator::visit(const Min *op)     {mutate_binary_operator(this, op, &expr, &stmt);}
+void IRMutator::visit(const Max *op)     {mutate_binary_operator(this, op, &expr, &stmt);}
+void IRMutator::visit(const EQ *op)      {mutate_binary_operator(this, op, &expr, &stmt);}
+void IRMutator::visit(const NE *op)      {mutate_binary_operator(this, op, &expr, &stmt);}
+void IRMutator::visit(const LT *op)      {mutate_binary_operator(this, op, &expr, &stmt);}
+void IRMutator::visit(const LE *op)      {mutate_binary_operator(this, op, &expr, &stmt);}
+void IRMutator::visit(const GT *op)      {mutate_binary_operator(this, op, &expr, &stmt);}
+void IRMutator::visit(const GE *op)      {mutate_binary_operator(this, op, &expr, &stmt);}
+void IRMutator::visit(const And *op)     {mutate_binary_operator(this, op, &expr, &stmt);}
+void IRMutator::visit(const Or *op)      {mutate_binary_operator(this, op, &expr, &stmt);}
+
+void IRMutator::visit(const Not *op) {
+    Expr a = mutate(op->a);
+    if (a.same_as(op->a)) expr = op;
+    else expr = Not::make(a);
+}
+
+void IRMutator::visit(const Select *op)  {
+    Expr cond = mutate(op->condition);
+    Expr t = mutate(op->true_value);
+    Expr f = mutate(op->false_value);
+    if (cond.same_as(op->condition) && 
+        t.same_as(op->true_value) && 
+        f.same_as(op->false_value)) expr = op;
+    else expr = Select::make(cond, t, f);
+}
+
+void IRMutator::visit(const Load *op) {
+    Expr index = mutate(op->index);
+    if (index.same_as(op->index)) expr = op;
+    else expr = Load::make(op->type, op->name, index, op->image, op->param);
+}
+
+void IRMutator::visit(const Ramp *op) {
+    Expr base = mutate(op->base);
+    Expr stride = mutate(op->stride);
+    if (base.same_as(op->base) &&
+        stride.same_as(op->stride)) expr = op;
+    else expr = Ramp::make(base, stride, op->width);
+}
+
+void IRMutator::visit(const Broadcast *op) {
+    Expr value = mutate(op->value);
+    if (value.same_as(op->value)) expr = op;
+    else expr = Broadcast::make(value, op->width);
+}
+
+void IRMutator::visit(const Call *op) {
+    vector<Expr > new_args(op->args.size());
+    bool changed = false;
+
+    // Mutate the args
+    for (size_t i = 0; i < op->args.size(); i++) {
+        Expr old_arg = op->args[i];
+        Expr new_arg = mutate(old_arg);
+        if (!new_arg.same_as(old_arg)) changed = true;
+        new_args[i] = new_arg;
+    }
+
+    if (!changed) expr = op;
+    else expr = Call::make(op->type, op->name, new_args, op->call_type, op->func, op->image, op->param);
+}
+
+void IRMutator::visit(const Let *op) {
+    Expr value = mutate(op->value);
+    Expr body = mutate(op->body);
+    if (value.same_as(op->value) &&
+        body.same_as(op->body)) expr = op;
+    else expr = Let::make(op->name, value, body);
+}
+
+void IRMutator::visit(const LetStmt *op) {
+    Expr value = mutate(op->value);
+    Stmt body = mutate(op->body);
+    if (value.same_as(op->value) &&
+        body.same_as(op->body)) stmt = op;
+    else stmt = LetStmt::make(op->name, value, body);
+}
+
+void IRMutator::visit(const PrintStmt *op) {
+    vector<Expr > new_args(op->args.size());
+    bool args_changed = false;
+
+    // Mutate the args
+    for (size_t i = 0; i < op->args.size(); i++) {
+        Expr old_arg = op->args[i];
+        Expr new_arg = mutate(old_arg);
+        if (!new_arg.same_as(old_arg)) args_changed = true;
+        new_args[i] = new_arg;
+    }
+
+    if (!args_changed) stmt = op;
+    else stmt = PrintStmt::make(op->prefix, new_args);
+}
+
+void IRMutator::visit(const AssertStmt *op) {
+    Expr condition = mutate(op->condition);
+    if (condition.same_as(op->condition)) stmt = op;
+    else stmt = AssertStmt::make(condition, op->message);
+}
+
+void IRMutator::visit(const Pipeline *op) {
+    Stmt produce = mutate(op->produce);
+    Stmt update = mutate(op->update);
+    Stmt consume = mutate(op->consume);
+    if (produce.same_as(op->produce) &&
+        update.same_as(op->update) &&
+        consume.same_as(op->consume)) {
+        stmt = op;
+    } else {
+        stmt = Pipeline::make(op->name, produce, update, consume);
+    }
+}
+
+void IRMutator::visit(const For *op) {
+    Expr min = mutate(op->min);
+    Expr extent = mutate(op->extent);
+    Stmt body = mutate(op->body);
+    if (min.same_as(op->min) &&
+        extent.same_as(op->extent) &&
+        body.same_as(op->body)) {
+        stmt = op;
+    } else {
+        //stmt = For::make(op->name, min, extent, op->for_type, body);
+        stmt = For::make(op, min, extent, body);
+    }
+}
+
+void IRMutator::visit(const Store *op) {
+    Expr value = mutate(op->value);
+    Expr index = mutate(op->index);
+    if (value.same_as(op->value) && 
+        index.same_as(op->index)) stmt = op;
+    else stmt = Store::make(op->name, value, index);            
+}
+
+void IRMutator::visit(const Provide *op) {
+    vector<Expr > new_args(op->args.size());
+    bool args_changed = false;
+
+    // Mutate the args
+    for (size_t i = 0; i < op->args.size(); i++) {
+        Expr old_arg = op->args[i];
+        Expr new_arg = mutate(old_arg);
+        if (!new_arg.same_as(old_arg)) args_changed = true;
+        new_args[i] = new_arg;
+    }
+
+    Expr value = mutate(op->value);
+            
+    if (!args_changed && value.same_as(op->value)) stmt = op;
+    else stmt = Provide::make(op->name, value, new_args);
+}
+
+void IRMutator::visit(const Allocate *op) {
+    Expr size = mutate(op->size);
+    Stmt body = mutate(op->body);
+    if (size.same_as(op->size) && body.same_as(op->body)) stmt = op;
+    else stmt = Allocate::make(op->name, op->type, size, body);
+}
+
+void IRMutator::visit(const Free *op) {
+    stmt = op;
+}
+        
+void IRMutator::visit(const Realize *op) {
+    Region new_bounds(op->bounds.size());
+    bool bounds_changed = false;
+
+    // Mutate the bounds
+    for (size_t i = 0; i < op->bounds.size(); i++) {
+        Expr old_min    = op->bounds[i].min;
+        Expr old_extent = op->bounds[i].extent;
+        Expr new_min    = mutate(old_min);
+        Expr new_extent = mutate(old_extent);
+        if (!new_min.same_as(old_min))       bounds_changed = true;
+        if (!new_extent.same_as(old_extent)) bounds_changed = true;
+        new_bounds[i] = Range(new_min, new_extent);
+    }
+
+    Stmt body = mutate(op->body);
+    if (!bounds_changed && body.same_as(op->body)) stmt = op;
+    else stmt = Realize::make(op->name, op->type, new_bounds, body);
+}
+
+void IRMutator::visit(const Block *op) {
+    Stmt first = mutate(op->first);
+    Stmt rest = mutate(op->rest);
+    if (first.same_as(op->first) && rest.same_as(op->rest)) stmt = op;
+    else stmt = Block::make(first, rest);
+}
+
+void IRMutator::visit(const Solve *op) {
+    Expr body = mutate(op->body);
+    if (body.same_as(op->body)) expr = op;
+    else expr = new Solve(body, op->v);
+}
+
+void IRMutator::visit(const TargetVar *op) {
+    Expr body = mutate(op->body);
+    if (body.same_as(op->body)) expr = op;
+    else expr = new TargetVar(op, body);
+}
+
+void IRMutator::visit(const StmtTargetVar *op) {
+    Stmt body = mutate(op->body);
+    if (body.same_as(op->body)) stmt = op;
+    else stmt = new StmtTargetVar(op, body);
+}
+
+void IRMutator::visit(const Infinity *op) {
+    expr = op;  // There are no children to mutate
+}
+
+// end namespace Internal
+}
+}
