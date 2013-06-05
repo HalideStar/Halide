@@ -185,65 +185,49 @@ void compare(std::string s, Func norm_nobound, Func part_nobound,
     
 }
 
-void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi, 
+void test (std::string prefix, std::string id, Expr e, int xlo, int xhi, int ylo, int yhi, 
            void (*check)(std::string, Image<uint8_t>, int), int k) {
     int N = 1;
     Var x("x"), y("y"), yi("yi");
     Interval xpart(xlo, xhi);
     Interval ypart(ylo, yhi);
     
-    std::cout << global_options;
-
-# if 1
-    {
+    if (id == "_") {
         Func norm(prefix + ""), part(prefix + "_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm;
         part.partition();
         compare(prefix + "", norm, part, check, k);
-    }
-    
-    {
+    } else if (id == "_b") {
         Func norm(prefix + "_b"), part(prefix + "_b_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).partition();
         compare(prefix + "_b", norm, part, check, k);
-    }
-# endif
-#if 1
-    {
+    } else if (id == "_b_v8") {
         Func norm(prefix + "_b_v8"), part(prefix + "_b_v8_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8).partition();
         compare(prefix + "_b_v8", norm, part, check, k);
-    }
-
-    {
+    } else if (id == "_v8") {
         Func norm(prefix + "_v8"), part(prefix + "_v8_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.vectorize(x,8);
         part.vectorize(x,8).partition();
         compare(prefix + "_v8", norm, part, check, k);
-    }
-# endif
-# if 1
-    {
+    } else if (id == "_b_v8_m") {
         Func norm(prefix + "_b_v8_m"), part(prefix + "_b_v8_m_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).vectorize(x,8);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).partition(x,xpart).partition(y,true).vectorize(x,8);
         compare(prefix + "_b_v8_m", norm, part, check, k);
-    }
-# endif
-# if 0
-    {
+    } else if (id == "_v8_m") {
         // Manual partition without bound does not work because the partition is specified
         // in the output image dimension, which is unknown to the code generator.
         // On the other hand, automatic partition does the job perfectly well.
@@ -253,150 +237,112 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi,
         norm.vectorize(x,8);
         part.partition(x,xpart).partition(y,true).vectorize(x,8);
         compare(prefix + "_v8_m", norm, part, check, k);
-    }
-    
-# endif
-# if 1
-    {
+    } else if (id == "_b_p1") {
         Func norm(prefix + "_b_p1"), part(prefix + "_b_p1_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).partition();
         compare(prefix + "_b_p1", norm, part, check, k);
-    }
-    
-    {
+    } else if (id == "_p1") {
         Func norm(prefix + "_p1"), part(prefix + "_p1_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.parallel(y);
         part.parallel(y).partition();
         compare(prefix + "_p1", norm, part, check, k);
-    }
-    
-    {
+    } else if (id == "_b_p4") {
         Func norm(prefix + "_b_p4"), part(prefix + "_b_p4_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,4).parallel(y);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,4).parallel(y).partition();
         compare(prefix + "_b_p4", norm, part, check, k);
-    }
-# endif
-# if 1
-    {
+    } else if (id == "_p4") {
         Func norm(prefix + "_p4"), part(prefix + "_p4_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.split(y,y,yi,4).parallel(y);
         part.split(y,y,yi,4).parallel(y).partition();
         compare(prefix + "_p4", norm, part, check, k);
-    }
-# endif
-# if 1  
-    {
+    } else if (id == "_b_p8") {
         Func norm(prefix + "_b_p8"), part(prefix + "_b_p8_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,8).parallel(y);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,8).parallel(y).partition();
         compare(prefix + "_b_p8", norm, part, check, k);
-    }
-    
-    {
+    } else if (id == "_p8") {
         Func norm(prefix + "_p8"), part(prefix + "_p8_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.split(y,y,yi,8).parallel(y);
         part.split(y,y,yi,8).parallel(y).partition();
         compare(prefix + "_p8", norm, part, check, k);
-    }
-
-    {
+    } else if (id == "_b_p16") {
         Func norm(prefix + "_b_p16"), part(prefix + "_b_p16_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,16).parallel(y);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,16).parallel(y).partition();
         compare(prefix + "_b_p16", norm, part, check, k);
-    }
-    
-    {
+    } else if (id == "_p16") {
         Func norm(prefix + "_p16"), part(prefix + "_p16_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.split(y,y,yi,16).parallel(y);
         part.split(y,y,yi,16).parallel(y).partition();
         compare(prefix + "_p16", norm, part, check, k);
-    }
-#endif
-#if 1
-    {
+    }  else if (id == "_b_p1_u2") {
         Func norm(prefix + "_b_p1_u2"), part(prefix + "_b_p1_u2_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,2);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,2).partition();
         compare(prefix + "_b_p1_u2", norm, part, check, k);
-    }
-    
-    {
+    }  else if (id == "_p1_u2") {
         Func norm(prefix + "_p1_u2"), part(prefix + "_p1_u2_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.parallel(y).unroll(x,2);
         part.parallel(y).unroll(x,2).partition();
         compare(prefix + "_p1_u2", norm, part, check, k);
-    }
-#endif
-#if 1
-    {
+    }  else if (id == "_b_p1_u4") {
         Func norm(prefix + "_b_p1_u4"), part(prefix + "_b_p1_u4_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,4);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,4).partition();
         compare(prefix + "_b_p1_u4", norm, part, check, k);
-    }
-    
-    {
+    }  else if (id == "_p1_u4") {
         Func norm(prefix + "_p1_u4"), part(prefix + "_p1_u4_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.parallel(y).unroll(x,4);
         part.parallel(y).unroll(x,4).partition();
         compare(prefix + "_p1_u4", norm, part, check, k);
-    }
-    
-    {
+    }  else if (id == "_b_p1_u8") {
         Func norm(prefix + "_b_p1_u8"), part(prefix + "_b_p1_u8_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,8);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).parallel(y).unroll(x,8).partition();
         compare(prefix + "_b_p1_u8", norm, part, check, k);
-    }
-    
-    {
+    }  else if (id == "_p1_u8") {
         Func norm(prefix + "_p1_u8"), part(prefix + "_p1_u8_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.parallel(y).unroll(x,8);
         part.parallel(y).unroll(x,8).partition();
         compare(prefix + "_p1_u8", norm, part, check, k);
-    }
-    
-    {
+    }  else if (id == "_b_p4_u8") {
         Func norm(prefix + "_b_p4_u8"), part(prefix + "_b_p4_u8_s");
         norm(x,y) = e;
         part(x,y) = e;
         norm.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,4).parallel(y).unroll(x,8);
         part.bound(x,0,WIDTH).bound(y,0,HEIGHT).split(y,y,yi,4).parallel(y).unroll(x,8).partition();
         compare(prefix + "_b_p4_u8", norm, part, check, k);
-    }
-    
-    {
+    }  else if (id == "_p4_u8") {
         Func norm(prefix + "_p4_u8"), part(prefix + "_p4_u8_s");
         norm(x,y) = e;
         part(x,y) = e;
@@ -404,17 +350,23 @@ void test (std::string prefix, Expr e, int xlo, int xhi, int ylo, int yhi,
         part.split(y,y,yi,4).parallel(y).unroll(x,8).partition();
         compare(prefix + "_p4_u8", norm, part, check, k);
     }
-    
-#endif
 }
 
 
 # define CODEVIEW_1D 0
 # define CODEVIEW_2D 0
 # define SPEED_CLAMP 0
+# define SPEED_CLAMP_BDR 0
 # define SPEED_MOD 0
 # define SPEED_SELECT 1
+# define SPEED_SELECT_CLAMP 1
 # define SPEED_WRAP 0
+
+std::string test_idlist_all[] = { "_", "_b", "_v8", /* "_v8_m", */ "_b_v8", "_b_v8_m", 
+    "_p1", "_b_p1", "_p4", "_b_p4", "_p8", "_b_p8", "_p16", "_b_p16", 
+    "_p1_u2", "_b_p1_u2", "_p1_u4", "_b_p1_u4", "_p1_u8", "_b_p1_u8", "_p4_u8", "_b_p4_u8", "" };
+
+# define IDLIST test_idlist_all
 
 main () {
     // Start by generating an input image. 1MP in size.
@@ -432,7 +384,8 @@ main () {
     Func undefined;
     
     Halide::global_options.loop_partition = true;
-    
+    std::cout << global_options;
+
     const int max_diag = 1;
 
 # if CODEVIEW_1D
@@ -469,52 +422,82 @@ main () {
     }
 # endif
     
+    for (int j = 0; IDLIST[j] != ""; j++) {
+    for (int k = 1; k <= max_diag; k++) {
 # if SPEED_CLAMP
     // 2-D simple diagonal case: good for speed testing.
-    for (int k = 1; k <= max_diag; k++) {
+    {
         std::ostringstream ss;
         ss << "clamp_" << k;
         Expr e = input(clamp(x-k,0,WIDTH-1),clamp(y-k,0,HEIGHT-1)) + input(clamp(x+k,0,WIDTH-1),clamp(y+k,0,HEIGHT-1));
-        test(ss.str(),e,k,WIDTH-1-k,k,HEIGHT-1-k, check_clamp, k);
+        test(ss.str(),IDLIST[j],e,k,WIDTH-1-k,k,HEIGHT-1-k, check_clamp, k);
+    }
+# endif
+
+# if SPEED_CLAMP_BDR
+    // 2-D simple diagonal case: good for speed testing.
+    {
+        std::ostringstream ss;
+        ss << "clamp_bdr_" << k;
+        Func b;
+        b(x,y) = input(clamp(x,0,WIDTH-1),clamp(y,0,WIDTH-1));
+        Expr e = b(x-k,y-k) + b(x+k,y+k);
+        test(ss.str(),IDLIST[j],e,k,WIDTH-1-k,k,HEIGHT-1-k, check_clamp, k);
     }
 # endif
 
 # if SPEED_MOD
     // 2-D simple diagonal case: good for speed testing.
-    for (int k = 1; k <= max_diag; k++) {
+    {
         std::ostringstream ss;
         ss << "mod_" << k;
         Func b;
         b(x,y) = input(x%WIDTH,y%HEIGHT);
         Expr e = b(x-k,y-k) + b(x+k,y+k);
-        test(ss.str(),e,k,WIDTH-1-k,k,HEIGHT-1-k, check_wrap, k);
+        test(ss.str(),IDLIST[j],e,k,WIDTH-1-k,k,HEIGHT-1-k, check_wrap, k);
     }
 # endif
 
 # if SPEED_SELECT
     // 2-D simple diagonal case: good for speed testing.
-    for (int k = 1; k <= max_diag; k++) {
+    {
         std::ostringstream ss;
-        ss << "select_" << k;
+        ss << "select_mod_" << k;
         Func b;
         int c = 1;
         b(x,y) = select(x<0,c,select(x>WIDTH-1,c,
                  select(y<0,c,select(y>HEIGHT-1,c,input(x%WIDTH,y%HEIGHT)))));
         Expr e = b(x-k,y-k) + b(x+k,y+k);
-        test(ss.str(),e,k,WIDTH-1-k,k,HEIGHT-1-k, check_const, k);
+        test(ss.str(),IDLIST[j],e,k,WIDTH-1-k,k,HEIGHT-1-k, check_const, k);
+    }
+# endif
+
+# if SPEED_SELECT_CLAMP
+    // 2-D simple diagonal case: good for speed testing.
+    {
+        std::ostringstream ss;
+        ss << "select_clamp_" << k;
+        Func b;
+        int c = 1;
+        b(x,y) = select(x<0,c,select(x>WIDTH-1,c,
+                 select(y<0,c,select(y>HEIGHT-1,c,input(clamp(x,0,WIDTH-1),clamp(y,0,WIDTH-1))))));
+        Expr e = b(x-k,y-k) + b(x+k,y+k);
+        test(ss.str(),IDLIST[j],e,k,WIDTH-1-k,k,HEIGHT-1-k, check_const, k);
     }
 # endif
 
 # if SPEED_WRAP
     // 2-D simple diagonal case: good for speed testing.
-    for (int k = 1; k <= max_diag; k++) {
+    {
         std::ostringstream ss;
         ss << "diag_" << k;
         Func b = Border::wrap(input);
         Expr e = b(x-k,y-k) + b(x+k,y+k);
-        test(ss.str(),e,k,WIDTH-1-k,k,HEIGHT-1-k, check_wrap, k);
+        test(ss.str(),IDLIST[j],e,k,WIDTH-1-k,k,HEIGHT-1-k, check_wrap, k);
     }
 # endif
+    }
+    }
 
 #if 0
     Func cons = Border::constant(0)(input);

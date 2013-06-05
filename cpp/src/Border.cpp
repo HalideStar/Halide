@@ -178,10 +178,6 @@ Expr BorderIndex::valueExpr(int _dim, Expr value, Expr expr, Expr min, Expr max)
     return base.valueExpr(_dim + dim, value, expr, min, max); 
 }
 
-Expr BorderValueBase::indexExpr(int dim, Expr expr, Expr xmin, Expr xmax) { 
-    return clamp(expr, xmin, xmax); 
-}
-
 Expr BorderConstant::valueExpr(int dim, Expr value, Expr expr, Expr min, Expr max) {
     assert(constant.defined() && "Border::constant requires constant value to be specified"); 
     assert(expr.defined() && "Border::constant - undefined index expression");
