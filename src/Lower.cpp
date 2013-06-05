@@ -876,7 +876,7 @@ Stmt lower(Function f) {
     code_logger.section(240);
     log(1) << "Lowering Clamp late\n";
     s = lower_clamp(s);
-    s = simplify(s);
+    //s = simplify(s);
     log(1) << "Clamp lowered:\n" << s << '\n';
     code_logger.log(s, "clamp");
 # endif

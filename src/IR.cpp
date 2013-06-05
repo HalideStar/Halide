@@ -17,9 +17,6 @@ IntImm make_immortal_int(int x) {
 
 }
 
-Expr::Expr(double x) : Internal::IRHandle(new Internal::FloatImm((float)x)) {
-}
-
 namespace Internal {
 IntImm IntImm::small_int_cache[] = {make_immortal_int(-8), 
                                     make_immortal_int(-7), 

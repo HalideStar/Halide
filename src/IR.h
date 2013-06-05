@@ -195,7 +195,8 @@ struct Expr : public Internal::IRHandle {
     EXPORT Expr(float x) : IRHandle(Internal::FloatImm::make(x)) {
     }   
     
-    EXPORT Expr(double); //LH
+    EXPORT Expr(double x) : IRHandle(Internal::FloatImm::make((float)x)) { //LH
+    }
 
     /** Get the type of this expression node */
     Type type() const {
@@ -261,11 +262,17 @@ struct Cast : public ExprNode<Cast> {
 struct BitAnd : public ExprNode<BitAnd> {
     Expr a, b;
 
-    BitAnd(Expr _a, Expr _b) : ExprNode<BitAnd>(_a.type()), a(_a), b(_b) {
+    static Expr make(Type t, Expr a, Expr b) {
         assert(a.defined() && "BitAnd of undefined");
         assert(b.defined() && "BitAnd of undefined");
         assert((a.type().is_int() || a.type().is_uint()) && "lhs of BitAnd is not an integer type");
         assert((b.type().is_int() || b.type().is_uint()) && "rhs of BitAnd is not an integer type");
+        
+        BitAnd *node = new BitAnd;
+        node->type = t;
+        node->a = a;
+        node->b = b;
+        return node;
     }
 };
 
@@ -274,11 +281,17 @@ struct BitAnd : public ExprNode<BitAnd> {
 struct BitOr : public ExprNode<BitOr> {
     Expr a, b;
 
-    BitOr(Expr _a, Expr _b) : ExprNode<BitOr>(_a.type()), a(_a), b(_b) {
+    static Expr make(Type t, Expr a, Expr b) {
         assert(a.defined() && "BitOr of undefined");
         assert(b.defined() && "BitOr of undefined");
         assert((a.type().is_int() || a.type().is_uint()) && "lhs of BitOr is not an integer type");
         assert((b.type().is_int() || b.type().is_uint()) && "rhs of BitOr is not an integer type");
+        
+        BitOr *node = new BitOr;
+        node->type = t;
+        node->a = a;
+        node->b = b;
+        return node;
     }
 };
 
@@ -287,11 +300,17 @@ struct BitOr : public ExprNode<BitOr> {
 struct BitXor : public ExprNode<BitXor> {
     Expr a, b;
 
-    BitXor(Expr _a, Expr _b) : ExprNode<BitXor>(_a.type()), a(_a), b(_b) {
+    static Expr make(Type t, Expr a, Expr b) {
         assert(a.defined() && "BitXor of undefined");
         assert(b.defined() && "BitXor of undefined");
         assert((a.type().is_int() || a.type().is_uint()) && "lhs of BitXor is not an integer type");
         assert((b.type().is_int() || b.type().is_uint()) && "rhs of BitXor is not an integer type");
+        
+        BitXor *node = new BitXor;
+        node->type = t;
+        node->a = a;
+        node->b = b;
+        return node;
     }
 };
 
@@ -300,9 +319,14 @@ struct BitXor : public ExprNode<BitXor> {
 struct SignFill : public ExprNode<SignFill> {
     Expr value;
 
-    SignFill(Expr _value) : ExprNode<SignFill>(_value.type()), value(_value) {
+    static Expr make(Type t, Expr v) {
         assert(value.defined() && "SignFill of undefined");
         assert((value.type().is_int() || value.type().is_uint()) && "parameter of SignFill is not an integer type");
+        
+        SignFill *node = new SignFill;
+        node->type = t;
+        node->value = v;
+        return node;
     }
 };
 
@@ -349,8 +373,8 @@ struct Mul : public ExprNode<Mul> {
     static Expr make(Expr a, Expr b) {
         assert_defined_same_type("Mul", a, b);
         //assert(a.defined() && "Mul of undefined");
-        ///assert(b.defined() && "Mul of undefined");
-        /assert(a.type() == b.type() && "Mul of mismatched types");
+        //assert(b.defined() && "Mul of undefined");
+        //assert(a.type() == b.type() && "Mul of mismatched types");
 
         Mul *node = new Mul;
         node->type = a.type();
@@ -406,8 +430,8 @@ struct Min : public ExprNode<Min> {
     static Expr make(Expr a, Expr b) {
         assert_defined_same_type("Min", a, b);
         //assert(a.defined() && "Min of undefined");
-        ///assert(b.defined() && "Min of undefined");
-        /assert(a.type() == b.type() && "Min of mismatched types");
+        //assert(b.defined() && "Min of undefined");
+        //assert(a.type() == b.type() && "Min of mismatched types");
 
         Min *node = new Min;
         node->type = a.type();
@@ -856,38 +880,8 @@ struct For : public StmtNode<For> {
     PartitionInfo partition;
     Stmt body;
 
-# if 0
-    /** Constructor for building a For loop with partition schedule information included. */
-    For(std::string n, Expr m, Expr e, ForType f, const PartitionInfo &p, Stmt b) :
-        name(n), min(m), extent(e), for_type(f), partition(p), body(b) {
-        assert(min.defined() && "For of undefined");
-        assert(extent.defined() && "For of undefined");
-        assert(min.type().is_scalar() && "For with vector min");
-        assert(extent.type().is_scalar() && "For with vector extent");
-        assert(body.defined() && "For of undefined");
-    }
-    
-    /** Convenience constructor that inherits information from an existing For structure.
-     * name, for_type and partition are inherited. Use this in mutators unless you need to
-     * modify the excluded parameters.  */
-    For(const For *oldloop, Expr m, Expr e, Stmt b) :
-        min(m), extent(e), body(b) {
-        assert(oldloop && "Null pointer passed to For");
-        name = oldloop->name;
-        for_type = oldloop->for_type;
-        partition = oldloop->partition;
-        assert(min.defined() && "For of undefined");
-        assert(extent.defined() && "For of undefined");
-        assert(min.type().is_scalar() && "For with vector min");
-        assert(extent.type().is_scalar() && "For with vector extent");
-        assert(body.defined() && "For of undefined");
-    }
-    
-    /** Convenience constructor for building sample code. Do NOT use this in mutators as you will lose information. */
-    For(std::string n, Expr m, Expr e, ForType f, Stmt b) :
-        name(n), min(m), extent(e), for_type(f), partition(PartitionInfo()), body(b) {
-# endif
-    static Stmt make(std::string name, Expr min, Expr extent, ForType for_type, Stmt body) {
+    /** Make a For loop with partition schedule information included. */
+    static Stmt make(std::string name, Expr min, Expr extent, ForType for_type, const PartitionInfo &p, Stmt body) {
         assert(min.defined() && "For of undefined");
         assert(extent.defined() && "For of undefined");
         assert(min.type().is_scalar() && "For with vector min");
@@ -899,8 +893,22 @@ struct For : public StmtNode<For> {
         node->min = min;
         node->extent = extent;
         node->for_type = for_type;
+        node->partition = p;
         node->body = body;
         return node;
+    }
+    
+    /** Convenience builder that inherits information from an existing For structure.
+     * name, for_type and partition are inherited. Use this in mutators unless you need to
+     * modify the excluded parameters.  */
+    static Stmt make(const For *oldloop, Expr min, Expr extent, Stmt body) {
+        assert(oldloop && "Null pointer passed to For");
+        return make(oldloop->name, min, extent, oldloop->for_type, oldloop->partition, body);
+    }
+    
+    /** Convenience builder for sample code only - partition information is not included */
+    static Stmt make(std::string name, Expr min, Expr extent, ForType for_type, Stmt body) {
+        return make(name, min, extent, for_type, PartitionInfo(), body);
     }
     
 };
@@ -1170,12 +1178,22 @@ struct Solve : public ExprNode<Solve> {
     Expr body;
     std::vector<InfInterval> v;
     
-    // Solve over a vector of InfInterval.
-    Solve(Expr _e, std::vector<InfInterval> _v) : ExprNode<Solve>(_e.type()), body(_e), v(_v) {}
-    // Solve over one InfInterval
-    Solve(Expr _e, InfInterval _i) : ExprNode<Solve>(_e.type()), body(_e), v(vec(_i)) {}
-    // Solve over two InfInterval
-    Solve(Expr _e, InfInterval _i, InfInterval _j) : ExprNode<Solve>(_e.type()), body(_e), v(vec(_i, _j)) {}
+    /** Solve over a vector of InfInterval. */
+    static Expr make(Expr body, std::vector<InfInterval> v) {
+        Solve *node = new Solve;
+        node->type = body.type();
+        node->body = body;
+        node->v = v;
+        return node;
+    }
+    /** Solve over one InfInterval */
+    static Expr make(Expr body, InfInterval i) {
+        return make(body, vec(i));
+    }
+    /** Solve over two InfInterval together */
+    static Expr make(Expr body, InfInterval i, InfInterval j) {
+        return make(body, vec(i, j));
+    }
 };
 
 struct TargetVar : public ExprNode<TargetVar> {
@@ -1183,8 +1201,20 @@ struct TargetVar : public ExprNode<TargetVar> {
     Expr body;
     Expr source; // Not a child node - records the source expression
     
-    TargetVar(std::string _v, Expr _e, Expr _source) : ExprNode<TargetVar>(_e.type()), name(_v), body(_e), source(_source) {}
-    TargetVar(const TargetVar *op, Expr _e) : ExprNode<TargetVar>(_e.type()), name(op->name), body(_e), source(op->source) {}
+    static Expr make(std::string name, Expr body, Expr source) {
+        TargetVar *node = new TargetVar;
+        node->type = body.type();
+        node->name = name;
+        node->body = body;
+        node->source = source;
+        return node;
+    }
+    
+    /** Convenience constructor for mutating a node - rebuilding it with a new body.
+     * The source is copied transparently */
+    static Expr make(const TargetVar *op, Expr body) {
+        return make(op->name, body, op->source);
+    }
 };
 
 struct StmtTargetVar : public StmtNode<StmtTargetVar> {
@@ -1192,9 +1222,20 @@ struct StmtTargetVar : public StmtNode<StmtTargetVar> {
     Stmt body;
     Stmt source; // Not a child node - records the source statement
     
-    StmtTargetVar(std::string _v, Stmt _s, Stmt _source) : name(_v), body(_s), source(_source) {}
-    // Constructor for use by mutators that want to mutate the Stmt body.
-    StmtTargetVar(const StmtTargetVar *op, Stmt _s) : name(op->name), body(_s), source(op->source) {}
+    static Stmt make(std::string name, Expr body, Expr source) {
+        StmtTargetVar *node = new StmtTargetVar;
+        node->type = body.type();
+        node->name = name;
+        node->body = body;
+        node->source = source;
+        return node;
+    }
+    
+    /** Convenience constructor for mutating a node - rebuilding it with a new body.
+     * The source is copied transparently */
+    static Stmt make(const StmtTargetVar *op, Expr body) {
+        return make(op->name, body, op->source);
+    }
 };
 
 /** Infinity node is useful for interval analysis and solver.  It represents an undefined
@@ -1205,10 +1246,17 @@ struct StmtTargetVar : public StmtNode<StmtTargetVar> {
 struct Infinity : public ExprNode<Infinity> {
     int count; // Count of infinity. >0 means +ve infinity, <0 means negative infinity.
     
-    Infinity(Type t, int _c) : ExprNode<Infinity>(t), count(_c) {}
+    static Expr make(Type t, int count) {
+        Infinity *node = new Infinity;
+        node->type = t;
+        node->count = count;
+        return node;
+    }
     
     // Convenience constructor when you dont know what type to use.  Be careful.
-    Infinity(int _c) : ExprNode<Infinity>(Int(32)), count(_c) {}
+    static Expr make(int count) {
+        return make(Int(32), count);
+    }
 };
 
 }

@@ -90,7 +90,7 @@ void IRMutator::visit(const BitXor *op)  {mutate_binary_operator(this, op, &expr
 void IRMutator::visit(const SignFill *op) {
     Expr a = mutate(op->value);
     if (a.same_as(op->value)) expr = op;
-    else expr = new SignFill(a);
+    else expr = SignFill::make(a);
 }
 //LH
 void IRMutator::visit(const Clamp *op) {
@@ -106,7 +106,7 @@ void IRMutator::visit(const Clamp *op) {
 	    min.same_as(op->min) &&
 		max.same_as(op->max) &&
 		p1.same_as(op->p1)) expr = op;
-    else expr = new Clamp(op->clamptype,a,min,max,p1);
+    else expr = Clamp::make(op->clamptype,a,min,max,p1);
 }
 
 void IRMutator::visit(const Add *op)     {mutate_binary_operator(this, op, &expr, &stmt);}
@@ -309,19 +309,19 @@ void IRMutator::visit(const Block *op) {
 void IRMutator::visit(const Solve *op) {
     Expr body = mutate(op->body);
     if (body.same_as(op->body)) expr = op;
-    else expr = new Solve(body, op->v);
+    else expr = Solve::make(body, op->v);
 }
 
 void IRMutator::visit(const TargetVar *op) {
     Expr body = mutate(op->body);
     if (body.same_as(op->body)) expr = op;
-    else expr = new TargetVar(op, body);
+    else expr = TargetVar::make(op, body);
 }
 
 void IRMutator::visit(const StmtTargetVar *op) {
     Stmt body = mutate(op->body);
     if (body.same_as(op->body)) stmt = op;
-    else stmt = new StmtTargetVar(op, body);
+    else stmt = StmtTargetVar::make(op, body);
 }
 
 void IRMutator::visit(const Infinity *op) {
