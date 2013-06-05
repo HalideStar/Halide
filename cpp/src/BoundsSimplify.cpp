@@ -1,5 +1,6 @@
 #include "BoundsSimplify.h"
 #include "BoundsAnalysis.h"
+#include "CodeLogger.h"
 #include "IRCacheMutator.h"
 #include "IR.h"
 #include "IROperator.h"
@@ -32,22 +33,26 @@ public:
     using Super::visit;
 
     void visit(const Mod *op) {
-        log(LOGLEVEL) << "BoundsSimplify: Mod " << op->a << ", " << op->b << "\n";
         InfInterval bounds_a = bounds.bounds(op->a);
         InfInterval bounds_b = bounds.bounds(op->b);
-        log(LOGLEVEL) << "    interval a " << bounds_a << "  b " << bounds_b << "\n";
+        code_logger.log() << "BoundsSimplify: " << Expr(op) << "\n";
+        code_logger.log() << "    Interval a " << bounds_a << "\n";
+        code_logger.log() << "    Interval b " << bounds_b << "\n";
         if (proved(bounds_b.min > bounds_a.max) && proved(bounds_a.min >= 0)) {
             // The expression a is always in the bounds of the (positive) modulus b.
-            log(LOGLEVEL) << "    result is +ve expr a\n";
+            code_logger.log() << "Proved " << (bounds_b.min > bounds_a.max) << "\n";
+            code_logger.log() << "    and +ve modulus proof " << (bounds_a.min >= 0) << "\n";
             expr = mutate(op->a);
         } else if (proved(bounds_b.max < bounds_a.min) && proved(bounds_a.max <= 0)) {
             // The expression a is always in the bounds of the negative modulus b.
-            log(LOGLEVEL) << "    result is -ve expr a\n";
+            code_logger.log() << "Proved " << (bounds_b.max < bounds_a.min) << "\n";
+            code_logger.log() << "   and -ve modulus proof " << (bounds_a.max <= 0) << "\n";
             expr = mutate(op->a);
         } else {
-            log(LOGLEVEL) << "    could not resolve\n";
+            code_logger.log() << "Could not bounds simplify Mod\n";
             Super::visit(op);
         }
+        code_logger.log() << "BoundsSimplify Mod result: " << expr << "\n";
     }
 
 	//LH
@@ -55,56 +60,80 @@ public:
         InfInterval bounds_a = bounds.bounds(op->a);
         InfInterval bounds_min = bounds.bounds(op->min);
         InfInterval bounds_max = bounds.bounds(op->max);
-        if (op->clamptype == Clamp::None || (proved(bounds_min.max <= bounds_a.min) && 
-            proved(bounds_max.min >= bounds_a.max))) {
+        code_logger.log() << "BoundsSimplify: " << Expr(op) << "\n";
+        code_logger.log() << "    Interval a " << bounds_a << "\n";
+        code_logger.log() << "    Interval min " << bounds_min << "\n";
+        code_logger.log() << "    Interval max " << bounds_max << "\n";
+        if (op->clamptype == Clamp::None) {
+            code_logger.log() << "Clamp None is trivially removed\n";
+            expr = mutate(op->a);
+        } else if (proved(bounds_min.max <= bounds_a.min) && 
+            proved(bounds_max.min >= bounds_a.max)) {
+            code_logger.log() << "Proved " << (bounds_min.max <= bounds_a.min) << "\n";
+            code_logger.log() << "   and " << (bounds_max.min >= bounds_a.max) << "\n";
             // The expression is always in bounds, so the clamp is not required at all.
             expr = mutate(op->a);
         } else {
+            code_logger.log() << "Could not bounds simplify Clamp\n";
             Super::visit(op);
         }
+        code_logger.log() << "BoundsSimplify Clamp result: " << expr << "\n";
     }
 
     void visit(const Min *op) {
-        log(LOGLEVEL) << "BoundsSimplify: Min " << op->a << ", " << op->b << "\n";
         InfInterval bounds_a = bounds.bounds(op->a);
         InfInterval bounds_b = bounds.bounds(op->b);
-        log(LOGLEVEL) << "    interval a " << bounds_a << "  b " << bounds_b << "\n";
-        //log(0) << "    current context " << current_context() << "\n";
+        code_logger.log() << "BoundsSimplify: " << Expr(op) << "\n";
+        code_logger.log() << "    Interval a " << bounds_a << "\n";
+        code_logger.log() << "    Interval b " << bounds_b << "\n";
         if (proved(bounds_a.max <= bounds_b.min)) {
-            log(LOGLEVEL) << "    result is expr a\n";
+            code_logger.log() << "Proved " << (bounds_a.max <= bounds_b.min) << "\n";
             expr = mutate(op->a);
         } else if (proved(bounds_b.max <= bounds_a.min)) {
-            log(LOGLEVEL) << "    result is expr b\n";
+            code_logger.log() << "Proved " << (bounds_b.max <= bounds_a.min) << "\n";
             expr = mutate(op->b);
         } else {
-            log(LOGLEVEL) << "    could not resolve\n";
+            code_logger.log() << "Could not bounds simplify Min\n";
             Super::visit(op);
         }
+        code_logger.log() << "BoundsSimplify Min result: " << expr << "\n";
     }
 
     void visit(const Max *op) {
-        log(LOGLEVEL) << "BoundsSimplify: Max " << op->a << ", " << op->b << "\n";
         InfInterval bounds_a = bounds.bounds(op->a);
         InfInterval bounds_b = bounds.bounds(op->b);
+        code_logger.log() << "BoundsSimplify: " << Expr(op) << "\n";
+        code_logger.log() << "    Interval a " << bounds_a << "\n";
+        code_logger.log() << "    Interval b " << bounds_b << "\n";
         if (proved(bounds_a.min >= bounds_b.max)) {
+            code_logger.log() << "Proved " << (bounds_a.min >= bounds_b.max) << "\n";
             expr = mutate(op->a);
         } else if (proved(bounds_b.min >= bounds_a.max)) {
+            code_logger.log() << "Proved " << (bounds_b.min >= bounds_a.max) << "\n";
             expr = mutate(op->b);
         } else {
+            code_logger.log() << "Could not bounds simplify Max\n";
             Super::visit(op);
         }
+        code_logger.log() << "BoundsSimplify Max result: " << expr << "\n";
     }
 
     void visit(const Select *op) {
         InfInterval bounds_cond = bounds.bounds(op->condition);
+        code_logger.log() << "BoundsSimplify: " << Expr(op) << "\n";
+        code_logger.log() << "    Interval cond " << bounds_cond << "\n";
         if (is_one(bounds_cond.min)) {
             // Provably always true condition.
+            code_logger.log() << "Proved always true\n";
             expr = mutate(op->true_value);
         } else if (is_zero(bounds_cond.max)) {
+            code_logger.log() << "Proved always false\n";
             expr = mutate(op->false_value);
         } else {
+            code_logger.log() << "Could not bounds simplify Select\n";
             Super::visit(op);
         }
+        code_logger.log() << "BoundsSimplify Select result: " << expr << "\n";
     }
           
 # if 0
