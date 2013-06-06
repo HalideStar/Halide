@@ -358,15 +358,18 @@ void test (std::string prefix, std::string id, Expr e, int xlo, int xhi, int ylo
 # define SPEED_CLAMP 0
 # define SPEED_CLAMP_BDR 0
 # define SPEED_MOD 0
-# define SPEED_SELECT 1
-# define SPEED_SELECT_CLAMP 1
-# define SPEED_WRAP 0
+# define SPEED_SELECT 0
+# define SPEED_SELECT_CLAMP 0
+# define SPEED_WRAP 1
+# define SPEED_CONSTANT 1
 
 std::string test_idlist_all[] = { "_", "_b", "_v8", /* "_v8_m", */ "_b_v8", "_b_v8_m", 
     "_p1", "_b_p1", "_p4", "_b_p4", "_p8", "_b_p8", "_p16", "_b_p16", 
     "_p1_u2", "_b_p1_u2", "_p1_u4", "_b_p1_u4", "_p1_u8", "_b_p1_u8", "_p4_u8", "_b_p4_u8", "" };
-
 # define IDLIST test_idlist_all
+
+std::string one_id[] = { "_v8", "" };
+//# define IDLIST one_id    
 
 main () {
     // Start by generating an input image. 1MP in size.
@@ -386,10 +389,10 @@ main () {
     Halide::global_options.loop_partition = true;
     std::cout << global_options;
 
-    const int max_diag = 1;
+    const int max_diag = 9;
 
 # if CODEVIEW_1D
-    const int the_diag = 1;
+    const int the_diag = 2;
     // 1-D cases for code viewing and analysis.
     std::cout << global_options;
     for (int k = the_diag; k <= the_diag; k++) {
@@ -408,7 +411,7 @@ main () {
 # endif
     
 # if CODEVIEW_2D
-    const int the_diag = 1;
+    const int the_diag = 2;
     // 2-D cases for code viewing and analysis.
     std::cout << global_options;
     for (int k = the_diag; k <= the_diag; k++) {
@@ -423,7 +426,12 @@ main () {
 # endif
     
     for (int j = 0; IDLIST[j] != ""; j++) {
-    for (int k = 1; k <= max_diag; k++) {
+    // Note: Do not use k=1..8 because the border is only one unit wide (or one vector)
+    // and when that happens the before and after loops degenerate to LetStmt when bound is applied.
+    // When the before or after loop degenerates, it cannot be recognised as not being part of the outer main loop
+    // so then partitioning is detected as not being effective.
+    // Start at k=9 so that the before and after loops do not degenerate.
+    for (int k = 9; k <= max_diag; k++) {
 # if SPEED_CLAMP
     // 2-D simple diagonal case: good for speed testing.
     {
@@ -435,7 +443,7 @@ main () {
 # endif
 
 # if SPEED_CLAMP_BDR
-    // 2-D simple diagonal case: good for speed testing.
+    // same as SPEED_CLAMP case above, except that the border handling is an inlined function
     {
         std::ostringstream ss;
         ss << "clamp_bdr_" << k;
@@ -462,7 +470,7 @@ main () {
     // 2-D simple diagonal case: good for speed testing.
     {
         std::ostringstream ss;
-        ss << "select_mod_" << k;
+        ss << "smod_" << k;
         Func b;
         int c = 1;
         b(x,y) = select(x<0,c,select(x>WIDTH-1,c,
@@ -476,7 +484,7 @@ main () {
     // 2-D simple diagonal case: good for speed testing.
     {
         std::ostringstream ss;
-        ss << "select_clamp_" << k;
+        ss << "sclamp_" << k;
         Func b;
         int c = 1;
         b(x,y) = select(x<0,c,select(x>WIDTH-1,c,
@@ -490,10 +498,21 @@ main () {
     // 2-D simple diagonal case: good for speed testing.
     {
         std::ostringstream ss;
-        ss << "diag_" << k;
+        ss << "wrap_" << k;
         Func b = Border::wrap(input);
         Expr e = b(x-k,y-k) + b(x+k,y+k);
         test(ss.str(),IDLIST[j],e,k,WIDTH-1-k,k,HEIGHT-1-k, check_wrap, k);
+    }
+# endif
+
+# if SPEED_CONSTANT
+    // 2-D simple diagonal case: good for speed testing.
+    {
+        std::ostringstream ss;
+        ss << "const_" << k;
+        Func b = Border::constant(1)(input);
+        Expr e = b(x-k,y-k) + b(x+k,y+k);
+        test(ss.str(),IDLIST[j],e,k,WIDTH-1-k,k,HEIGHT-1-k, check_const, k);
     }
 # endif
     }

@@ -12,7 +12,13 @@
 #include "SlidingWindow.h"
 #include <iostream>
 
+#include "CodeLogger.h"
+#include "Options.h"
+
 # define LOGLEVEL 4
+
+// Lift constants out of Min and Max expressions?  i.e. Min(e+k,k2) --> Min(e,k2-k)+k
+# define LIFT_CONSTANT_MIN_MAX 0
 
 namespace Halide { 
 namespace Internal {
@@ -123,7 +129,7 @@ protected:
         return const_int(min_a->b, k2) && const_int(max_e->b, k1);
     }
     
-    /* Recognise an integer division expression  e / k.
+    /* Recognise an integer division expression  e / k;  k > 0
      * Ceiling division can be written (e1 + (k-1)) / k or
      * as (e1 - 1) /k + 1.
      * Further, there could be an additional constant term.
@@ -138,19 +144,20 @@ protected:
             int add_kb;
             if (! const_int(add_e->b, &add_kb)) return false;
             if (! const_int(div_a->b, k)) return false;
+            if ((*k) <= 0) return false; // Only positive divisors satisfy this rule
             // e / k + add_kb  -->  e1 := e + add_kb * k
             *e1 = mutate(div_a->a + add_kb * (*k));
             return true;
         } else if (div_e) {
             // Looking for e1 / k
             *e1 = div_e->a;
-            return const_int(div_e->b, k);
+            return const_int(div_e->b, k) && (*k) > 0;
         } else {
             return false;
         }
     }
     
-    /* Recognise an integer division expression in the form (k1 - e1) / kd */
+    /* Recognise an integer division expression in the form (k1 - e1) / kd; kd > 0*/
     bool sub_div_int(Expr e, Expr *e1, int *k1, int *kd) {
         Expr ediv;
         if (! division_int(e, &ediv, kd)) return false;
@@ -163,10 +170,73 @@ protected:
         // Recognised (k1 - e1) / kd
         return true;
     }
+    
+    /* Recognise expression e as div and mul.
+     * (k1 - e1) / kd * kd;  kd > 0 */
+    bool div_mul_expr(Expr e, Expr *e1, int *k1, int *kd) {
+        const Mul *mul_e = e.as<Mul>(); // ? * ?
+        if (! mul_e) return false;
+        if (! const_int(mul_e->b, kd)) return false;
+        // Recognised ? * kd
+        int kdiv;
+        if (sub_div_int(mul_e->a, e1, k1, &kdiv) && kdiv == (*kd)) {
+            // Recognised (k1 - e1) /kd * kd
+            return true;
+        }
+        return false;
+    }
+
+    // Rules for div_mul_expr can replace these more specific rules.  These are shortcuts
+    /* Recognise expression e as a min div mul with vectorisation
+     * Min ( (k1 - e1) / kd, ...) * kd */
+    bool min_div_mul_expr(Expr e, Expr *e1, int *k1, int *kd) {
+        if (! global_options.simplify_shortcuts) return false;
+        const Mul *mul_e = e.as<Mul>(); // Min(...) * kd
+        if (! mul_e) return false;
+        if (! const_int(mul_e->b, kd)) return false;
+        // Recognised ? * kd
+        const Min *min = mul_e->a.as<Min>(); // Min( , )
+        if (! min) return false;
+        // Recognised Min(?, ?) * kd
+        int kdiv;
+        if (sub_div_int(min->a, e1, k1, &kdiv) && kdiv == (*kd)) {
+            // Min(a,b): a  as  (k1 - e1) / kd
+            return true;
+        }
+        // In case LHS of Min does not match, try RHS of min.
+        if (sub_div_int(min->b, e1, k1, &kdiv) && kdiv == (*kd)) {
+            return true;
+        }
+        return false;
+    }
+    
+    /* Recognise expression e as a min div mul with vectorisation
+     * Max ( (k1 - e1) / kd, ...) * kd */
+    bool max_div_mul_expr(Expr e, Expr *e1, int *k1, int *kd) {
+        if (! global_options.simplify_shortcuts) return false;
+        const Mul *mul_e = e.as<Mul>(); // Max(...) * kd
+        if (! mul_e) return false;
+        if (! const_int(mul_e->b, kd)) return false;
+        // Recognised ? * kd
+        const Max *max = mul_e->a.as<Max>(); // Max( , )
+        if (! max) return false;
+        // Recognised Max(?, ?) * kd
+        int kdiv;
+        if (sub_div_int(max->a, e1, k1, &kdiv) && kdiv == (*kd)) {
+            // Max(a,b): a  as  (k1 - e1) / kd
+            return true;
+        }
+        // In case LHS of Max does not match, try RHS of max.
+        if (sub_div_int(max->b, e1, k1, &kdiv) && kdiv == (*kd)) {
+            return true;
+        }
+        return false;
+    }
 
     /* Recognise expression e as a min div with vectorisation 
-     * Min ( (k1 - e1) / kd, e9 ) * kd + e1 */
+     * Min ( (k1 - e1) / kd, ... ) * kd + e1 */
     bool min_div_expr(Expr e, Expr *e1, int *k1, int *kd) {
+        if (! global_options.simplify_shortcuts) return false;
         const Add *add_e = e.as<Add>(); // Min(...)*kd + e1
         if (! add_e) return false;
         // Recognised ? + ?
@@ -190,8 +260,9 @@ protected:
     }
     
     /* Recognise expression e as a max div with vectorisation 
-     * Max ( (k1 - e1) / kd, e9 ) * kd + e1 */
+     * Max ( (k1 - e1) / kd, ... ) * kd + e1 */
     bool max_div_expr(Expr e, Expr *e1, int *k1, int *kd) {
+        if (! global_options.simplify_shortcuts) return false;
         //log(0) << "  max_div_expr...\n";
         const Add *add_e = e.as<Add>(); // Max(...)*kd + e1
         if (! add_e) return false;
@@ -211,6 +282,7 @@ protected:
         }
         return false;
     }
+    // End of shortcut rules
     
     /* Recognise an integer or cast integer and fetch its value.
      * Only matches if the number of bits of the cast integer does not exceed
@@ -986,12 +1058,15 @@ protected:
             } else {
                 expr = b;
             }
-        } else if (add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) { //LH
+
+        } else if (global_options.simplify_lift_constant_min_max && 
+            add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) { //LH
             // min(e + k1, k2) -->  min(e, k2 -k1) + k1
             // Overflow invalidates this rule.
             // vectorize.partition
             expr = mutate(new Add(new Min(add_a->a, ib - ia), ia));
-        } else if (add_a && add_b && const_int(add_a->b, &ia) && const_int(add_b->b, &ib)) { //LH
+        } else if (global_options.simplify_lift_constant_min_max && 
+            add_a && add_b && const_int(add_a->b, &ia) && const_int(add_b->b, &ib)) { //LH
             // min(e1 + k1, e2 + k2) -->  min(e1 + (k1 - k2), e2) + k2
             // Rule is only applied to Int(32) constants because overflow would invalidate it.
             // vectorize.partition
@@ -1001,6 +1076,7 @@ protected:
             } else {
                 expr = mutate(new Add(new Min(add_a->a + (ia - ib), add_b->a), ib));
             }
+
         } else if (min_a && is_simple_const(min_a->b) && is_simple_const(b)) {
             // min(min(x, 4), 5) -> min(x, 4)
             expr = new Min(min_a->a, mutate(new Min(min_a->b, b)));
@@ -1173,15 +1249,15 @@ protected:
             } else {
                 expr = a;
             }
-        } else if (add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) { //LH
+
+        } else if (global_options.simplify_lift_constant_min_max && 
+            add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) { //LH
             // vectorize.partition
             // max(e + k1, k2) -->  max(e, k2 -k1) + k1
             // Overflow invalidates this rule.
             expr = mutate(new Add(new Max(add_a->a, ib - ia), ia));
-        } else if (max_a && is_simple_const(max_a->b) && is_simple_const(b)) {
-            // max(max(x, 4), 5) -> max(x, 5)
-            expr = new Max(max_a->a, mutate(new Max(max_a->b, b)));
-        } else if (add_a && add_b && const_int(add_a->b, &ia) && const_int(add_b->b, &ib)) { //LH
+        } else if (global_options.simplify_lift_constant_min_max && 
+            add_a && add_b && const_int(add_a->b, &ia) && const_int(add_b->b, &ib)) { //LH
             // vectorize.partition
             // max(e1 + k1, e2 + k2) -->  max(e1 + (k1 - k2), e2) + k2
             // Overflow invalidates this rule (and many of the rules above).
@@ -1192,6 +1268,10 @@ protected:
             } else {
                 expr = mutate(new Add(new Max(add_a->a + (ia - ib), add_b->a), ib));
             }
+
+        } else if (max_a && is_simple_const(max_a->b) && is_simple_const(b)) {
+            // max(max(x, 4), 5) -> max(x, 5)
+            expr = new Max(max_a->a, mutate(new Max(max_a->b, b)));
         } else if (sub_a && sub_b && const_int(sub_a->a, &ia) && const_int(sub_b->a, &ib)) { //LH
             // vectorize.partition
             // max(k1 - e1, k2 - e2) --> k2 + max((k1 - k2) - e1, 0 - e2)
@@ -1396,11 +1476,16 @@ protected:
         const Min *min_b = b.as<Min>();
         const Max *max_a = a.as<Max>();
         const Max *max_b = b.as<Max>();
+        const Max *max_mul_a = mul_a ? mul_a->a.as<Max>() : NULL;
+        const Min *min_mul_a = mul_a ? mul_a->a.as<Min>() : NULL;
+        const Max *max_mul_b = mul_b ? mul_b->a.as<Max>() : NULL;
+        const Min *min_mul_b = mul_b ? mul_b->a.as<Min>() : NULL;
 
-        int ia, ib;
-        int k1, k2, kd, kd2;
+        // Initialise local variables
+        int ia = 0, ib = 0;
+        int k1 = 0, k2 = 0, kd = 0, kd2 = 0;
         Expr e1, e2;
-        bool disproved, disproved_2;
+        bool disproved = false;
         
         // Note that the computation of delta could be incorrect if 
         // ia and/or ib are large unsigned integer constants, especially when
@@ -1444,30 +1529,119 @@ protected:
         } else if (is_const(a) && sub_b && is_const(sub_b->a)) { //LH
             // Constant on LHS and subtract from constant on RHS
             expr = mutate(sub_b->b < sub_b->a - a);
-        } else if (const_int(a, &ia) && min_div_expr(b, &e1, &k1, &kd) && k1 <= ia) { //LH
-            // specialised rule to simplify clamp of vectorised ISS loop
-            // ia < Min((k1 - e1) / kd, ...) * kd + e1.
-            // ia < (k1 - e1) / kd * kd + e1
-            // ia - e1 < (k1 - e1) / kd * kd
-            // Now: e - (kd-1) <= e / kd * kd <= e
-            // This logic applies to DISPROVING ia < ... since if we disprove the above then it applied to
-            // the entire Min expression.
-            // Using the above:
-            // It is false that ia - e1 < (k1 - e1) / k1 * kd if ia - e1 >= k1 - e1  i.e. if ia >= k1
+
+        } else if (min_b && const_int(a, &ia) && min_div_expr(b, &e1, &k1, &kd) && k1 <= ia) { //LH
+            // ************ Shortcut rules *****************
+            // specialised rule to simplify clamp in vectorised ISS loop
+            // ia < Min((k1 - e1) / kd, ...) * kd + e1  can be DISPROVED as follows.
+            //     ia >= (k1 - e1) / kd * kd + e1   (Min(x,y) <= x)
+            //     ia >= (k1 - e1) + e1             (x / kd * kd <= x)
+            //     ia >= k1   implies  ia < Min(...) is false
             // Otherwise, it is undecided.
-            expr = const_false();
-        } else if (const_int(b, &ib) && min_div_expr(a, &e1, &k1, &kd) && k1 < ib) { //LH
-            // specialised rule to simplify clamp of vectorised ISS loop
-            // Min((k1 - e1) / kd, ...) * kd + e1  <  ib
-            // Similar to above rule, but interchange the comparisons
-            // Useful to prove ... < ib
-            expr = const_true();
-        } else if (const_int(b, &ib) && max_div_expr(a, &e1, &k1, &kd) && (k1 - (kd - 1) >= ib)) { //LH
-            // Max(...)... < ib  can be DISPROVED.
-            expr = const_false();
-        } else if (const_int(a, &ia) && max_div_expr(b, &e1, &k1, &kd) && (k1 - (kd - 1) > ia)) { //LH
-            // ia < Max(...)...  can be PROVED
-            expr = const_true();
+            expr = const_false(op->type.width);
+        } else if (min_a && const_int(b, &ib) && min_div_expr(a, &e1, &k1, &kd) && k1 < ib) { //LH
+            // specialised rule to simplify clamp in vectorised ISS loop
+            // Min((k1 - e1) / kd, ...) * kd + e1  <  ib  can be PROVED as follows.
+            //    (k1-e1) / kd * kd + e1 < ib   (Min(x,y) <= x)
+            //    k1-e1 + e1 < ib               (x / kd * kd <= x)
+            //    k1 < ib
+            expr = const_true(op->type.width);
+        } else if (min_a && sub_b && const_int(sub_b->a, &ib) && min_div_mul_expr(a, &e1, &k1, &kd) && equal(sub_b->b, e1) && k1 < ib) { //LH
+            // specialised rule to simplify select in vectorised ISS loop
+            // Min((k1 - e1) / kd, ...) * kd  <  ib - e1  can be PROVED as follows.
+            //    (k1-e1) / kd * kd + e1 < ib   (Min(x,y) <= x)
+            //    k1-e1 + e1 < ib               (x / kd * kd <= x)
+            //    k1 < ib
+            expr = const_true(op->type.width);
+        } else if (max_a && const_int(b, &ib) && max_div_expr(a, &e1, &k1, &kd) && k1 - (kd - 1) >= ib) { //LH
+            // Max((k1-e1)/kd,...)*kd + e1 < ib  can be DISPROVED.
+            // Max((k1-e1)/kd,...)*kd + e1 >= ib
+            //    (k1-e1)/kd*kd + e1 >= ib     (Max(x,y) >= x)
+            //    (k1-e1-(kd-1)) + e1 >= ib      (x / kd * kd >= x - (kd-1): floor division rule)
+            //    k1 - (kd - 1) >= ib
+            expr = const_false(op->type.width);
+        } else if (max_a && sub_b && const_int(sub_b->a, &ib) && max_div_mul_expr(a, &e1, &k1, &kd) && equal(sub_b->b, e1) && k1 - (kd - 1) >= ib) { //LH
+            // Max((k1-e1)/kd,...)*kd < ib - e1  can be DISPROVED.
+            // Max((k1-e1)/kd,...)*kd + e1 >= ib
+            //    (k1-e1)/kd*kd + e1 >= ib     (Max(x,y) >= x)
+            //    (k1-e1-(kd-1)) + e1 >= ib      (x / kd * kd >= x - (kd-1): floor division rule)
+            //    k1 - (kd - 1) >= ib
+            expr = const_false(op->type.width);
+        } else if (max_b && const_int(a, &ia) && max_div_expr(b, &e1, &k1, &kd) && k1 - (kd - 1) > ia) { //LH
+            // ia < Max((k1-e1)/kd,...)*kd + e1  can be PROVED
+            //    ia < (k1-e1)/kd*kd + e1      (Max(x,y) >= x)
+            //    ia < (k1-e1-(kd-1)) + e1     (x / kd * kd >= x - (kd-1))
+            //    ia < k1 - (kd - 1)
+            expr = const_true(op->type.width);
+            // ************* End of shortcut rules ****************
+
+        } else if (max_mul_a && is_positive_const(mul_a->b) && (proved_either(max_mul_a->a * mul_a->b >= b, max_mul_a->b * mul_a->b >= b, disproved) || disproved)) { // LH
+            // specialised rule for expressions that arise in vectorised loops.
+            // max(e1, e2) * k < e3  for k > 0
+            // Proof positive:
+            //    prove that e1 * k < e3 and that e2 * k < e3
+            // Proof negative:
+            //    prove that e1 * k >= e3 or that e2 * k >= e3
+            if (disproved) expr = const_true(op->type.width); // Proof positive
+            else expr = const_false(op->type.width); // Proof negative
+        } else if (max_mul_b && is_positive_const(mul_b->b) && (proved_either(a < max_mul_b->a * mul_b->b, a < max_mul_b->b * mul_b->b, disproved) || disproved)) { // LH
+            // specialised rule for expressions that arise in vectorised loops.
+            // e3 < max(e1, e2) * k  for k > 0
+            // Proof positive:
+            //    prove that e3 < e1 * k  or that  e3 < e2 * k
+            // Proof negative:
+            //    prove that e3 >= e1 * k  and that  e3 >= e2 * k
+            if (disproved) expr = const_false(op->type.width); // Proof negative
+            else expr = const_true(op->type.width); // Proof positive
+        } else if (min_mul_a && is_positive_const(mul_a->b) && (proved_either(min_mul_a->a * mul_a->b < b, min_mul_a->b * mul_a->b < b, disproved) || disproved)) { // LH
+            // specialised rule for expressions that arise in vectorised loops.
+            // min(e1, e2) * k < e3  for k > 0
+            // Proof positive:
+            //    prove that e1 * k < e3 or that e2 * k < e3
+            // Proof negative:
+            //    prove that e1 * k >= e3 and that e2 * k >= e3
+            if (disproved) expr = const_false(op->type.width); // Proof negative
+            else expr = const_true(op->type.width); // Proof positive
+        } else if (min_mul_b && is_positive_const(mul_b->b) && (proved_either(a >= min_mul_b->a * mul_b->b, a >= min_mul_b->b * mul_b->b, disproved) || disproved)) { // LH
+            // specialised rule for expressions that arise in vectorised loops.
+            // e3 < min(e1, e2) * k  for k > 0
+            // Proof positive:
+            //    prove that e3 < e1 * k and that e3 < e2 * k
+            // Proof negative:
+            //    prove that e3 >= e1 * k or that e3 >= e2 * k >= e3
+            if (disproved) expr = const_true(op->type.width); // Proof positive
+            else expr = const_false(op->type.width); // Proof negative
+        } else if (mul_a && div_mul_expr(a, &e1, &k1, &kd) && sub_b && const_int(sub_b->a, &k2) && equal(sub_b->b, e1) && (k1 < k2 || k1 >= k2 + kd - 1)) { //LH
+            // specialised rule to simplify expressions that arise in vectorised loops.
+            // (k1 - e1) / kd * kd < (k2 - e1)
+            // Proof positive:
+            //     (k1 - e1) < (k2 - e1)        (x / kd * kd <= x)
+            //     k1 < k2
+            // Proof negative:
+            //     (k1 - e1) / kd * kd >= (k2 - e1)     (negation)
+            //     (k1 - e1 - (kd-1)) >= k2 - e1        (x / kd * kd >= x - (kd-1))
+            //     k1 - (kd - 1) >= k2
+            //     k1 >= k2 + kd - 1
+            code_logger.log() << "  Rule matched " << (a < b) << "\n";
+            code_logger.log() << "               " << Expr(op) << "\n";
+            if (k1 < k2) expr = const_true(op->type.width);
+            else expr = const_false(op->type.width);
+            code_logger.log() << "        Result " << expr << "\n";
+        } else if (mul_b && div_mul_expr(b, &e1, &k1, &kd) && sub_a && const_int(sub_a->a, &k2) && equal(sub_a->b, e1) && (k2 + kd - 1 < k1 || k2 >= k1)) { //LH
+            // specialised rule to simplify expressions that arise in vectorised loops.
+            // (k2 - e1) < (k1 - e1) / kd * kd
+            // Proof positive:
+            //     (k2 - e1) < (k1 - e1) - (kd-1)       (x / kd * kd >= x - (kd-1))
+            //     k2 + kd - 1 < k1
+            // Proof negative:
+            //     (k2 - e1) >= (k1 - e1) / kd * kd     (negation)
+            //     k2 - e1 >= k1 - e1                   (x / kd * kd <= x)
+            //     k2 >= k1
+            code_logger.log() << "Rule 2 matched " << (a < b) << "\n";
+            code_logger.log() << "               " << Expr(op) << "\n";
+            if (k2 + kd - 1 < k1) expr = const_true(op->type.width);
+            else expr = const_false(op->type.width);
+            code_logger.log() << "        Result " << expr << "\n";
         } else if (add_a && add_b && equal(add_a->a, add_b->a)) {
             // Subtract a term from both sides
             expr = mutate(add_a->b < add_b->b);
@@ -1482,14 +1656,14 @@ protected:
             expr = mutate(sub_a->b < sub_b->b);
         } else if (sub_a && sub_b && equal(sub_a->b, sub_b->b)) {
             expr = mutate(sub_a->a < sub_b->a);
-        } else if (add_b && !(min_a || max_a) && (add_b->a.as<Min>() || add_b->a.as<Max>())) {
-            // Push the add to the other side to expose the min/max
+        } else if (add_b && !(min_a || max_a || mul_a) && (add_b->a.as<Mul>() || add_b->a.as<Min>() || add_b->a.as<Max>())) { //LH
+            // Push the add to the other side to expose the min/max/mul
             expr = mutate(a - add_b->b < add_b->a);
-        } else if (sub_b && !(min_a || max_a) && (sub_b->a.as<Min>() || sub_b->a.as<Max>())) {
-            // Push the subtract to the other side to expose the min/max
+        } else if (sub_b && !(min_a || max_a || mul_a) && (sub_b->a.as<Mul>() || sub_b->a.as<Min>() || sub_b->a.as<Max>())) { //LH
+            // Push the subtract to the other side to expose the min/max/mul
             expr = mutate(a + sub_b->b < sub_b->a);
-        } else if (sub_b && !(min_a || max_a) && (sub_b->b.as<Min>() || sub_b->b.as<Max>())) {
-            // Push the min/max to the other side to expose it
+        } else if (sub_b && !(min_a || max_a || mul_a) && (sub_b->b.as<Mul>() || sub_b->b.as<Min>() || sub_b->b.as<Max>())) { //LH
+            // Push the min/max/mul to the other side to expose it
             expr = mutate(sub_b->b < sub_b->a - a);
         } else if (sub_div_int(a, &e1, &k1, &kd) && sub_div_int(b, &e2, &k2, &kd2) && kd == kd2 &&
             equal(e1, e2) && (k1 >= k2 || k1 < k2 - (kd-1))) { //LH
@@ -1498,13 +1672,13 @@ protected:
             // (k1 - e) / kd < (k2 - e) / kd.  
             // False if k1 >= k2.
             // True if k1 < (k2 - (kd-1)).
-            if (k1 >= k2) expr = const_false();
-            else expr = const_true();
-        } else if (add_a && ! min_b && ! max_b) {
+            if (k1 >= k2) expr = const_false(op->type.width);
+            else expr = const_true(op->type.width);
+        } else if (add_a && ! min_b && ! max_b && ! mul_b) { //LH
             // Rearrange so that all adds and subs are on the rhs to cut down on further cases
-            // Exception: min/max on RHS keeps the add/sub away
+            // Exception: min/max/mul on RHS keeps the add/sub away
             expr = mutate(add_a->a < (b - add_a->b));
-        } else if (sub_a && ! min_b && ! max_b) {
+        } else if (sub_a && ! min_b && ! max_b && ! mul_b) { //LH
             expr = mutate(sub_a->a < (b + sub_a->b));
         } else if (add_b && equal(add_b->a, a)) {
             // Subtract a term from both sides
@@ -1531,32 +1705,28 @@ protected:
             } else {
                 expr = op; // Impossible
             }
-        } else if (min_a && (proved(min_a->b < b, disproved) || proved(min_a->a < b, disproved_2) ||
-            (disproved && disproved_2))) { //LH
+        } else if (min_a && (proved_either(min_a->b < b, min_a->a < b, disproved) || disproved)) { //LH
             // Prove min(x,y) < b by proving x < b or y < b
             // Prove min(x,y) >= b by proving x >= b and y >= b  i.e. disprove both of the above.
             // Because constants are pushed to RHS, it is more likely that min_a->b < b
             // can be resolved quickly
-            if (!disproved) expr = const_true();
-            else expr = const_false();
-        } else if (min_b && (proved(a >= min_b->b, disproved) || proved(a >= min_b->a, disproved_2) ||
-            (disproved && disproved_2))) { //LH
+            if (!disproved) expr = const_true(op->type.width);
+            else expr = const_false(op->type.width);
+        } else if (min_b && (proved_either(a >= min_b->b, a >= min_b->a, disproved) || disproved)) { //LH
             // Prove a >= min(x,y) by proving a >= x or a >= y
             // Prove a < min(x,y) by proving a < x and a < y
-            if (!disproved) expr = const_false();
-            else expr = const_true();
-        } else if (max_a && (proved(max_a->b >= b, disproved) || proved(max_a->a >= b, disproved_2) ||
-            (disproved && disproved_2))) { //LH
+            if (!disproved) expr = const_false(op->type.width);
+            else expr = const_true(op->type.width);
+        } else if (max_a && (proved_either(max_a->b >= b, max_a->a >= b, disproved) || disproved)) { //LH
             // Prove that max(x,y) >= b by proving x >= b or y >= b
             // Prove that max(x,y) < b by proving x < b and y < b
-            if (!disproved) expr = const_false();
-            else expr = const_true();
-        } else if (max_b && (proved(a < max_b->b, disproved) || proved(a < max_b->b, disproved_2) ||
-            (disproved && disproved_2))) { //LH
+            if (!disproved) expr = const_false(op->type.width);
+            else expr = const_true(op->type.width);
+        } else if (max_b && (proved_either(a < max_b->b, a < max_b->b, disproved) || disproved)) { //LH
             // Prove that a < max(x,y) by proving a < x or a < y
             // Prove that a >= max(x,y) by proving a >= x and a >= y
-            if (!disproved) expr = const_true();
-            else expr = const_false();
+            if (!disproved) expr = const_true(op->type.width);
+            else expr = const_false(op->type.width);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
@@ -1851,7 +2021,7 @@ Stmt simplify(Stmt s) {
 bool proved(Expr e, bool &disproved) {
     static int depth = 0;
     depth++;
-    log logger(LOGLEVEL);    
+    //log logger(LOGLEVEL);    
     //logger << depth << ": Attempt to prove  " << e << "\n";
     Expr b = Simplify().simplify(e);
     bool result = is_one(b);
@@ -1861,8 +2031,8 @@ bool proved(Expr e, bool &disproved) {
     //else logger << b << "\n" << depth << ":    ==>  ";
     //logger << (result ? "true" : (disproved ? "false" : "failed")) << "\n";
     if (! result && ! disproved) {
-        logger << depth << ": Failed to prove or disprove:\n    " << e << "\n";
-        logger << "    " << b << "\n";
+        code_logger.log() << depth << ": Failed to prove or disprove:\n    " << e << "\n";
+        code_logger.log() << "    " << b << "\n";
     }
     depth--;
     return result;
@@ -1871,6 +2041,17 @@ bool proved(Expr e, bool &disproved) {
 bool proved(Expr e) {
     bool dummy;
     return proved(e, dummy);
+}
+
+// Return true if either e1 or e2 is proved.  Return disproved true if both are proved false.
+bool proved_either(Expr e1, Expr e2, bool &disproved) {
+    disproved = false;
+    bool disproved1, disproved2;
+    bool p = proved(e1, disproved1) || proved(e2, disproved2);
+    if (p) return true;
+    // Neither has been proved true so both have been evaluated.
+    disproved = disproved1 && disproved2;
+    return false;
 }
 
 void simplify_clear() {

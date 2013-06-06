@@ -28,6 +28,14 @@ Expr simplify(Expr);
 bool proved(Expr, bool& disproved);
 bool proved(Expr);
 // @}
+
+/** Use the simplifier to test whether either of two expressions
+ * can be evaluated to true.  Disproved parameter tests whether
+ * both evaluate to false.
+ */
+// @{
+bool proved_either(Expr e1, Expr e2, bool &disproved);
+// @}
    
 /** Implementations of division and mod that are specific to Halide.
  * Use these implementations; do not use native C division or mod to simplify

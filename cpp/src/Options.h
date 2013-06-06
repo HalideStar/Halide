@@ -57,6 +57,10 @@ public:
     bool mutator_cache_check;
     // mutator_cache_check_limit: Maximum number of additional mutations to perform as checking.
     int mutator_cache_check_limit;
+    
+    // Simplifier
+    bool simplify_shortcuts; // Enable shortcut rules that may speed up compilation.
+    bool simplify_lift_constant_min_max; // Enable lifting constants out of min and max
 };
 
 std::ostream &operator<<(std::ostream &stream, Options opt);

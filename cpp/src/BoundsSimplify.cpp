@@ -35,7 +35,7 @@ public:
     void visit(const Mod *op) {
         InfInterval bounds_a = bounds.bounds(op->a);
         InfInterval bounds_b = bounds.bounds(op->b);
-        code_logger.log() << "BoundsSimplify: " << Expr(op) << "\n";
+        code_logger.log() << "BoundsSimplify Mod: " << Expr(op) << "\n";
         code_logger.log() << "    Interval a " << bounds_a << "\n";
         code_logger.log() << "    Interval b " << bounds_b << "\n";
         if (proved(bounds_b.min > bounds_a.max) && proved(bounds_a.min >= 0)) {
@@ -60,7 +60,7 @@ public:
         InfInterval bounds_a = bounds.bounds(op->a);
         InfInterval bounds_min = bounds.bounds(op->min);
         InfInterval bounds_max = bounds.bounds(op->max);
-        code_logger.log() << "BoundsSimplify: " << Expr(op) << "\n";
+        code_logger.log() << "BoundsSimplify Clamp: " << Expr(op) << "\n";
         code_logger.log() << "    Interval a " << bounds_a << "\n";
         code_logger.log() << "    Interval min " << bounds_min << "\n";
         code_logger.log() << "    Interval max " << bounds_max << "\n";
@@ -83,7 +83,7 @@ public:
     void visit(const Min *op) {
         InfInterval bounds_a = bounds.bounds(op->a);
         InfInterval bounds_b = bounds.bounds(op->b);
-        code_logger.log() << "BoundsSimplify: " << Expr(op) << "\n";
+        code_logger.log() << "BoundsSimplify Min: " << Expr(op) << "\n";
         code_logger.log() << "    Interval a " << bounds_a << "\n";
         code_logger.log() << "    Interval b " << bounds_b << "\n";
         if (proved(bounds_a.max <= bounds_b.min)) {
@@ -102,7 +102,7 @@ public:
     void visit(const Max *op) {
         InfInterval bounds_a = bounds.bounds(op->a);
         InfInterval bounds_b = bounds.bounds(op->b);
-        code_logger.log() << "BoundsSimplify: " << Expr(op) << "\n";
+        code_logger.log() << "BoundsSimplify Max: " << Expr(op) << "\n";
         code_logger.log() << "    Interval a " << bounds_a << "\n";
         code_logger.log() << "    Interval b " << bounds_b << "\n";
         if (proved(bounds_a.min >= bounds_b.max)) {
@@ -113,14 +113,42 @@ public:
             expr = mutate(op->b);
         } else {
             code_logger.log() << "Could not bounds simplify Max\n";
+            code_logger.log() << "Could not prove: " << (bounds_a.min >= bounds_b.max) << "\n";
+            code_logger.log() << "            nor: " << (bounds_b.min >= bounds_a.max) << "\n";
             Super::visit(op);
         }
         code_logger.log() << "BoundsSimplify Max result: " << expr << "\n";
     }
+    
+    // This code may not do much. Mind you, it could be used to simplify
+    // conditional expressions, but you also need to handle other conditionals.
+    // This code IS useful for debugging when a conditional is not solved by Select.
+    void visit(const LT *op) {
+        InfInterval bounds_a = bounds.bounds(op->a);
+        InfInterval bounds_b = bounds.bounds(op->b);
+        code_logger.log() << "BoundsSimplify LT: " << Expr(op) << "\n";
+        code_logger.log() << "    Interval a " << bounds_a << "\n";
+        code_logger.log() << "    Interval b " << bounds_b << "\n";
+        if (proved(bounds_a.min >= bounds_b.max)) {
+            code_logger.log() << "Proved " << (bounds_a.min >= bounds_b.max) << "\n";
+            expr = const_false(op->type.width);
+        } else if (proved(bounds_a.max < bounds_b.min)) {
+            code_logger.log() << "Proved " << (bounds_a.max < bounds_b.min) << "\n";
+            expr = const_true(op->type.width);
+        } else {
+            code_logger.log() << "Could not bounds simplify LT\n";
+            Super::visit(op);
+        }
+        code_logger.log() << "BoundsSimplify LT result: " << expr << "\n";
+    }
 
     void visit(const Select *op) {
+        // Note: Interval analysis on the condition expression can implicitly
+        // perform bounds-based optimisation of the condition expression itself.
+        // That is because bounds analysis computes bounds intervals on the
+        // two sides of the condition, and then tries to prove them true or false.
         InfInterval bounds_cond = bounds.bounds(op->condition);
-        code_logger.log() << "BoundsSimplify: " << Expr(op) << "\n";
+        code_logger.log() << "BoundsSimplify Select: " << Expr(op) << "\n";
         code_logger.log() << "    Interval cond " << bounds_cond << "\n";
         if (is_one(bounds_cond.min)) {
             // Provably always true condition.
@@ -150,16 +178,21 @@ public:
         int old_debug_level = log::debug_level;
         
         // If it is the main loop, keep debug level, otherwise kill debug.
+        code_logger.log() << "------- Begin loop " << op->name << " " << op->partition << "\n";
+        enter(op->body);
+        code_logger.log() << "    interval " << op->name << ": " << bounds.bounds(new Variable(Int(32), op->name)) << "\n";
+        leave(op->body);
         if (op->partition.status != PartitionInfo::Main && 
             op->partition.status != PartitionInfo::Ordinary) {
             log::debug_level = -1;
             if (log::debug_level != old_debug_level) 
-                log(LOGLEVEL-1) << "Debug level " << old_debug_level << " -> " << log::debug_level << "\n";
+                log(LOGLEVEL-1) << "--- Debug level " << old_debug_level << " -> " << log::debug_level << "\n";
         }
         Super::visit(op);
         
+        code_logger.log() << "-------- End loop " << op->name << "\n";
         if (log::debug_level != old_debug_level) 
-            log(LOGLEVEL-1) << "Debug level " << log::debug_level << " -> " << old_debug_level << "\n";
+            log(LOGLEVEL-1) << "--- Debug level " << log::debug_level << " -> " << old_debug_level << "\n";
         log::debug_level = old_debug_level;
     }
 # endif

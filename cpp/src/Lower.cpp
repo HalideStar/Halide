@@ -751,21 +751,8 @@ void compiler_clear() {
     simplify_clear();
 }
 
-Stmt do_loop_partition(Stmt s, int section) {
+Stmt do_bounds_simplify(Stmt s, int section) {
     code_logger.section(section);
-    if (global_options.loop_partition) {
-		log(1) << "Simplifying...\n";
-		s = simplify(s);
-		s = remove_dead_lets(s);
-		code_logger.log(s, "deadlets");
-
-		log(1) << "Performing loop partition optimization...\n";
-		s = loop_partition(s);
-		log(2) << "Loop partition:\n" << s << '\n';
-		code_logger.log(s, "partition");
-	}
-	
-    code_logger.section(section + 10);
 	if (global_options.interval_analysis_simplify) {
 		//log::debug_level = 1;
 		log(1) << "Performing bounds analysis simplification...\n";
@@ -785,6 +772,24 @@ Stmt do_loop_partition(Stmt s, int section) {
 	}
     return s;
 }
+
+Stmt do_loop_partition(Stmt s, int section) {
+    code_logger.section(section);
+    if (global_options.loop_partition) {
+		log(1) << "Simplifying...\n";
+		s = simplify(s);
+		s = remove_dead_lets(s);
+		code_logger.log(s, "deadlets");
+
+		log(1) << "Performing loop partition optimization...\n";
+		s = loop_partition(s);
+		log(2) << "Loop partition:\n" << s << '\n';
+		code_logger.log(s, "partition");
+	}
+	
+    return do_bounds_simplify(s, section + 10);
+}
+    
 
 
 Stmt lower(Function f) {
@@ -812,7 +817,7 @@ Stmt lower(Function f) {
     s = simplify(s);
     code_logger.log(s, "simplify");
 
-# if ! LOWER_CLAMP_LATE
+# if LOWER_CLAMP == 140
     //LH
     // Lowering Clamp here does not produce the same results as using the original clamp.
     code_logger.section(140);
@@ -839,7 +844,7 @@ Stmt lower(Function f) {
     log(2) << "Bounds inference:\n" << s << '\n';
     code_logger.log(s, "bounds");
     
-# if LOWER_CLAMP_LATE
+# if LOWER_CLAMP == 240
     //LH
     // Lowering Clamp here does not produce the same results as using the original clamp.
     code_logger.section(240);
@@ -891,6 +896,23 @@ Stmt lower(Function f) {
     code_logger.log(s, "simplify");
 
     s = do_loop_partition(s, 460);
+
+# if LOWER_CLAMP == 490
+    //LH
+    code_logger.section(490);
+    log(1) << "Lowering Clamp at 490\n";
+    s = lower_clamp(s);
+    s = simplify(s);
+    log(1) << "Clamp lowered:\n" << s << '\n';
+    code_logger.log(s, "clamp");
+    
+    // Strictly, we should run bounds simplify again after lowering clamp.
+    // For example, Clamp::Replicate becomes min and max calls.
+    // Other clamp expressions could possibly be simplified in certain circumstances.
+    // However, when Clamp::Replicate is immediately lowered to clamp(),
+    // currently this pass does nothing useful.
+    //s = do_bounds_simplify(s, 495);
+# endif
 
     code_logger.section(500);
     log(1) << "Vectorizing...\n";

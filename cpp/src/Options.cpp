@@ -26,19 +26,21 @@ Options::Options() {
     mutator_cache = true;
     mutator_cache_check = false;
     mutator_cache_check_limit = 100000;
+    simplify_shortcuts = true; // Seems to speed up compilation
+    simplify_lift_constant_min_max = false;
 }
 
 
 std::ostream &operator<<(std::ostream &stream, Options opt) {
 	stream << "border_value_inner_outside=" << opt.border_value_inner_outside
-	       << "    clamp_as_node=" << opt.clamp_as_node
-		   << "    simplify_nested_clamp=" << opt.simplify_nested_clamp << "\n";
+	       << "    clamp_as_node=" << opt.clamp_as_node << "\n";
     stream << "loop_partition=" << opt.loop_partition
            << "    loop_partition_all=" << opt.loop_partition_all
            << "    loop_partition_letbind=" << opt.loop_partition_letbind << "\n";
     stream << "lift_let=" << opt.lift_let
 	       << "    interval_analysis_simplify=" << opt.interval_analysis_simplify << "\n";
     stream << "mutator_cache=" << opt.mutator_cache << "\n";
+    stream << "simplify: shortcuts=" << opt.simplify_shortcuts << "    lift_constant_min_max=" << opt.simplify_lift_constant_min_max << "\n";
     return stream;
 }
 
