@@ -17,9 +17,6 @@
 
 # define LOGLEVEL 4
 
-// Lift constants out of Min and Max expressions?  i.e. Min(e+k,k2) --> Min(e,k2-k)+k
-# define LIFT_CONSTANT_MIN_MAX 0
-
 namespace Halide { 
 namespace Internal {
 
@@ -1722,7 +1719,7 @@ protected:
             // Prove that max(x,y) < b by proving x < b and y < b
             if (!disproved) expr = const_false(op->type.width);
             else expr = const_true(op->type.width);
-        } else if (max_b && (proved_either(a < max_b->b, a < max_b->b, disproved) || disproved)) { //LH
+        } else if (max_b && (proved_either(a < max_b->b, a < max_b->a, disproved) || disproved)) { //LH
             // Prove that a < max(x,y) by proving a < x or a < y
             // Prove that a >= max(x,y) by proving a >= x and a >= y
             if (!disproved) expr = const_true(op->type.width);
@@ -2051,6 +2048,7 @@ bool proved_either(Expr e1, Expr e2, bool &disproved) {
     if (p) return true;
     // Neither has been proved true so both have been evaluated.
     disproved = disproved1 && disproved2;
+    if (disproved) code_logger.log() << "Disproved both " << e1 << "  and  " << e2 << "\n";
     return false;
 }
 

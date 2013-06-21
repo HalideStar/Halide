@@ -47,7 +47,7 @@ int main(int argc, const char **argv) {
     lower_clamp_test();
     border_test();
     solver_test();
-    loop_partition_test();
+    loop_split_test();
     lazy_scope_test();
     bounds_simplify_test();
     

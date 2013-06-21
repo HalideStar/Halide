@@ -257,8 +257,8 @@ ScheduleHandle &ScheduleHandle::split(Var old, Var outer, Var inner, Expr factor
                 dims[j-1] = dims[j-2];
             }
             dims[i+1].var = outer_name;
-            dims[i].partition = PartitionInfo(false); // Do not partition the inner loop
-            dims[i+1].partition.interval = unzoom(dims[i+1].partition.interval, factor);
+            dims[i].loop_split = LoopSplitInfo(false); // Do not partition the inner loop
+            dims[i+1].loop_split.interval = unzoom(dims[i+1].loop_split.interval, factor);
             
             //std::cout << "outer: " << dims[i].partition << "\n";
             //std::cout << "inner: " << dims[i+1].partition << "\n";
@@ -353,13 +353,13 @@ ScheduleHandle &ScheduleHandle::reorder(Var x, Var y, Var z, Var w, Var t) {
 }
 
 namespace {
-void record_partition(Internal::Schedule &schedule, Var var, PartitionInfo info) {
+void record_partition(Internal::Schedule &schedule, Var var, LoopSplitInfo info) {
     bool found = false;
     vector<Schedule::Dim> &dims = schedule.dims;
     for (size_t i = 0; (!found) && i < dims.size(); i++) {
         if (var_name_match(dims[i].var, var.name())) {
             found = true;
-            dims[i].partition = info;
+            dims[i].loop_split = info;
         }
     }
     
@@ -377,23 +377,33 @@ void record_partition(Internal::Schedule &schedule, Var var, PartitionInfo info)
 }
 }
 
-ScheduleHandle &ScheduleHandle::partition(Var var, bool auto_partition) {
-    record_partition(schedule, var, PartitionInfo(auto_partition));
+ScheduleHandle &ScheduleHandle::loop_split(Var var, bool auto_split) {
+    record_partition(schedule, var, LoopSplitInfo(auto_split));
     return *this;
 }
 
-ScheduleHandle &ScheduleHandle::partition(Var var, InfInterval interval) {
-    record_partition(schedule, var, PartitionInfo(interval));
+ScheduleHandle &ScheduleHandle::loop_split(Var var, InfInterval interval) {
+    record_partition(schedule, var, LoopSplitInfo(interval));
     return *this;
 }
 
-ScheduleHandle &ScheduleHandle::partition(bool auto_partition) {
-    schedule.auto_partition = auto_partition ? PartitionInfo::Yes : PartitionInfo::No;
+ScheduleHandle &ScheduleHandle::loop_split(bool auto_split) {
+    schedule.loop_split_settings.auto_split = auto_split ? LoopSplitInfo::Yes : LoopSplitInfo::No;
     return *this;
 }
 
-ScheduleHandle &ScheduleHandle::partition_all(bool auto_partition_all) {
-    schedule.auto_partition_all = auto_partition_all ? PartitionInfo::Yes : PartitionInfo::No;
+ScheduleHandle &ScheduleHandle::loop_split_all(bool auto_split) {
+    schedule.loop_split_settings.auto_split_all = auto_split ? LoopSplitInfo::Yes : LoopSplitInfo::No;
+    return *this;
+}
+
+ScheduleHandle &ScheduleHandle::loop_split_borders(bool split_borders) {
+    schedule.loop_split_settings.split_borders = split_borders ? LoopSplitInfo::Yes : LoopSplitInfo::No;
+    return *this;
+}
+
+ScheduleHandle &ScheduleHandle::loop_split_borders_all(bool split_borders) {
+    schedule.loop_split_settings.split_borders_all = split_borders ? LoopSplitInfo::Yes : LoopSplitInfo::No;
     return *this;
 }
 
@@ -462,25 +472,37 @@ Func &Func::reorder(Var x, Var y, Var z, Var w, Var t) {
     return *this;
 }
 
-Func &Func::partition(Var x, Interval partition) {
-    ScheduleHandle(func.schedule()).partition(x, partition);
+Func &Func::loop_split(Var x, InfInterval split) {
+    ScheduleHandle(func.schedule()).loop_split(x, split);
     return *this;
 }
 
-Func &Func::partition(Var x, bool auto_partition) {
-    ScheduleHandle(func.schedule()).partition(x, auto_partition);
+Func &Func::loop_split(Var x, bool auto_split) {
+    ScheduleHandle(func.schedule()).loop_split(x, auto_split);
     return *this;
 }
 
-Func &Func::partition(bool auto_partition) {
-    ScheduleHandle(func.schedule()).partition(auto_partition);
-    update().partition(auto_partition);
+Func &Func::loop_split(bool auto_split) {
+    ScheduleHandle(func.schedule()).loop_split(auto_split);
+    update().loop_split(auto_split);
     return *this;
 }
 
-Func &Func::partition_all(bool auto_partition) {
-    ScheduleHandle(func.schedule()).partition_all(auto_partition);
-    update().partition_all(auto_partition);
+Func &Func::loop_split_all(bool auto_split) {
+    ScheduleHandle(func.schedule()).loop_split_all(auto_split);
+    update().loop_split_all(auto_split);
+    return *this;
+}
+
+Func &Func::loop_split_borders(bool split_borders) {
+    ScheduleHandle(func.schedule()).loop_split_borders(split_borders);
+    update().loop_split_borders(split_borders);
+    return *this;
+}
+
+Func &Func::loop_split_borders_all(bool split_borders) {
+    ScheduleHandle(func.schedule()).loop_split_borders_all(split_borders);
+    update().loop_split_borders(split_borders);
     return *this;
 }
 
@@ -635,22 +657,22 @@ Domain Func::infinite() {
 //}
 
 //LH
-/** Methods to indicate that the current function is a kernel of other functions. */
-Func &Func::kernel_of(Func f1) {
-    Internal::log(0) << name() << ".kernel_of(" << f1.name() << ")\n";
+/** Methods to indicate that the current function is a local operator of other functions. */
+Func &Func::local(Func f1) {
+    Internal::log(0) << name() << ".local(" << f1.name() << ")\n";
     set_valid() = computable().intersection(f1.valid());
     return *this;
 }
-Func &Func::kernel_of(Func f1, Func f2) {
-    Internal::log(0) << name() << ".kernel_of(" << f1.name() << ", " << f2.name() << ")\n";
+Func &Func::local(Func f1, Func f2) {
+    Internal::log(0) << name() << ".local(" << f1.name() << ", " << f2.name() << ")\n";
     set_valid() = computable().intersection(f1.valid()).intersection(f2.valid());
     return *this;
 }
-Func &Func::kernel_of(Func f1, Func f2, Func f3) {
+Func &Func::local(Func f1, Func f2, Func f3) {
     set_valid() = computable().intersection(f1.valid()).intersection(f2.valid()).intersection(f3.valid());
     return *this;
 }
-Func &Func::kernel_of(Func f1, Func f2, Func f3, Func f4) {
+Func &Func::local(Func f1, Func f2, Func f3, Func f4) {
     set_valid() = computable().intersection(f1.valid()).intersection(f2.valid()).intersection(f3.valid()).intersection(f4.valid());
     return *this;
 }

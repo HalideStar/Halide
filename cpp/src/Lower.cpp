@@ -115,11 +115,12 @@ Stmt build_provide_loop_nest(string buffer, string prefix, vector<Expr> site, Ex
         const Schedule::Dim &dim = s.dims[i];
         Expr min = new Variable(Int(32), prefix + dim.var + ".min");
         Expr extent = new Variable(Int(32), prefix + dim.var + ".extent");
-        // Partition information. If not defined for the particular variable, then look for
-        // a higher option.
-        PartitionInfo part = dim.partition;
-        if (! part.defined() && s.auto_partition != PartitionInfo::Undefined) part = PartitionInfo(s.auto_partition);
-        stmt = new For(prefix + dim.var, min, extent, dim.for_type, part, stmt); // Partition information
+        // Loop splitting information. If not defined for the particular variable, then look for
+        // a function-level option.
+        LoopSplitInfo loop_split = dim.loop_split;
+        if (! loop_split.defined() && s.loop_split_compile.auto_split != LoopSplitInfo::Undefined) loop_split = LoopSplitInfo(s.loop_split_compile.auto_split);
+        //log(0) << "Compile " << s.loop_split_compile.auto_split << "  settings " << s.loop_split_settings.auto_split << "\n";
+        stmt = new For(prefix + dim.var, min, extent, dim.for_type, loop_split, stmt); // index-set loop splitting information
     }
 
     // Define the bounds on the split dimensions using the bounds
@@ -489,6 +490,79 @@ public:
     }
 };
 
+/* Recursively propagate _all schedule information */
+class PropagateScheduleAll : public IRVisitor {
+public:
+    using IRVisitor::visit;
+    map<string, Function> calls;
+    
+    Function parent; // Parent function for access to schedule as needed
+    
+    PropagateScheduleAll(Function main_func) : parent(main_func) {}
+    
+    void propagate_schedule(Function parent, Function child) {
+        // Get handle to child's schedule for modifying it
+        Schedule &child_s = child.schedule();
+        // Default compilation settings to be as specified by the user
+        child_s.loop_split_compile = child_s.loop_split_settings;
+        // Propagate _all settings from parent where child is undefined
+        Schedule &parent_s = parent.schedule();
+        if (child_s.loop_split_compile.auto_split_all == LoopSplitInfo::Undefined)
+            child_s.loop_split_compile.auto_split_all = parent_s.loop_split_compile.auto_split_all;
+        if (child_s.loop_split_compile.split_borders_all == LoopSplitInfo::Undefined)
+            child_s.loop_split_compile.split_borders_all = parent_s.loop_split_compile.split_borders_all;
+        // Give _all settings effect for child function if ordinary setting is undefined
+        if (child_s.loop_split_compile.auto_split == LoopSplitInfo::Undefined)
+            child_s.loop_split_compile.auto_split = child_s.loop_split_compile.auto_split_all;
+        if (child_s.loop_split_compile.split_borders == LoopSplitInfo::Undefined)
+            child_s.loop_split_compile.split_borders = child_s.loop_split_compile.split_borders_all;
+        return;
+    }
+
+    void visit(const Call *call) {                
+        IRVisitor::visit(call); // Do the default handling to visit the index expressions
+        if (call->call_type == Call::Halide) {
+            // Check that our name is not already associated with a different function
+            map<string, Function>::iterator iter = calls.find(call->name);
+            if (iter == calls.end()) {
+                // Name not found. Add our function to the list.
+                calls[call->name] = call->func;
+                // Update schedule information in our functions.
+                propagate_schedule(parent, call->func);
+                // Recursively find all the calls in this function also.
+                // Include both value() and reduction_value() expressions.
+                {
+                    Function outer_parent = parent;
+                    parent = call->func;
+                    if (call->func.value().defined())
+                        call->func.value().accept(this);
+                    if (call->func.reduction_value().defined())
+                        call->func.reduction_value().accept(this);
+                    parent = outer_parent;
+                }
+            } else {
+                assert(iter->second.same_as(call->func) && 
+                       "Can't compile a pipeline using multiple functions with same name");
+            }
+        }
+    }
+    
+    void do_propagate_schedule() {
+        // Be sure to apply the _all settings in the parent (main) function
+        propagate_schedule(parent, parent);
+        if (parent.value().defined())
+            parent.value().accept(this);
+        if (parent.reduction_value().defined())
+            parent.reduction_value().accept(this);
+    }
+};
+
+
+void propagate_schedule_all(Function f) {
+    PropagateScheduleAll prop(f);
+    prop.do_propagate_schedule();
+}
+
 
 
 /* Find all the externally referenced buffers in a stmt */
@@ -775,16 +849,16 @@ Stmt do_bounds_simplify(Stmt s, int section) {
 
 Stmt do_loop_partition(Stmt s, int section) {
     code_logger.section(section);
-    if (global_options.loop_partition) {
+    if (global_options.loop_split) {
 		log(1) << "Simplifying...\n";
 		s = simplify(s);
 		s = remove_dead_lets(s);
 		code_logger.log(s, "deadlets");
 
-		log(1) << "Performing loop partition optimization...\n";
-		s = loop_partition(s);
-		log(2) << "Loop partition:\n" << s << '\n';
-		code_logger.log(s, "partition");
+		log(1) << "Performing loop split optimization...\n";
+		s = loop_split(s);
+		log(2) << "Loop split:\n" << s << '\n';
+		code_logger.log(s, "loop_split");
 	}
 	
     return do_bounds_simplify(s, section + 10);
@@ -795,6 +869,8 @@ Stmt do_loop_partition(Stmt s, int section) {
 Stmt lower(Function f) {
     compiler_clear();
     Statistics start_statistics = global_statistics;
+    
+    propagate_schedule_all(f);
     
     // Compute an environment
     map<string, Function> env;

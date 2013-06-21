@@ -581,9 +581,9 @@ struct Pipeline : public StmtNode<Pipeline> {
 namespace Halide {
 namespace Internal {
 
-/** Information for loop partitioning from the .partition schedule.
+/** Information for loop splitting from the .loop_split schedule.
  * It is stored in the Dim portion of the Schedule, and later into the For loops. */
-    struct PartitionInfo {
+    struct LoopSplitInfo {
         /** One option is for the user to partition the main loop manually.
          * Specify an InfInterval for the loop.  The bounds can be expressions.
          * If not used, the expressions will be undefined. */
@@ -591,40 +591,40 @@ namespace Internal {
         /** Boolean options translate to tristate variables internally because they can
          * be undefined. */
         enum TriState { Undefined, No, Yes };
-        /** Record the auto_partition option for this variable. */
-        TriState auto_partition;
+        /** Record the auto_split option for this variable. */
+        TriState auto_split;
       
         /** Record the status of For loops, mainly for debugging and optimisation. */
         enum LoopStatus { Ordinary, Before, Main, After };
         LoopStatus status;
         
-        PartitionInfo(bool do_partition) {
-            auto_partition = do_partition ? Yes : No;
+        LoopSplitInfo(bool do_split) {
+            auto_split = do_split ? Yes : No;
             status = Ordinary;
         }
-        PartitionInfo(InfInterval _interval) { 
+        LoopSplitInfo(InfInterval _interval) { 
             interval = _interval; 
-            auto_partition = Undefined; 
+            auto_split = Undefined; 
             status = Ordinary;
         }
-        PartitionInfo(TriState _auto_partition) { 
-            assert(_auto_partition == Undefined || _auto_partition == Yes || _auto_partition == No);
-            auto_partition = _auto_partition; 
+        LoopSplitInfo(TriState _auto_split) { 
+            assert(_auto_split == Undefined || _auto_split == Yes || _auto_split == No);
+            auto_split = _auto_split; 
             status = Ordinary;
         }
-        PartitionInfo() { 
-            auto_partition = Undefined; 
+        LoopSplitInfo() { 
+            auto_split = Undefined; 
             status = Ordinary;
         }
         
-        /* defined() returns true if partition information is defined.  i.e. if
-         * auto_partition is Yes or No, or if a partition interval is defined. */
+        /* defined() returns true if loop split information is defined.  i.e. if
+         * auto_split is Yes or No, or if a loop split interval is defined. */
         const bool defined() const;
-        /* interval_defined() returns true if a partition interval is defined. */
+        /* interval_defined() returns true if a loop split interval is defined. */
         const bool interval_defined() const;
-        /* may_be_partitioned() returns true if the partition information indicates to perform
-         * partitioning.  auto_partition is Yes or Undefined, or partition interval is defined. */
-        const bool may_be_partitioned() const;
+        /* may_be_split() returns true if the loop split information indicates to perform
+         * loop splitting.  i.e. auto_split is Yes or Undefined, or a split interval is defined. */
+        const bool may_be_split() const;
     };
         
 /** A for loop. Execute the 'body' statement for all values of the
@@ -644,12 +644,12 @@ struct For : public StmtNode<For> {
     Expr min, extent;
     typedef enum {Serial, Parallel, Vectorized, Unrolled} ForType;
     ForType for_type;
-    PartitionInfo partition;
+    LoopSplitInfo loop_split;
     Stmt body;
 
-    /** Constructor for building a For loop with partition schedule information included. */
-    For(std::string n, Expr m, Expr e, ForType f, const PartitionInfo &p, Stmt b) :
-        name(n), min(m), extent(e), for_type(f), partition(p), body(b) {
+    /** Constructor for building a For loop with loop split schedule information included. */
+    For(std::string n, Expr m, Expr e, ForType f, const LoopSplitInfo &p, Stmt b) :
+        name(n), min(m), extent(e), for_type(f), loop_split(p), body(b) {
         assert(min.defined() && "For of undefined");
         assert(extent.defined() && "For of undefined");
         assert(min.type().is_scalar() && "For with vector min");
@@ -658,14 +658,14 @@ struct For : public StmtNode<For> {
     }
     
     /** Convenience constructor that inherits information from an existing For structure.
-     * name, for_type and partition are inherited. Use this in mutators unless you need to
+     * name, for_type and loop_split are inherited. Use this in mutators unless you need to
      * modify the excluded parameters.  */
     For(const For *oldloop, Expr m, Expr e, Stmt b) :
         min(m), extent(e), body(b) {
         assert(oldloop && "Null pointer passed to For");
         name = oldloop->name;
         for_type = oldloop->for_type;
-        partition = oldloop->partition;
+        loop_split = oldloop->loop_split;
         assert(min.defined() && "For of undefined");
         assert(extent.defined() && "For of undefined");
         assert(min.type().is_scalar() && "For with vector min");
@@ -675,7 +675,7 @@ struct For : public StmtNode<For> {
     
     /** Convenience constructor for building sample code. Do NOT use this in mutators as you will lose information. */
     For(std::string n, Expr m, Expr e, ForType f, Stmt b) :
-        name(n), min(m), extent(e), for_type(f), partition(PartitionInfo()), body(b) {
+        name(n), min(m), extent(e), for_type(f), loop_split(LoopSplitInfo()), body(b) {
         assert(min.defined() && "For of undefined");
         assert(extent.defined() && "For of undefined");
         assert(min.type().is_scalar() && "For with vector min");

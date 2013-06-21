@@ -117,7 +117,7 @@ public:
             code_logger.log() << "            nor: " << (bounds_b.min >= bounds_a.max) << "\n";
             Super::visit(op);
         }
-        code_logger.log() << "BoundsSimplify Max result: " << expr << "\n";
+        code_logger.log() << "BoundsSimplify Max result: " << Expr(op) << " --> " << expr << "\n";
     }
     
     // This code may not do much. Mind you, it could be used to simplify
@@ -178,12 +178,12 @@ public:
         int old_debug_level = log::debug_level;
         
         // If it is the main loop, keep debug level, otherwise kill debug.
-        code_logger.log() << "------- Begin loop " << op->name << " " << op->partition << "\n";
+        code_logger.log() << "------- Begin loop " << op->name << " " << op->loop_split << "\n";
         enter(op->body);
         code_logger.log() << "    interval " << op->name << ": " << bounds.bounds(new Variable(Int(32), op->name)) << "\n";
         leave(op->body);
-        if (op->partition.status != PartitionInfo::Main && 
-            op->partition.status != PartitionInfo::Ordinary) {
+        if (op->loop_split.status != LoopSplitInfo::Main && 
+            op->loop_split.status != LoopSplitInfo::Ordinary) {
             log::debug_level = -1;
             if (log::debug_level != old_debug_level) 
                 log(LOGLEVEL-1) << "--- Debug level " << old_debug_level << " -> " << log::debug_level << "\n";

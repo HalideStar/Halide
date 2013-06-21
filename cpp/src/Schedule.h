@@ -75,7 +75,7 @@ struct Schedule {
     struct Dim {
         std::string var;
         For::ForType for_type;
-        PartitionInfo partition; //LH
+        LoopSplitInfo loop_split; //LH
     };
     /** The list and ordering of dimensions used to evaluate this
      * function, after all splits have taken place. The first
@@ -86,13 +86,22 @@ struct Schedule {
      * used, what the splits are, and any optional bounds in the list below. */
     std::vector<Dim> dims;
     
-    /** Record the auto partition option for this function.
-     * Note that individual variable partition information overrides auto_partition 
-     * for the entire function. */
-    PartitionInfo::TriState auto_partition;
-    
-    /** Record the auto partition all option. */
-    PartitionInfo::TriState auto_partition_all;
+    /** Class to hold settings for loop splitting. 
+     * Instance loop_split_settings: Records the settings specified by the user
+     * Instance loop_split_compile: Records the settings in effect during a compilation */
+    class LoopSplitSettings {
+    public:
+        /** Auto loop split option.  Note that individual variable options take precedence. */
+        LoopSplitInfo::TriState auto_split;
+        LoopSplitInfo::TriState auto_split_all;
+        
+        /** Split borders option (recursively split before and after loops) */
+        LoopSplitInfo::TriState split_borders;
+        LoopSplitInfo::TriState split_borders_all;
+        
+        LoopSplitSettings() : auto_split(LoopSplitInfo::Undefined), auto_split_all(LoopSplitInfo::Undefined), 
+            split_borders(LoopSplitInfo::Undefined), split_borders_all(LoopSplitInfo::Undefined) {}
+    } loop_split_settings, loop_split_compile;
     
     /** The list and order of dimensions used to store this
      * function. The first dimension in the vector corresponds to the
@@ -107,8 +116,6 @@ struct Schedule {
     /** You may explicitly bound some of the dimensions of a
      * function. See \ref ScheduleHandle::bound */
     std::vector<Bound> bounds;
-    
-    Schedule() : auto_partition(PartitionInfo::Undefined), auto_partition_all(PartitionInfo::Undefined) {}
 };
 
 }

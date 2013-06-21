@@ -261,7 +261,7 @@ InfInterval inverseRamp(InfInterval v, InfInterval s, int width) {
     // and that Ramp(b,q) >= Ramp(n,d) for all indices.
     // Ramp(a,p) <= Ramp(m,c) means a <= m and a + p * (w-1) <= m + c * (w-1).
     // Solving for m we get: m >= a and m >= a + p * (w-1) - c * (w-1)
-    // i.e. m = min(a, a + (p - c) * (w-1));
+    // i.e. m = max(a, a + (p - c) * (w-1));
     return InfInterval(simplify(max(basemin, basemin + (stridemin - s.min) * (width-1))),
                        simplify(min(basemax, basemax + (stridemax - s.max) * (width-1))));
 }

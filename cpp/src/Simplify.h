@@ -8,6 +8,11 @@
 #include "IR.h"
 #include <cmath>
 
+// Lift constants out of Min and Max expressions?  i.e. Min(e+k,k2) --> Min(e,k2-k)+k
+// This definition is used in Simplify.cpp to modify the rules, and in LoopPartition.cpp
+// to correctly detect the results of applying the rules.
+# define LIFT_CONSTANT_MIN_MAX 0
+
 namespace Halide { 
 namespace Internal {
 

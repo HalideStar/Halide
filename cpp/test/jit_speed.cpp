@@ -122,12 +122,18 @@ int schedule_sizes[] = { SCHEDULE_SIZE_128, SCHEDULE_SIZE_256, SCHEDULE_SIZE_512
 #endif
 
 // Support for auto partitioning of loops.
-# define HAS_PARTITION (HALIDE_NEW && HALIDE_VERSION > 130422)
+# define HAS_PARTITION (HALIDE_NEW && HALIDE_VERSION > 130422 && HALIDE_VERSION < 130624)
+# define HAS_SPLIT_INDEX (HALIDE_NEW && HALIDE_VERSION > 130422)
 # define HAS_STATISTICS (HALIDE_NEW && HALIDE_VERSION > 130412)
 # define HAS_COMPILE_STMT ((HALIDE_NEW && HALIDE_VERSION >= 130509) || (! HALIDE_NEW))
 
+# if HAS_PARTITION
+# define loop_split partition
+# endif
+
 // Set to true when logging/debugging code generation - each function will only be compiled and executed once.
 int logging = 0;
+ofstream  log_stream; // Set to the file stream to log to when it is open it gets written by the builder
 int iteration_number = 0; // Default iteration for logging.
 std::string model = "unknown";
 std::string version = "unknown";
@@ -757,8 +763,8 @@ void do_schedule(Func f, int stage, int schedule, int vec) {
     } else if (sp == SCHEDULE_PARALLEL_16) {
         f.split(y, y, yi, 16).parallel(y);
     }
-# if HAS_PARTITION
-    if (schedule & SCHEDULE_SPLIT_INDEX) f.partition(); // Implicitly, this is partition all
+# if HAS_SPLIT_INDEX
+    if (schedule & SCHEDULE_SPLIT_INDEX) f.loop_split(); // Implicitly, this is partition all
 # else
     assert ((schedule & SCHEDULE_SPLIT_INDEX) == 0 && "Schedule split index not supported");
 # endif
@@ -827,6 +833,7 @@ Func upcast(Func in, Type t, int schedule, int vec) {
         u.bits = bits;
         upcast(x,y) = cast(u, in(x,y));
     }
+    if (log_stream.is_open()) log_stream << upcast << "\n";
     do_schedule(upcast, FUNC_UPCAST, schedule, vec);
     return upcast;
 }
@@ -853,11 +860,31 @@ Func border_handled(Image<T> b, int bdr, int schedule, int vec) {
     } else {
         assert(0 && "Invalid bdr selector");
     }
+    if (log_stream.is_open()) log_stream << border << "\n";
     do_schedule(border, FUNC_BORDER, schedule, 0); // Border handler is not vectorized
     // Upcast may be performed.  Upcast is vectorised and occurs after border handler.
     // Another option would be to upcast before border handling.
     Func up = upcast(border, type_of<T>(), schedule, vec);
     return up;
+}
+
+inline int do_clamp(int x, int lo, int hi) {
+    return (x < lo) ? lo : (x > hi) ? hi : x;
+}
+
+template<typename U,typename T>
+U border_access(Image<T> b, int i, int j, int bdr, int schedule) {
+    T v;
+    if (bdr == BORDER_CLAMP) {
+        v = b(do_clamp(i,0,I_WIDTH-1), do_clamp(j,0,I_HEIGHT-1));
+    } else if (bdr == BORDER_MOD) {
+        v = b((i%I_WIDTH + I_WIDTH)%I_WIDTH, (j%I_HEIGHT + I_HEIGHT)%I_HEIGHT);
+    } else if (bdr == BORDER_SHRINK) {
+        v = b(i+BORDER_SHRINK_SIZE, j+BORDER_SHRINK_SIZE);
+    } else {
+        assert(0 && "Invalid bdr selector in border_access");
+    }
+    return (U) v;
 }
 
 // All the schedule bits that are (almost fully) handled by border_handled
@@ -910,12 +937,13 @@ Func build_general(Expr (*pixel)(Func,int,int), Expr (*final)(Expr,int), std::st
     }
     if (dimensionality == 2) {
         h(x,y) = e;
+        if (log_stream.is_open()) log_stream << h << "\n";
+        do_schedule(h, FUNC_DIM_1, schedule, vec);
         Expr ev = (*pixel)(h,0,-m/2); // e.g. h(x,y-m/2)
         for (int i = 1; i < m; i++) {
             ev = ev + (*pixel)(h,0,i-m/2); // e.g. h(x,y+(i-m/2))
         }
         f(x,y) = downcast(type_of<T>(), (*final)(ev, n));  // e.g. ev / n
-        do_schedule(h, FUNC_DIM_1, schedule, vec);
     } else {
         f(x,y) = downcast(type_of<T>(), (*final) (e, n));  // e.g. e / n
     }
@@ -945,11 +973,95 @@ Func build_sobel(std::string name, ImageParam a, Image<T> b, int n, int bdr, int
     //std::cerr << in << "\n";
     Func h("h"), v("v"), sobel("sobel");
     h(x,y) = in(x-1,y-1) + 2 * in(x-1,y) + in(x-1,y+1) - in(x+1,y-1) - 2 * in(x+1,y) - in(x+1,y+1);
+    if (log_stream.is_open()) log_stream << h << "\n";
     v(x,y) = in(x-1,y-1) + 2 * in(x,y-1) + in(x+1,y-1) - in(x-1,y+1) - 2 * in(x,y+1) - in(x+1,y+1);
+    if (log_stream.is_open()) log_stream << v << "\n";
     sobel(x,y) = downcast(type_of<T>(), (abs(h(x,y)) + abs(v(x,y)))/4);
     do_schedule(sobel, FUNC_MAIN, schedule, vec);
     return sobel;
 }
+
+template<typename U,typename T>
+void check_sobel_typed(ImageParam a, Image<T> b, Image<T> r, int n, int bdr, int schedule, int dimensionality) {
+    assert(dimensionality == 2 && "Sobel is only defined for dimensionality 2");
+    bool fail = false;
+    for (int j = 0; j < O_HEIGHT; j++) {
+        for (int i = 0; i < O_WIDTH; i++) {
+            U h, v;
+            T sobel;
+            h = border_access<U,T>(b, i-1, j-1, bdr, schedule) + 2 * border_access<U,T>(b, i-1, j, bdr, schedule) +
+                border_access<U,T>(b, i-1, j+1, bdr, schedule) - border_access<U,T>(b, i+1, j-1, bdr, schedule) -
+                2 * border_access<U,T>(b, i+1, j, bdr, schedule) - border_access<U,T>(b, i+1, j+1, bdr, schedule);
+            v = border_access<U,T>(b, i-1, j-1, bdr, schedule) + 2 * border_access<U,T>(b, i, j-1, bdr, schedule) +
+                border_access<U,T>(b, i+1, j-1, bdr, schedule) - border_access<U,T>(b, i-1, j+1, bdr, schedule) -
+                2 * border_access<U,T>(b, i, j+1, bdr, schedule) - border_access<U,T>(b, i+1, j+1, bdr, schedule);
+            h = h < 0 ? -h : h;
+            v = v < 0 ? -v : v;
+            sobel = (T) ((h + v) / 4);
+            if (sobel != r(i,j)) {
+                if (type_of<T>().is_float()) {
+                    bool error = std::abs(r(i,j) - sobel) > std::abs(sobel) * 0.00001;
+                    if (error) {
+                        std::cerr << "Sobel error: (" << i << "," << j << ") expected: " << sobel << "  got: " << r(i,j) << "\n";
+                        fail = true;
+                    }
+                } else {
+                    int64_t want, got;
+                    want = sobel;
+                    got = r(i,j);
+                    std::cerr << "Sobel error: (" << i << "," << j << ") expected: " << want << "  got: " << got << "\n";
+                    fail = true;
+                }
+            }
+        }
+    }
+    assert (! fail);
+}
+
+# define CHECK_TYPED(NAME,CALL) \
+template<typename T> \
+void NAME(ImageParam a, Image<T> b, Image<T> r, int n, int bdr, int schedule, int dimensionality) { \
+    int s = schedule & SCHEDULE_UPCAST; \
+    if (s == SCHEDULE_UPCAST_NONE) { \
+        CALL<T,T>(a, b, r, n, bdr, schedule, dimensionality); \
+        return; \
+    } \
+    Type t = type_of<T>(); \
+    if (s == SCHEDULE_UPCAST_FLOAT) { \
+        assert(! t.is_float() && "Cannot upcast float to float"); \
+        CALL<float,T>(a, b, r, n, bdr, schedule, dimensionality);  \
+        return; \
+    } else if (s == SCHEDULE_UPCAST_INT || (s == SCHEDULE_UPCAST_SAME && t.is_int())) { \
+        assert(! t.is_float() && "Cannot upcast float to int"); \
+        assert(t.bits < 64 && "Cannot upcast 64 bits"); \
+        int bits = t.bits * 2; \
+        if (bits == 16) \
+            CALL<int16_t,T>(a, b, r, n, bdr, schedule, dimensionality); \
+        else if (bits == 32) \
+            CALL<int32_t,T>(a, b, r, n, bdr, schedule, dimensionality); \
+        else if (bits == 64) \
+            CALL<int64_t,T>(a, b, r, n, bdr, schedule, dimensionality); \
+        else \
+            assert(0 && "Unknown upcast type"); \
+        return; \
+    } else if (s == SCHEDULE_UPCAST_SAME) { \
+        assert(! t.is_float() && "Cannot upcast float to same"); \
+        assert(t.bits < 64 && "Cannot upcast 64 bits"); \
+        assert(t.is_uint() && "What? Should be unsigned int here"); \
+        int bits = t.bits * 2; \
+        if (bits == 16) \
+            CALL<uint16_t,T>(a, b, r, n, bdr, schedule, dimensionality); \
+        else if (bits == 32) \
+            CALL<uint32_t,T>(a, b, r, n, bdr, schedule, dimensionality); \
+        else if (bits == 64) \
+            CALL<uint64_t,T>(a, b, r, n, bdr, schedule, dimensionality); \
+        else \
+            assert(0 && "Unknown upcast type"); \
+        return; \
+    } \
+}
+
+CHECK_TYPED(check_sobel,check_sobel_typed)
 
 template<typename T>
 Func build_diag_n(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec, int dimensionality) {
@@ -965,6 +1077,38 @@ Func build_diag_n(std::string name, ImageParam a, Image<T> b, int n, int bdr, in
     do_schedule(f, FUNC_MAIN, schedule, vec);
     return f;
 }
+
+template<typename U,typename T>
+void check_diag_typed(ImageParam a, Image<T> b, Image<T> r, int n, int bdr, int schedule, int dimensionality) {
+    assert(dimensionality == 2 && "diag is only defined for dimensionality 2");
+    bool fail = false;
+    for (int j = 0; j < O_HEIGHT; j++) {
+        for (int i = 0; i < O_WIDTH; i++) {
+            U s;
+            T diag;
+            s = border_access<U,T>(b, i-n, j-n, bdr, schedule) + border_access<U,T>(b, i+n, j+n, bdr, schedule);
+            diag = (T) (s);
+            if (diag != r(i,j)) {
+                if (type_of<T>().is_float()) {
+                    bool error = std::abs(r(i,j) - diag) > std::abs(diag) * 0.00001;
+                    if (error) {
+                        std::cerr << "Diag error: (" << i << "," << j << ") expected: " << diag << "  got: " << r(i,j) << "\n";
+                        fail = true;
+                    }
+                } else {
+                    int64_t want, got;
+                    want = diag;
+                    got = r(i,j);
+                    std::cerr << "Diag error: (" << i << "," << j << ") expected: " << want << "  got: " << got << "\n";
+                    fail = true;
+                }
+            }
+        }
+    }
+    assert (! fail);
+}
+
+CHECK_TYPED(check_diag,check_diag_typed)
 
 int new_check(int check, double MinMeasureTime, double delta, int max) {
     int c = check * (MinMeasureTime * 1.5) / delta;
@@ -1069,12 +1213,22 @@ void test(std::string basename,
 # if HAS_COMPILE_STMT
     // If logging, compile the statement once to get the log files before anything else happens.
     if (logging) {
-        Internal::Stmt st = (*builder)(collector.name, a, b, n, bdr, schedule, vec, dimensionality).compile_to_stmt();
-        ofstream f;
-        std::string fname = collector.name + ".stmt";
-        f.open(fname.c_str());
-        f << st;
-        f.close();
+        std::string fname = collector.name + ".func";
+        log_stream.open(fname.c_str());
+        Func fn = (*builder)(collector.name, a, b, n, bdr, schedule, vec, dimensionality);
+        log_stream << fn;
+        log_stream.close();
+        Internal::Stmt st = fn.compile_to_stmt();
+        {
+            ofstream f;
+            std::string fname = collector.name + ".stmt";
+            f.open(fname.c_str());
+            f << st;
+            f.close();
+        }
+        {
+            ofstream f;
+        }
         return;
     }
 # endif
@@ -1169,6 +1323,11 @@ void test(std::string basename,
                 }
             }
         }
+        
+        if (basename == "sobel")
+            check_sobel(a, b, ref, n, bdr, schedule, dimensionality);
+        else if (basename == "diag")
+            check_diag(a, b, ref, n, bdr, schedule, dimensionality);
     }
     // Now to estimate execution time.
     check = logging ? 1 : 4;
@@ -1242,7 +1401,7 @@ void do_diag(int bdr, int vec, int dimensionality, int vec_only) {
             test<T>("diag", build_diag_n, k, bdr, ss, 0, dimensionality, vec_only);
         for (int k = 1; k <= max_diag; k++)
             test<T>("diag", build_diag_n, k, bdr, ss, vec, dimensionality, vec_only);
-# if HAS_PARTITION
+# if HAS_SPLIT_INDEX
         for (int k = 1; k <= max_diag; k++)
             test<T>("diag", build_diag_n, k, bdr, ss | SCHEDULE_SPLIT_INDEX, 0, dimensionality, vec_only);
         for (int k = 1; k <= max_diag; k++)
@@ -1252,7 +1411,7 @@ void do_diag(int bdr, int vec, int dimensionality, int vec_only) {
             test<T>("diag", build_diag_n, k, bdr, ss | SCHEDULE_BOUND, 0, dimensionality, vec_only);
         for (int k = 1; k <= max_diag; k++)
             test<T>("diag", build_diag_n, k, bdr, ss | SCHEDULE_BOUND, vec, dimensionality, vec_only);
-# if HAS_PARTITION
+# if HAS_SPLIT_INDEX
         for (int k = 1; k <= max_diag; k++)
             test<T>("diag", build_diag_n, k, bdr, ss | SCHEDULE_BOUND | SCHEDULE_SPLIT_INDEX, 0, dimensionality, vec_only);
         for (int k = 1; k <= max_diag; k++)
@@ -1278,7 +1437,7 @@ void do_sobel(int bdr, int vec, int dimensionality, int vec_only) {
                 test<T>("sobel", build_sobel, 9, bdr, ss, vec, dimensionality, vec_only);
                 test<T>("sobel", build_sobel, 9, bdr, ss | SCHEDULE_BOUND, 0, dimensionality, vec_only);
                 test<T>("sobel", build_sobel, 9, bdr, ss | SCHEDULE_BOUND, vec, dimensionality, vec_only);
-# if HAS_PARTITION
+# if HAS_SPLIT_INDEX
                 test<T>("sobel", build_sobel, 9, bdr, ss | SCHEDULE_SPLIT_INDEX, 0, dimensionality, vec_only);
                 test<T>("sobel", build_sobel, 9, bdr, ss | SCHEDULE_SPLIT_INDEX, vec, dimensionality, vec_only);
                 test<T>("sobel", build_sobel, 9, bdr, ss | SCHEDULE_BOUND | SCHEDULE_SPLIT_INDEX, 0, dimensionality, vec_only);
@@ -1295,7 +1454,7 @@ void do_tests(int bdr, int vec, int dimensionality, int vec_only = 0) {
     do_blur_n<T>(bdr, SCHEDULE_ROOT_BORDER, 0, dimensionality, vec_only);
     do_blur_n<T>(bdr, 0, vec, dimensionality, vec_only);
     do_blur_n<T>(bdr, SCHEDULE_ROOT_BORDER, vec, dimensionality, vec_only);
-# if HAS_PARTITION
+# if HAS_SPLIT_INDEX
     do_blur_n<T>(bdr, SCHEDULE_SPLIT_INDEX, 0, dimensionality, vec_only);
     do_blur_n<T>(bdr, SCHEDULE_SPLIT_INDEX | SCHEDULE_ROOT_BORDER, 0, dimensionality, vec_only);
     do_blur_n<T>(bdr, SCHEDULE_SPLIT_INDEX, vec, dimensionality, vec_only);
@@ -1309,7 +1468,7 @@ void do_tests(int bdr, int vec, int dimensionality, int vec_only = 0) {
             for (int dovec = 0; dovec < 2; dovec++) {
                 int vv = dovec * vec;
                 do_conv_n<T>(bdr, srb, vv, dimensionality, vec_only);
-# if HAS_PARTITION
+# if HAS_SPLIT_INDEX
                 do_conv_n<T>(bdr, srb | SCHEDULE_SPLIT_INDEX, vv, dimensionality, vec_only);
 # endif
             }

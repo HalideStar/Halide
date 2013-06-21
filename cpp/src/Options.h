@@ -33,14 +33,14 @@ public:
 	// simplify_nested_clamp: Apply simplify rules the handle nested clamp expressions.
 	bool simplify_nested_clamp;
 	
-	// loop_partition: If true, enables code for loop partitioning.
-	bool loop_partition;
+	// loop_split: If true, enables code for loop splitting (index-set splitting).
+	bool loop_split;
     
-    // loop_partition_all: If true, automatic loop partitioning is enabled by default for all code.
-    bool loop_partition_all;
+    // loop_split_all: If true, automatic loop splitting is enabled by default for all code.
+    bool loop_split_all;
     
-    // loop_partition_letbind: If true, fully let bind the loop bounds.  For speed comparisons.
-    bool loop_partition_letbind;
+    // loop_split_letbind: If true, fully let bind the loop bounds.  For speed comparisons.
+    bool loop_split_letbind;
     
     // lift_let: If true, lift Let outside of For as much as possible.
     bool lift_let;

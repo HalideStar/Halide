@@ -217,15 +217,15 @@ void lazy_scope_test() {
     Expr select = new Select(x > 3, new Select(x < 87, input, new Cast(Int(16), y-17)),
                              new Cast(Int(16), -17));
     Stmt store = new Store("buf", select, x - 1);
-    PartitionInfo partition(true);
-    Stmt for_loop = new For("x", 0, 100, For::Parallel, partition, store);
+    LoopSplitInfo autosplit(true);
+    Stmt for_loop = new For("x", 0, 100, For::Parallel, autosplit, store);
     Stmt letstmt = new LetStmt("y", a * 2 + 5, for_loop); //a is undefined here
     Expr call = new Call(i32, "buf", vec(max(min(x,100),0)));
     Expr call2 = new Call(i32, "buf", vec(max(min(x-1,100),0)));
     Expr call3 = new Call(i32, "buf", vec(Expr(new Clamp(Clamp::Reflect, x+1, 0, 100))));
     Stmt store2 = new Store("out", call + call2 + call3 + 1 + y, x); // y is undefined here
-    PartitionInfo partition2(InfInterval(1,99));
-    Stmt for_loop2 = new For("x", 0, 100, For::Serial, partition2, store2);
+    LoopSplitInfo manualsplit(InfInterval(1,99));
+    Stmt for_loop2 = new For("x", 0, 100, For::Serial, manualsplit, store2);
     Stmt pipeline = new Pipeline("buf", letstmt, Stmt(), for_loop2);
     
     Walker walk;
