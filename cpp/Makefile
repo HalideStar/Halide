@@ -122,6 +122,7 @@ clean:
 
 TESTS = $(shell ls test/*.cpp)
 ERROR_TESTS = $(shell ls test/error/*.cpp)
+LOOP_SPLIT = default
 
 # TODO: move this implementation into Makefile.tests which contains a .NOTPARALLEL rule?
 tests: $(TESTS:test/%.cpp=test_%) $(ERROR_TESTS:test/error/%.cpp=error_%)
@@ -169,7 +170,7 @@ gtest_jit_speed: bin/gtest_jit_speed
 
 test_%: bin/test_%
 	@-mkdir -p tmp
-	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
+	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ HL_LOOP_SPLIT=$(LOOP_SPLIT) DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../$<
 	@-echo
 
 gdbtest_%: bin/test_%

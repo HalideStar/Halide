@@ -371,20 +371,21 @@ protected:
         // Vectorised loops are not eligible, and unrolled loops should be fully
         // optimised for each iteration due to the unrolling.
         Stmt new_body = mutate(op->body);
-        if ((op->for_type == For::Serial || op->for_type == For::Parallel) &&
+        if ((op->for_type == For::Serial || 
+            (global_options.loop_split_parallel && op->for_type == For::Parallel)) &&
             (op->loop_split.status == LoopSplitInfo::Ordinary)) {
-            log(LOGLEVEL) << "Considering partitioning loop:\n" << Stmt(op);
+            log(LOGLEVEL) << "Considering splitting loop:\n" << Stmt(op);
             InfInterval part;
             if (op->loop_split.interval_defined()) {
                 part = op->loop_split.interval;
             } else if (op->loop_split.auto_split == LoopSplitInfo::Yes || 
                       (op->loop_split.auto_split == LoopSplitInfo::Undefined && global_options.loop_split_all)) {
-                // Automatic loop partitioning.  Determine an interval for the loop to be partitioned on.
+                // Automatic loop splitting.  Determine an interval for the main loop.
 
                 // Search for solutions related to this particular for loop.
                 std::vector<Solution> solutions = extract_solutions(op->name, op, solved);
                 //std::cout << global_options;
-                log(LOGLEVEL) << "Considering automatic partitioning\n";
+                log(LOGLEVEL) << "Considering automatic loop splitting\n";
 # if 1
                 log(LOGLEVEL) << "Solutions: \n";
                 for (size_t i = 0; i < solutions.size(); i++) {
@@ -403,11 +404,11 @@ protected:
                 std::vector<Expr> starts, ends;
                 partition_points(solutions, starts, ends);
 # if 0
-                std::cout << "Partition start: ";
+                std::cout << "Main loop start: ";
                 for (size_t i = 0; i < starts.size(); i++) {
                     std::cout << starts[i] << " ";
                 }
-                std::cout << "\n" << "Partition end: ";
+                std::cout << "\n" << "Main loop end: ";
                 for (size_t i = 0; i < ends.size(); i++) {
                     std::cout << ends[i] << " ";
                 }
@@ -509,12 +510,18 @@ protected:
                 if (start.defined()) {
                     p.status = LoopSplitInfo::Before;
                     append_stmt(block, new For(op->name, before_min, before_extent, op->for_type, p, op->body));
+                    // Test: Split before and after of parallel loop to serial.
+                    // Limited testing suggests this is faster than splitting to a full parallel
+                    // loop (for cases where before and after are small parallel loops, probably 2
+                    // iterations) but it is even faster not to split parallel loops at all.
+                    //append_stmt(block, new For(op->name, before_min, before_extent, For::Serial, p, op->body));
                 }
                 p.status = LoopSplitInfo::Main;
                 append_stmt(block, new For(op->name, main_min, main_extent, op->for_type, p, new_body));
                 p.status = LoopSplitInfo::After;
                 if (end.defined()) {
                     append_stmt(block, new For(op->name, after_min, after_extent, op->for_type, p, op->body));
+                    //append_stmt(block, new For(op->name, after_min, after_extent, For::Serial, p, op->body));
                 }
                 if (global_options.loop_split_letbind) {
                     block = new LetStmt(main_extent_name, main_extent_let, block);

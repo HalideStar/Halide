@@ -1,10 +1,18 @@
 #include "Options.h"
+#include "Log.h"
 
 
 namespace Halide {
 
 // Declare the global object that is used throughout by the compiler.
 Options global_options;
+
+bool default_option(std::string name, bool default_value) {
+    std::string value = Internal::halide_option(name);
+    if (value == "1") return true;
+    if (value == "0") return false;
+    return default_value;
+}
 
 // Constructor defines the default values for each option.
 // Options may be freely added provided that the default
@@ -14,14 +22,35 @@ Options global_options;
 // there is a better default.  Changing a default is the
 // same as updating the compiler itself.
 Options::Options() {
-	border_value_inner_outside = true; // Inner outside is faster on X86, LLVM 3.2.
-	clamp_as_node = false; // Default is to use Halide clamp implementation immediately.
-	simplify_nested_clamp = true; // Default is to simplify nested clamp because the code is auto-tested.
-	loop_split = true; // Default is to do loop partitioning.
-    loop_split_all = false; // Default is not to partition loop automatically - some code fails.
+    border_value_inner_outside = true; // Inner outside is faster on X86, LLVM 3.2.
+    clamp_as_node = false; // Default is to use Halide clamp implementation immediately.
+    simplify_nested_clamp = true; // Default is to simplify nested clamp because the code is auto-tested.
+    
+    // Loop splitting control.
+    // Options:
+    // loop_split enables loop splitting to be done; otherwise schedule options are ignored.
+    // loop_split_all enables that the default is to apply loop splitting unless the schedule specifies otherwise.
+    // HL_LOOP_SPLIT: 'disable': Disables loop splitting.
+    //    'enable': Enables loop splitting.
+    //    'default': Makes loop splitting the default.
+    std::string loop_split_option = Internal::halide_option("HL_LOOP_SPLIT");
+    loop_split = true; // Default is to enable loop splitting
+    if (loop_split_option == "enable" || loop_split_option == "default") loop_split = true;
+    if (loop_split_option == "disable") loop_split = false;
+    loop_split_all = false; // Default is not to split loop automatically - some code fails.
+    if (loop_split_option == "default") loop_split_all = true;
+    if (loop_split_option == "disable") loop_split_all = false;
+    // loop_split_parallel enables splitting of parallel loops.
+    // HL_LOOP_SPLIT_PARALLEL: 0 or 1 to override
+    // Not splitting parallel loops appears to be faster, probably because of the overhead
+    // of setting up the before and after loops.
+    loop_split_parallel = default_option("HL_LOOP_SPLIT_PARALLEL", false);
+    // Bind loop indices of split loops to let variables
     loop_split_letbind = true;
+    // Lift let bindings outside of loops
     lift_let = true;
-	interval_analysis_simplify = true;
+    
+    interval_analysis_simplify = true;
     mutator_depth_limit = 1000;
     mutator_cache = true;
     mutator_cache_check = false;

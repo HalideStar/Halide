@@ -897,24 +897,62 @@ Expr subscript(Func in, int xdelta, int ydelta) {
     return in(x + xdelta, y + ydelta);
 }
 
-Expr blur_pixel(Func in, int xdelta, int ydelta) {
-    return subscript(in, xdelta, ydelta);
-}
+template<typename U>
+class General {
+public:
+    virtual Expr e_pixel(Func in, int xdelta, int ydelta) {
+        return subscript(in, xdelta, ydelta);
+    }
+    
+    virtual Expr e_reduce(Expr a, Expr b) {
+        return a + b;
+    }
+    
+    virtual Expr e_final(Expr e, int n) {
+        return e;
+    }
+    
+    virtual U pixel(U pix, U mask) {
+        return pix;
+    }
+    
+    virtual U reduce(U a, U b) {
+        return a + b;
+    }
+    
+    virtual U final(U a, int n) {
+        return a;
+    }
+};
 
-Expr blur_final(Expr e, int n) {
-    return e / n;
-}
+template<typename U>
+class Blur : public General<U> {
+public:
+    Expr e_final(Expr e, int n) {
+        return e / n;
+    }
+    
+    U final(U pix, int n) {
+        if (type_of<U>().is_int() && pix < 0)
+            return (pix + 1) / n - 1; // Floor division
+        return pix / n;
+    }
+};
 
-Expr conv_pixel(Func in, int xdelta, int ydelta) {
-    return subscript(in, xdelta, ydelta) * unique.i();
-}
-
-Expr conv_final(Expr e, int n) {
-    return e;
-}
+template<typename U>
+class Conv : public General<U> {
+public:
+    Expr e_pixel(Func in, int xdelta, int ydelta) {
+        return subscript(in, xdelta, ydelta) * unique.i();
+    }
+    
+    U pixel(U pix, U mask) {
+        return pix * mask;
+    }
+};
 
 template<typename T>
-Func build_general(Expr (*pixel)(Func,int,int), Expr (*final)(Expr,int), std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec, int dimensionality) {
+Func build_general(General<T>& gen, std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec, int dimensionality) {
     int supported = schedule & (SCHEDULE_SIZE | SCHEDULE_DO_MAIN | SCHEDULE_BORDER_HANDLED | SCHEDULE_DO_DIM_1);
     if (supported != schedule) {
         std::cerr << "build_general does not support schedule options " << (schedule & ~supported) << "\n";
@@ -931,35 +969,182 @@ Func build_general(Expr (*pixel)(Func,int,int), Expr (*final)(Expr,int), std::st
     // If checking, reuse the same settings as for data item 0.
     unique.reset(n * 1000 + (check_results ? 0 : (logging ? iteration_number : collector.data_count())));
     int m = dim(n, dimensionality);
-    Expr e = (*pixel)(in,-m/2,0);   // e.g. in(x-m/2, y)
+    Expr e = gen.e_pixel(in,-m/2,0);   // e.g. in(x-m/2, y)
     for (int i = 1; i < m; i++) {
-        e = e + (*pixel)(in,i-m/2,0);  // e.g. in(x+(i-m/2), y)
+        e = gen.e_reduce(e, gen.e_pixel(in,i-m/2,0));  // e.g. in(x+(i-m/2), y)
     }
     if (dimensionality == 2) {
         h(x,y) = e;
         if (log_stream.is_open()) log_stream << h << "\n";
         do_schedule(h, FUNC_DIM_1, schedule, vec);
-        Expr ev = (*pixel)(h,0,-m/2); // e.g. h(x,y-m/2)
+        Expr ev = gen.e_pixel(h,0,-m/2); // e.g. h(x,y-m/2)
         for (int i = 1; i < m; i++) {
-            ev = ev + (*pixel)(h,0,i-m/2); // e.g. h(x,y+(i-m/2))
+            ev = gen.e_reduce(ev, gen.e_pixel(h,0,i-m/2)); // e.g. h(x,y+(i-m/2))
         }
-        f(x,y) = downcast(type_of<T>(), (*final)(ev, n));  // e.g. ev / n
+        f(x,y) = downcast(type_of<T>(), gen.e_final(ev, n));  // e.g. ev / n
     } else {
-        f(x,y) = downcast(type_of<T>(), (*final) (e, n));  // e.g. e / n
+        f(x,y) = downcast(type_of<T>(), gen.e_final(e, n));  // e.g. e / n
     }
     do_schedule(f, FUNC_MAIN, schedule, vec);
     return f;
 }
 
+template<typename U,typename T>
+void check_general_typed(General<U>& gen, ImageParam a, Image<T> b, Image<T> r, int n, int bdr, int schedule, int dimensionality) {
+    assert((dimensionality == 1 || dimensionality == 2) && "check_general is only defined for dimensionality 1 or 2");
+    int m = dim(n, dimensionality);
+    bool fail = false;
+    std::vector<U> mask1, mask2;
+    unique.reset(n * 1000 + (check_results ? 0 : (logging ? iteration_number : collector.data_count())));
+    if (dimensionality >= 1) {
+        // 1-D convolution.
+        for (int i = 0; i < m; i++)
+            mask1.push_back((U) (unique.i()));
+    }
+    if (dimensionality >= 2) {
+        // 2-D mask data - separable.
+        for (int i = 0; i < m; i++)
+            mask2.push_back((U) (unique.i()));
+    }
+    int nerrors = 0;
+    const int maxerrors = 20;
+    for (int j = 0; j < O_HEIGHT; j++) {
+        for (int i = 0; i < O_WIDTH; i++) {
+            U h, v;
+            T value;
+            // Compute general computation (convolution etc) at location i, j
+            if (dimensionality == 1) {
+                h = gen.pixel(border_access<U,T>(b, i-m/2, j, bdr, schedule), mask1[0]);
+                for (int ii = 1; ii < m; ii++) {
+                    h = gen.reduce(h, gen.pixel(border_access<U,T>(b, i+ii-m/2, j, bdr, schedule), mask1[ii]));
+                }
+                value = (T) (gen.final(h, n));
+            } else if (dimensionality == 2) {
+                // Really inefficient code - does not store and read back.
+                v = 0;
+                for (int jj = 0; jj < m; jj++) {
+                    // Fetch pixel value using border_access then process it with pixel function for X dimension.
+                    h = gen.pixel(border_access<U,T>(b, i-m/2, j+jj-m/2, bdr, schedule), mask1[0]);
+                    for (int ii = 1; ii < m; ii++) {
+                        h = gen.reduce(h, gen.pixel(border_access<U,T>(b, i+ii-m/2, j+jj-m/2, bdr, schedule), mask1[ii]));
+                    }
+                    // Process Y dimension
+                    if (jj == 0) {
+                        v = gen.pixel(h, mask2[jj]);
+                    } else {
+                        v = gen.reduce(v, gen.pixel(h, mask2[jj]));
+                    }
+                }
+                value = (T) (gen.final(v, n));
+            }
+                
+            if (value != r(i,j)) {
+                if (type_of<T>().is_float()) {
+                    bool error = std::abs(r(i,j) - value) > std::abs(value) * 0.00001;
+                    if (error && nerrors++ < maxerrors) {
+                        std::cerr << "General computation error: (" << i << "," << j << ") expected: " << value << "  got: " << r(i,j) << "\n";
+                        fail = true;
+                    }
+                } else if (nerrors++ < maxerrors) {
+                    int64_t want, got;
+                    want = value;
+                    got = r(i,j);
+                    std::cerr << "General computation error: (" << i << "," << j << ") expected: " << want << "  got: " << got << "\n";
+                    fail = true;
+                }
+            }
+        }
+    }
+    assert (! fail);
+}
+
+
 template<typename T>
 Func build_blur_n(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec, int dimensionality) {
-    return build_general(blur_pixel, blur_final, name, a, b, n, bdr, schedule, vec, dimensionality);
+    Blur<T> g_conv;
+    return build_general(g_conv, name, a, b, n, bdr, schedule, vec, dimensionality);
 }
+
+template<typename U,typename T>
+void check_blur_n_typed(ImageParam a, Image<T> b, Image<T> r, int n, int bdr, int schedule, int dimensionality) {
+    Blur<U> g_blur;
+    check_general_typed(g_blur, a, b, r, n, bdr, schedule, dimensionality);
+    return;
+}
+
+namespace Halide {
+    template<> Type type_of<uint64_t>() { return UInt(64); }
+    template<> Type type_of<int64_t>() { return Int(64); }
+}
+
+
+
+# define CHECK_TYPED(NAME,CALL) \
+template<typename T> \
+void NAME(ImageParam a, Image<T> b, Image<T> r, int n, int bdr, int schedule, int dimensionality) { \
+    int s = schedule & SCHEDULE_UPCAST; \
+    if (s == SCHEDULE_UPCAST_NONE) { \
+        CALL<T,T>(a, b, r, n, bdr, schedule, dimensionality); \
+        return; \
+    } \
+    Type t = type_of<T>(); \
+    if (s == SCHEDULE_UPCAST_FLOAT) { \
+        assert(! t.is_float() && "Cannot upcast float to float"); \
+        CALL<float,T>(a, b, r, n, bdr, schedule, dimensionality);  \
+        return; \
+    } else if (s == SCHEDULE_UPCAST_INT || (s == SCHEDULE_UPCAST_SAME && t.is_int())) { \
+        assert(! t.is_float() && "Cannot upcast float to int"); \
+        assert(t.bits < 64 && "Cannot upcast 64 bits"); \
+        int bits = t.bits * 2; \
+        if (bits == 16) \
+            CALL<int16_t,T>(a, b, r, n, bdr, schedule, dimensionality); \
+        else if (bits == 32) \
+            CALL<int32_t,T>(a, b, r, n, bdr, schedule, dimensionality); \
+        else if (bits == 64) \
+            CALL<int64_t,T>(a, b, r, n, bdr, schedule, dimensionality); \
+        else \
+            assert(0 && "Unknown upcast type"); \
+        return; \
+    } else if (s == SCHEDULE_UPCAST_SAME) { \
+        assert(! t.is_float() && "Cannot upcast float to same"); \
+        assert(t.bits < 64 && "Cannot upcast 64 bits"); \
+        assert(t.is_uint() && "What? Should be unsigned int here"); \
+        int bits = t.bits * 2; \
+        if (bits == 16) \
+            CALL<uint16_t,T>(a, b, r, n, bdr, schedule, dimensionality); \
+        else if (bits == 32) \
+            CALL<uint32_t,T>(a, b, r, n, bdr, schedule, dimensionality); \
+        else if (bits == 64) \
+            CALL<uint64_t,T>(a, b, r, n, bdr, schedule, dimensionality); \
+        else \
+            assert(0 && "Unknown upcast type"); \
+        return; \
+    } \
+}
+
+CHECK_TYPED(check_blur_n,check_blur_n_typed)
 
 template<typename T>
 Func build_conv_n(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec, int dimensionality) {
-    return build_general(conv_pixel, conv_final, name, a, b, n, bdr, schedule, vec, dimensionality);
+    Conv<T> g_conv;
+    return build_general(g_conv, name, a, b, n, bdr, schedule, vec, dimensionality);
 }
+
+template<typename U,typename T>
+void check_conv_n_typed(ImageParam a, Image<T> b, Image<T> r, int n, int bdr, int schedule, int dimensionality) {
+    Conv<U> g_conv;
+    check_general_typed<U,T>(g_conv, a, b, r, n, bdr, schedule, dimensionality);
+    return;
+}
+
+// Compilation error check only...
+void cplusplus_compile_check_1(ImageParam a, Image<unsigned char> b, Image<unsigned char> r, int n, int bdr, int schedule, int dimensionality) {
+    Conv<unsigned char> g_conv;
+    check_general_typed<unsigned char,unsigned char>(g_conv, a, b, r, n, bdr, schedule, dimensionality);
+    return;
+}
+
+CHECK_TYPED(check_conv_n,check_conv_n_typed)
 
 template<typename T>
 Func build_sobel(std::string name, ImageParam a, Image<T> b, int n, int bdr, int schedule, int vec, int dimensionality) {
@@ -1016,49 +1201,6 @@ void check_sobel_typed(ImageParam a, Image<T> b, Image<T> r, int n, int bdr, int
         }
     }
     assert (! fail);
-}
-
-# define CHECK_TYPED(NAME,CALL) \
-template<typename T> \
-void NAME(ImageParam a, Image<T> b, Image<T> r, int n, int bdr, int schedule, int dimensionality) { \
-    int s = schedule & SCHEDULE_UPCAST; \
-    if (s == SCHEDULE_UPCAST_NONE) { \
-        CALL<T,T>(a, b, r, n, bdr, schedule, dimensionality); \
-        return; \
-    } \
-    Type t = type_of<T>(); \
-    if (s == SCHEDULE_UPCAST_FLOAT) { \
-        assert(! t.is_float() && "Cannot upcast float to float"); \
-        CALL<float,T>(a, b, r, n, bdr, schedule, dimensionality);  \
-        return; \
-    } else if (s == SCHEDULE_UPCAST_INT || (s == SCHEDULE_UPCAST_SAME && t.is_int())) { \
-        assert(! t.is_float() && "Cannot upcast float to int"); \
-        assert(t.bits < 64 && "Cannot upcast 64 bits"); \
-        int bits = t.bits * 2; \
-        if (bits == 16) \
-            CALL<int16_t,T>(a, b, r, n, bdr, schedule, dimensionality); \
-        else if (bits == 32) \
-            CALL<int32_t,T>(a, b, r, n, bdr, schedule, dimensionality); \
-        else if (bits == 64) \
-            CALL<int64_t,T>(a, b, r, n, bdr, schedule, dimensionality); \
-        else \
-            assert(0 && "Unknown upcast type"); \
-        return; \
-    } else if (s == SCHEDULE_UPCAST_SAME) { \
-        assert(! t.is_float() && "Cannot upcast float to same"); \
-        assert(t.bits < 64 && "Cannot upcast 64 bits"); \
-        assert(t.is_uint() && "What? Should be unsigned int here"); \
-        int bits = t.bits * 2; \
-        if (bits == 16) \
-            CALL<uint16_t,T>(a, b, r, n, bdr, schedule, dimensionality); \
-        else if (bits == 32) \
-            CALL<uint32_t,T>(a, b, r, n, bdr, schedule, dimensionality); \
-        else if (bits == 64) \
-            CALL<uint64_t,T>(a, b, r, n, bdr, schedule, dimensionality); \
-        else \
-            assert(0 && "Unknown upcast type"); \
-        return; \
-    } \
 }
 
 CHECK_TYPED(check_sobel,check_sobel_typed)
@@ -1304,7 +1446,7 @@ void test(std::string basename,
     // Execute once.
     f.realize(output);
     
-    if (schedule != 0 && ! logging) {
+    if (! logging) {
         // Compute the preferred output using the builder with no
         // schedule.  Except: preserve upcast because that is necessary for correct results. 
         // Also preserve SCHEDULE_INPUT_PARAM.
@@ -1328,6 +1470,11 @@ void test(std::string basename,
             check_sobel(a, b, ref, n, bdr, schedule, dimensionality);
         else if (basename == "diag")
             check_diag(a, b, ref, n, bdr, schedule, dimensionality);
+        else if (basename == "conv")
+            check_conv_n(a, b, ref, n, bdr, schedule, dimensionality);
+        else if (basename == "blur")
+            check_blur_n(a, b, ref, n, bdr, schedule, dimensionality);
+        std::cerr << "Correctness test passed\n";
     }
     // Now to estimate execution time.
     check = logging ? 1 : 4;
@@ -1505,6 +1652,7 @@ void do_tests_minus2(int bdr, int vec, int dimensionality, int vec_only = 0) {
 
 int main(int argc, char **argv) {
     // Command line information
+    int select_count = 99999999;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-log") == 0) logging = 1; // Compile and execute each function once only.
         else if (strcmp(argv[i], "-list") == 0) listing = 1; // List IDs and function names. Useful to focus on a test.
@@ -1535,6 +1683,9 @@ int main(int argc, char **argv) {
             check_results = 1;
         } else if (strcmp(argv[i], "-iter") == 0 && i < argc - 1) { // Select iteration number when doing -log option
             sscanf(argv[i+1], "%d", &iteration_number);
+            i++;
+        } else if (strcmp(argv[i], "-select") == 0 && i < argc - 1) { // Select iteration number when doing -log option
+            sscanf(argv[i+1], "%d", &select_count);
             i++;
         } else if (argv[i][0] == '-') {
             if (i < argc - 1) {
@@ -1586,8 +1737,8 @@ int main(int argc, char **argv) {
 
     if (list_ids) {
         // Shuffle the collected IDs to randomise the experiments
-        mt_random.shuffle(ids);
-        for (size_t i = 0; i < ids.size(); i++) std::cout << ids[i] << " ";
+        if (! logging) mt_random.shuffle(ids);
+        for (size_t i = 0; i < ids.size() && i < (size_t) select_count; i++) std::cout << ids[i] << " ";
         std::cout << std::endl;
     }
     
