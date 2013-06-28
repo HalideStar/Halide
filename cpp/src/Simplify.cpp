@@ -1375,6 +1375,8 @@ protected:
         const Mul *mul_b = b.as<Mul>();
         
         int ia, ib;
+        
+        // Infinity: Equality of infinities is symbolic. i.e. equal() does the job.
 
         if (const_castint(a, &ia) && const_castint(b, &ib)) {
             if (a.type().is_uint()) {
@@ -1453,7 +1455,9 @@ protected:
             expr = const_false(op->type.width);
             return;
         } else if (inf & (PP | NN)) {
-            assert(0 && "Infinity conflict in LT");
+            // infinity is defined as equal to infinity.  This is affine completion.
+            // Therefore, infinity cannot be less than infinity (similarly for -infinity).
+            expr = const_false(op->type.width);
             return;
         }
 

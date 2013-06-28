@@ -140,6 +140,16 @@ void EXPORT match_types(Expr &a, Expr &b);
 /** Recognise Infinity node (including inside Cast and/or Broadcast) and return 
  * infinity count.  If not infinity, return zero. */
 int EXPORT infinity_count(const Expr e);
+
+/** Convert infinity, if found, to the corresponding extreme value of data type
+ * Otherwise, return the original expression. The parameter type t specifies the data
+ * type. Parameter direction specifies +ve infinity (+1) or -ve infinity (-1) to be used
+ * if expression e is undefined. Use direction == 0 to enforce that expression e
+ * must be defined, or use the variant interface. 
+ * Variant interface omits type t and direction parameters, so expression e must be defined.
+ */
+Expr EXPORT convert_infinity(Expr e, Type t, int direction);
+Expr EXPORT convert_infinity(const Expr e);
 }
 
 /** Cast an expression to the halide type corresponding to the C++ type T */

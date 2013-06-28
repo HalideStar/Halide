@@ -120,9 +120,45 @@ InfInterval unzoom(InfInterval v, Expr b) {
 
 InfInterval inverseAdd(InfInterval v, Expr b) { return operator-(v,b); }
 InfInterval inverseSub(InfInterval v, Expr b) { return operator+(v,b); }
+InfInterval inverseSubA(Expr a, InfInterval v) { 
+    Expr newmin = a - v.max;
+    Expr newmax = a - v.min;
+    return InfInterval(simplify(newmin), simplify(newmax));
+}
+
 InfInterval inverseMul(InfInterval v, Expr b) { return decimate(v, b); }
 
+/** Compute the interval u such that interval (u % b) is in interval v. */
+InfInterval inverseMod(InfInterval v, Expr b) {
+    // Note: b == 0 is not allowed - modulus against zero is not defined.  
+    // If b == 0 (integer) then mod_interval will be set to (-1,1) which is meaningless.
+    InfInterval mod_interval;
+    if (b.type().is_float()) mod_interval = InfInterval(simplify(min(0,b)), simplify(max(0,b)));
+    else mod_interval = InfInterval(simplify(min(0,b-1)), simplify(max(0,b+1)));
+    // If v contains mod_interval then u is infinite.
+    if (proved(v.min <= mod_interval.min) && proved(v.max >= mod_interval.max)) {
+        return InfInterval(Internal::make_infinity(v.min.type(), -1), Internal::make_infinity(v.min.type(), +1));
+    }
+    // Since v is not known to contain mod_interval, there are some values
+    // of mod_interval that fall outside the target interval v.
+    // In order to ensure that u % b is contained by v,
+    // u must be the intersection of v and mod_interval.
+    // i.e. Any value outside v but inside mod_interval cannot appear in u
+    // because it does not appear in v and mod does not change it.
+    // Also, any value outside mod_interval but inside v will be wrapped by
+    // the application of modulus and at least one such wrapped value will
+    // not be contained in v.
+    return intersection(v, mod_interval);
+}
+
+
 # if 0
+// Operator% cannot simply take the modulus of the interval limits;
+// in the case that the interval includes an integer multiplier of the modulus
+// then the result interval is the full range (0,b-1) or (b+1,0) (for integer modulus).
+// e.g. (3,5) % 4.  It gets really tricky to do it right, so leave it out until actually required.
+// See also Bounds.cpp which does bounds analysis and includes some fancy handling of
+// modulus operators.  See also operator% below for two intervals.
 InfInterval operator%(InfInterval v, Expr b) { 
     return InfInterval(simplify(v.min % b), simplify(v.max % b)); 
 }

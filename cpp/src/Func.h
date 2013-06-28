@@ -947,18 +947,13 @@ public:
 	Func &computable(Func f) { return domain(Domain::Computable, f); }
 
     //LH
-    /** Return an infinite domain for the current function. */
-    // Note: Does not return a reference since that would require creating an object
-    // in the Func.  This will be used infrequently, so simply copy the temporary object into
-    // the destination.
-    Domain infinite();
-    
-    //LH
     /** Methods to indicate that the current function is a local operation. */
     EXPORT Func &local(Func f1);
     EXPORT Func &local(Func f1, Func f2);
     EXPORT Func &local(Func f1, Func f2, Func f3);
     EXPORT Func &local(Func f1, Func f2, Func f3, Func f4);
+    EXPORT Func &local(Func f1, Func f2, Func f3, Func f4, Func f5);
+    EXPORT Func &local(Func f1, Func f2, Func f3, Func f4, Func f5, Func f6);
     
     //LH
     /** Get the type of this Func node */

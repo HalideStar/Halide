@@ -627,29 +627,6 @@ Func &Func::domain(Domain::DomainType dt, Func f) {
 	return *this;
 }
 
-//LH
-/** Return an infinite domain for the current function */
-Domain Func::infinite() {
-    if (func.args().size() == 0)
-        return Domain();
-    if (func.args().size() == 1)
-        return Domain(func.args()[0], false, Expr(), Expr());
-    if (func.args().size() == 2)
-        return Domain(func.args()[0], false, Expr(), Expr(),
-                      func.args()[1], false, Expr(), Expr());
-    if (func.args().size() == 3)
-        return Domain(func.args()[0], false, Expr(), Expr(),
-                      func.args()[1], false, Expr(), Expr(),
-                      func.args()[2], false, Expr(), Expr());
-    if (func.args().size() == 4)
-        return Domain(func.args()[0], false, Expr(), Expr(),
-                      func.args()[1], false, Expr(), Expr(),
-                      func.args()[2], false, Expr(), Expr(),
-                      func.args()[3], false, Expr(), Expr());
-    assert(0 && "Cannot construct infinite domain for function");
-    return Domain(); // Unknown situation.
-}
-
 //void Func::operator=(Func f) {
 //    std::cout << "Simple defining " << name() << "\n";
     //assert(0);
@@ -673,7 +650,18 @@ Func &Func::local(Func f1, Func f2, Func f3) {
     return *this;
 }
 Func &Func::local(Func f1, Func f2, Func f3, Func f4) {
-    set_valid() = computable().intersection(f1.valid()).intersection(f2.valid()).intersection(f3.valid()).intersection(f4.valid());
+    set_valid() = computable().intersection(f1.valid()).intersection(f2.valid()).intersection(f3.valid())
+                              .intersection(f4.valid());
+    return *this;
+}
+Func &Func::local(Func f1, Func f2, Func f3, Func f4, Func f5) {
+    set_valid() = computable().intersection(f1.valid()).intersection(f2.valid()).intersection(f3.valid())
+                              .intersection(f4.valid()).intersection(f5.valid());
+    return *this;
+}
+Func &Func::local(Func f1, Func f2, Func f3, Func f4, Func f5, Func f6) {
+    set_valid() = computable().intersection(f1.valid()).intersection(f2.valid()).intersection(f3.valid())
+                              .intersection(f4.valid()).intersection(f5.valid()).intersection(f6.valid());
     return *this;
 }
 

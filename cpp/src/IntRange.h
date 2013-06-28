@@ -1,8 +1,5 @@
-// This include file must be included in the manner that IR.h includes it.
-// Do not include this file directly: include IR.h instead.
-#ifndef HALIDE_IR_H
-# include HALIDE_IR_H
-#endif
+// Include this file via IR.h
+#include "IR.h"
 
 #ifndef HALIDE_INT_RANGE_H
 #define HALIDE_INT_RANGE_H

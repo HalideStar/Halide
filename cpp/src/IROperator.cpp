@@ -314,6 +314,19 @@ int infinity_count(Expr e) {
     return 0;
 }
 
+Expr convert_infinity(Expr e, Type t, int direction) {
+    int d = direction;
+    assert((e.defined() || direction != 0) && "Cannot convert undefined to infinity - direction not specified");
+    if (e.defined()) d = infinity_count(e);
+    if (d == 0) return e;
+    if (d > 0) return t.max();
+    return t.min();
+}
+
+Expr convert_infinity(Expr e) {
+    assert(e.defined() && "Cannot convert undefined to infinity - type and direction must be specified");
+    return convert_infinity(e, e.type(), 0);
+}
 
 }
 }

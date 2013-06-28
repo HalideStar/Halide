@@ -53,8 +53,8 @@ static Func border_builder(vector<BorderFunc> borderfuncs, Func f) {
         Expr min = f.valid().min(i);
         Expr max = f.valid().max(i);
         Expr v = Var::gen(i);
-        if (! min.defined()) { min = v.type().min(); }
-        if (! max.defined()) { max = v.type().max(); }
+        min = Internal::convert_infinity(min, v.type(), -1);
+        max = Internal::convert_infinity(max, v.type(), +1);
         f_args.push_back(borderfuncs[i].indexExpr(v, min, max));
     }
     // Apply the subscripts to the function f.
@@ -70,8 +70,8 @@ static Func border_builder(vector<BorderFunc> borderfuncs, Func f) {
         Expr min = f.valid().min(i);
         Expr max = f.valid().max(i);
         Expr v = Var::gen(i);
-        if (! min.defined()) { min = v.type().min(); }
-        if (! max.defined()) { max = v.type().max(); }
+        min = Internal::convert_infinity(min, v.type(), -1);
+        max = Internal::convert_infinity(max, v.type(), -1);
         expr = borderfuncs[i].valueExpr(expr, v, min, max);
     }
     Internal::log(4) << "Border handled expression: " << expr << "\n";
@@ -227,14 +227,14 @@ void border_test() {
     Func init("init"), f("f");
 
     init(x) = x;
-    init.set_valid() = Domain("x", false, 3, 5);
+    init.set_valid() = Domain(3, 5);
     
     // Test application of replicate border handling
     f(x) = Border::replicate(init)(x);
     Image<int> out = f.realize(10);
     
     assert(equal(f.valid().min(0), 3) && equal(f.valid().max(0), 5) && "Border function test failed: replication domain");
-    assert(equal(f.valid().exact(0), const_true()) && "Border function test failed: inexact result");
+    assert(f.valid().exact(0) && "Border function test failed: inexact result");
     
     for (int i = 0; i < 10; i++) {
         if (out(i) != ((i < 3) ? 3 : (i > 5 ? 5 : i))) {
@@ -245,7 +245,7 @@ void border_test() {
     // Test what happens with undefined domain limit.
     Func in2("in2"), f2("f2");
     in2(x) = x;
-    in2.set_valid() = Domain("x", false, Expr(), 15);
+    in2.set_valid() = Domain(Expr(), 15);
     
     success &= check(Border::replicate(in2), 
                      in2(max(min(Var::gen(0), 15), Int(32).min())), 

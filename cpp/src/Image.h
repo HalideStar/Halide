@@ -42,19 +42,19 @@ private:
         if (dims == 0)
             dom = Domain(); // An empty domain that has not been initialised.
         else if (dims == 1)
-            dom = Domain("x", false, buffer.min(0), buffer.min(0) + buffer.extent(0) - 1);
+            dom = Domain(InfInterval(buffer.min(0), buffer.min(0) + buffer.extent(0) - 1));
         else if (dims == 2)
-            dom = Domain("x", false, buffer.min(0), buffer.min(0) + buffer.extent(0) - 1,
-                         "y", false, buffer.min(1), buffer.min(1) + buffer.extent(1) - 1);
+            dom = Domain(InfInterval(buffer.min(0), buffer.min(0) + buffer.extent(0) - 1),
+                         InfInterval(buffer.min(1), buffer.min(1) + buffer.extent(1) - 1));
         else if (dims == 3)
-            dom = Domain("x", false, buffer.min(0), buffer.min(0) + buffer.extent(0) - 1,
-                         "y", false, buffer.min(1), buffer.min(1) + buffer.extent(1) - 1,
-                         "z", false, buffer.min(2), buffer.min(2) + buffer.extent(2) - 1);
+            dom = Domain(InfInterval(buffer.min(0), buffer.min(0) + buffer.extent(0) - 1),
+                         InfInterval(buffer.min(1), buffer.min(1) + buffer.extent(1) - 1),
+                         InfInterval(buffer.min(2), buffer.min(2) + buffer.extent(2) - 1));
         else if (dims == 4)
-            dom = Domain("x", false, buffer.min(0), buffer.min(0) + buffer.extent(0) - 1,
-                         "y", false, buffer.min(1), buffer.min(1) + buffer.extent(1) - 1,
-                         "z", false, buffer.min(2), buffer.min(2) + buffer.extent(2) - 1,
-                         "w", false, buffer.min(3), buffer.min(3) + buffer.extent(3) - 1);
+            dom = Domain(InfInterval(buffer.min(0), buffer.min(0) + buffer.extent(0) - 1),
+                         InfInterval(buffer.min(1), buffer.min(1) + buffer.extent(1) - 1),
+                         InfInterval(buffer.min(2), buffer.min(2) + buffer.extent(2) - 1),
+                         InfInterval(buffer.min(3), buffer.min(3) + buffer.extent(3) - 1));
     }
 
     /** Prepare the buffer to be used as an image. Makes sure that the

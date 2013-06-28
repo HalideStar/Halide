@@ -161,8 +161,8 @@ void Function::define_reduction(const vector<Expr> &args, Expr value) {
 
 //LH
 // Get the corresponding interval of all the domains
-const std::vector<VarInterval> Function::domain_intervals(int index) const {
-    std::vector<VarInterval> intervals;
+const std::vector<DomInterval> Function::domain_intervals(int index) const {
+    std::vector<DomInterval> intervals;
     assert(contents.ptr->domains.size() >= Domain::MaxDomains && "Insufficient Domains defined in Function");
     for (int j = 0; j < Domain::MaxDomains; j++) {
         intervals.push_back(contents.ptr->domains[j].intervals[index]);

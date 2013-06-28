@@ -57,7 +57,7 @@ EXPORT InfInterval zoom(InfInterval v, Expr b);
  * decimate selects every element of the InfInterval that is an integer multiple of b, and
  *    gives you the resulting down-scaled InfInterval.  This represents the pixel range
  *    that you get by decimating an image.  It also represents the inverse of integer
- *    multiply becaise it gives you all the integers that, when multiplied back up, would
+ *    multiply because it gives you all the integers that, when multiplied back up, would
  *    not overflow the original InfInterval v.
  * unzoom selects only those elements of the InfInterval that will be present if zoom
  *    is subsequently applied.  This is the appropriate way to reduce a main loop
@@ -68,21 +68,26 @@ EXPORT InfInterval operator/(InfInterval v, Expr b);
 EXPORT InfInterval decimate(InfInterval v, Expr b);
 EXPORT InfInterval unzoom(InfInterval v, Expr b);
 
-/** Operator% takes modulus of both extremes. */
-EXPORT InfInterval operator%(InfInterval v, Expr b);
+/** Operator% not implemented */
+//EXPORT InfInterval operator%(InfInterval v, Expr b);
 
 /** Inverse operators 
  * inverseAdd returns an interval such that adding b yields the original interval.  This is equivalent to subtraction.
  * inverseSub returns an interval such that subtracting b yields the original interval.  Equivalent to addition.
+ * inverseSubA(a,v) return v such that a - v yields the original interval.
  * inverseMul returns an interval such that multiplication by b does not exceed
  *    the original interval.  This is equivalent to decimate.
- * inverseDiv returns an interval such that dividing it back down yields the original interval.
+ * inverse div: returns an interval such that dividing it back down yields the original interval.
  *    Both zoom and operator* are candidates for this operation.
  *    Zoom is preferred if you are talking about indices, because it represents replicating each pixel n times.
+ *    Zoom returns the largest solution interval while operator* returns the smallest solution interval.
+ * inverseMod: returns the largest interval such that taking modulus yields the original interval.
  */
 EXPORT InfInterval inverseAdd(InfInterval v, Expr b);
 EXPORT InfInterval inverseSub(InfInterval v, Expr b);
+EXPORT InfInterval inverseSubA(Expr a, InfInterval v);
 EXPORT InfInterval inverseMul(InfInterval v, Expr b);
+EXPORT InfInterval inverseMod(InfInterval v, Expr b);
 
 /** Operators on two InfIntervals */
 EXPORT InfInterval operator+(InfInterval u, InfInterval v);

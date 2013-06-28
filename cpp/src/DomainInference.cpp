@@ -18,52 +18,26 @@ using std::ostream;
 namespace Halide { 
 namespace Internal {
 
-// VarInterval: Represents an interval associated with a variable, including
-// the name of the variable and a poison flag for dead intervals.
-// update computes the intersection of intervals.
-ostream &operator<<(ostream &stream, VarInterval interval) {
-    stream << "\"" << interval.varname << "\"";
-    if (equal(interval.poison, const_true())) {
+// DomInterval: Represents an interval within a domain including
+// a flag whether the interval is exact and an InfInterval.
+ostream &operator<<(ostream &stream, DomInterval interval) {
+    if (! interval.exact) {
         stream << "~"; // ~ denotes approximate interval
-    } else if (! equal(interval.poison, const_false())) {
-        stream << "~[" << interval.poison << "]"; // [] denotes expression for approximate interval
     }
-    stream << "(" << interval.imin << ", " << interval.imax << ")";
+    stream << interval.interval;
     return stream;
 }
 
-void VarInterval::update(VarInterval result) {
-    assert(result.varname == varname && "Trying to update incorrect variable in Domain");
-    
-    log(4,"DOMINF") << "Update " << *this << " with " << result;
+// intersect computes the intersection of intervals.
+void DomInterval::intersect(DomInterval result) {
+    log(4,"DOMINF") << "Intersect " << *this << " with " << result;
 
-    // Poison is really "inexact": the result is not assured to be correct because
-    // at least one update of relevant information could not be resolved!
-    // Poison set to empty expression is the same as false.  This is a hack for initialisation.
-    if (! poison.defined()) {
-        poison = result.poison;
-    }
-    else if (result.poison.defined()) {
-        poison = poison || result.poison;
-        poison = simplify(poison);
-    }
+    // The result only remain exact if the new information is exact
+    exact &= result.exact;
 
     // Update the bounds according to information newly derived.  If inexact, the
     // answers are generous (i.e. the actual domain may be smaller).
-    if (! imin.defined()) { // Hack representation of infinity
-        imin = result.imin;
-    }
-    else if (result.imin.defined()) {
-        imin = max(imin, result.imin); // Update min as maximum of both expressions
-        imin = simplify(imin);
-    }
-    if (! imax.defined()) {
-        imax = result.imax;
-    }
-    else if (result.imax.defined()) {
-        imax = min(imax, result.imax);
-        imax = simplify(imax);
-    }
+    interval = intersection(interval, result.interval);
     log(4,"DOMINF") << " ==> " << *this << "\n";
 }
 
@@ -78,92 +52,78 @@ Domain::Domain() {
 }
 
 Domain::Domain(Expr xmin, Expr xmax) {
-    intervals = Internal::vec(Internal::VarInterval("x", Internal::const_false(), xmin, xmax));
+    intervals = Internal::vec(Internal::DomInterval(xmin, xmax));
     domain_locked = false;
 }
 
 Domain::Domain(Expr xmin, Expr xmax, Expr ymin, Expr ymax) {
-    intervals = Internal::vec(Internal::VarInterval("x", Internal::const_false(), xmin, xmax),
-                    Internal::VarInterval("y", Internal::const_false(), ymin, ymax));
+    intervals = Internal::vec(Internal::DomInterval(xmin, xmax),
+                    Internal::DomInterval(ymin, ymax));
     domain_locked = false;
 }
 
 Domain::Domain(Expr xmin, Expr xmax, Expr ymin, Expr ymax, Expr zmin, Expr zmax) {
-    intervals = Internal::vec(Internal::VarInterval("x", Internal::const_false(), xmin, xmax),
-                    Internal::VarInterval("y", Internal::const_false(), ymin, ymax),
-                    Internal::VarInterval("z", Internal::const_false(), zmin, zmax));
+    intervals = Internal::vec(Internal::DomInterval(xmin, xmax),
+                    Internal::DomInterval(ymin, ymax),
+                    Internal::DomInterval(zmin, zmax));
     domain_locked = false;
 }
 
 Domain::Domain(Expr xmin, Expr xmax, Expr ymin, Expr ymax, Expr zmin, Expr zmax, Expr wmin, Expr wmax) {
-    intervals = Internal::vec(Internal::VarInterval("x", Internal::const_false(), xmin, xmax),
-                    Internal::VarInterval("y", Internal::const_false(), ymin, ymax),
-                    Internal::VarInterval("z", Internal::const_false(), zmin, zmax),
-                    Internal::VarInterval("z", Internal::const_false(), wmin, wmax));
+    intervals = Internal::vec(Internal::DomInterval(xmin, xmax),
+                    Internal::DomInterval(ymin, ymax),
+                    Internal::DomInterval(zmin, zmax),
+                    Internal::DomInterval(wmin, wmax));
     domain_locked = false;
 }
 
-Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax) {
-    intervals = Internal::vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax));
+Domain::Domain(InfInterval xint) {
+    intervals = Internal::vec(Internal::DomInterval(xint));
     domain_locked = false;
 }
 
-Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
-               std::string yvarname, Expr ypoisoned, Expr ymin, Expr ymax) {
-    intervals = Internal::vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax),
-                    Internal::VarInterval(yvarname, ypoisoned, ymin, ymax));
+Domain::Domain(InfInterval xint, InfInterval yint) {
+    intervals = Internal::vec(Internal::DomInterval(xint), 
+                              Internal::DomInterval(yint));
     domain_locked = false;
 }
 
-Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
-               std::string yvarname, Expr ypoisoned, Expr ymin, Expr ymax,
-               std::string zvarname, Expr zpoisoned, Expr zmin, Expr zmax) {
-    intervals = Internal::vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax),
-                    Internal::VarInterval(yvarname, ypoisoned, ymin, ymax),
-                    Internal::VarInterval(zvarname, zpoisoned, zmin, zmax));
+Domain::Domain(InfInterval xint, InfInterval yint,
+               InfInterval zint) {
+    intervals = Internal::vec(Internal::DomInterval(xint), 
+                              Internal::DomInterval(yint),
+                              Internal::DomInterval(zint));
     domain_locked = false;
 }
 
-Domain::Domain(std::string xvarname, Expr xpoisoned, Expr xmin, Expr xmax,
-               std::string yvarname, Expr ypoisoned, Expr ymin, Expr ymax,
-               std::string zvarname, Expr zpoisoned, Expr zmin, Expr zmax,
-               std::string wvarname, Expr wpoisoned, Expr wmin, Expr wmax) {
-    intervals = Internal::vec(Internal::VarInterval(xvarname, xpoisoned, xmin, xmax),
-                    Internal::VarInterval(yvarname, ypoisoned, ymin, ymax),
-                    Internal::VarInterval(zvarname, zpoisoned, zmin, zmax),
-                    Internal::VarInterval(wvarname, wpoisoned, wmin, wmax));
-}
-
-Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax) {
-    intervals = Internal::vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax));
+Domain::Domain(InfInterval xint, InfInterval yint,
+               InfInterval zint, InfInterval wint) {
+    intervals = Internal::vec(Internal::DomInterval(xint), 
+                              Internal::DomInterval(yint),
+                              Internal::DomInterval(zint),
+                              Internal::DomInterval(wint));
     domain_locked = false;
 }
 
-Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax,
-               std::string yvarname, bool ypoisoned, Expr ymin, Expr ymax) {
-    intervals = Internal::vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax),
-                    Internal::VarInterval(yvarname, Internal::make_bool(ypoisoned), ymin, ymax));
-    domain_locked = false;
-}
-
-Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax,
-               std::string yvarname, bool ypoisoned, Expr ymin, Expr ymax,
-               std::string zvarname, bool zpoisoned, Expr zmin, Expr zmax) {
-    intervals = Internal::vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax),
-                    Internal::VarInterval(yvarname, Internal::make_bool(ypoisoned), ymin, ymax),
-                    Internal::VarInterval(zvarname, Internal::make_bool(zpoisoned), zmin, zmax));
-    domain_locked = false;
-}
-
-Domain::Domain(std::string xvarname, bool xpoisoned, Expr xmin, Expr xmax,
-               std::string yvarname, bool ypoisoned, Expr ymin, Expr ymax,
-               std::string zvarname, bool zpoisoned, Expr zmin, Expr zmax,
-               std::string wvarname, bool wpoisoned, Expr wmin, Expr wmax) {
-    intervals = Internal::vec(Internal::VarInterval(xvarname, Internal::make_bool(xpoisoned), xmin, xmax),
-                    Internal::VarInterval(yvarname, Internal::make_bool(ypoisoned), ymin, ymax),
-                    Internal::VarInterval(zvarname, Internal::make_bool(zpoisoned), zmin, zmax),
-                    Internal::VarInterval(wvarname, Internal::make_bool(wpoisoned), wmin, wmax));
-    domain_locked = false;
+Domain Domain::infinite(int dimensions) {
+    Expr neginf = Internal::make_infinity(Int(32), -1);
+    Expr posinf = Internal::make_infinity(Int(32), +1);
+    switch (dimensions) {
+    case 0:
+        return Domain();
+    case 1:
+        return Domain(neginf, posinf);
+    case 2:
+        return Domain(neginf, posinf, neginf, posinf);
+    case 3:
+        return Domain(neginf, posinf, neginf, posinf, neginf, posinf);
+    case 4:
+        return Domain(neginf, posinf, neginf, posinf, neginf, posinf,
+                      neginf, posinf);
+    }
+    std::cerr << "Cannot construct domain with dimensions=" << dimensions << "\n";
+    assert(0);
+    return Domain();
 }
 
 /** Compute the intersection of two domains. */
@@ -171,35 +131,32 @@ Domain Domain::intersection(const Domain other) const {
     Domain result = *this; // Start with one of the domains as the 'answer'
     for (size_t i = 0; i < other.intervals.size() && i < intervals.size(); i++) {
         // Update corresponding dimensions from the other domain.
-        Internal::VarInterval his = other.intervals[i];
-        his.varname = result.intervals[i].varname; // Override variable name match. ***HACK***
-        result.intervals[i].update(his);
+        Internal::DomInterval his = other.intervals[i];
+        result.intervals[i].intersect(his);
     }
     return result;
 }
 
 const Expr Domain::min(int index) const {
     assert(index >= 0 && index < (int) intervals.size() && "Attempt to access Domain out of range");
-    return intervals[index].imin;
+    return intervals[index].interval.min;
 }
 
 const Expr Domain::max(int index) const {
     assert(index >= 0 && index < (int) intervals.size() && "Attempt to access Domain out of range");
-    return intervals[index].imax;
+    return intervals[index].interval.max;
 }
 
-const Expr Domain::exact(int index) const {
+const bool Domain::exact(int index) const {
     assert(index >= 0 && index < (int) intervals.size() && "Attempt to access Domain out of range");
-    return Internal::simplify(! intervals[index].poison);
-}
+    return intervals[index].exact;
+} 
+
 
 const Expr Domain::extent(int index) const {
     assert(index >= 0 && index < (int) intervals.size() && "Attempt to access Domain out of range");
-    if (! intervals[index].imax.defined() || ! intervals[index].imin.defined()) {
-        // The interval is undefined so the extent is undefined.
-        return Expr();
-    }
-    return Internal::simplify(intervals[index].imax - intervals[index].imin + 1);
+    // Use the same expression form as in IntRange converting from IntInterval to Range
+    return Internal::simplify((intervals[index].interval.max + 1) - intervals[index].interval.min);
 }
 
 const int Domain::imin(int index) const {
@@ -271,12 +228,12 @@ static bool is_constant_expr(std::vector<std::string> varlist, Expr e) {
 
 class BackwardIntervalInference : public IRVisitor {
 public:
-    std::vector<VarInterval> callee; // Intervals from the callee, updated to infer intervals for variable
+    std::vector<DomInterval> callee; // Intervals from the callee, updated to infer intervals for variable
     std::string varname;
     const std::vector<std::string> &varlist;
     std::vector<Domain> &domains; // Domains of the caller, updated directly as required (inexact result)
     
-    BackwardIntervalInference(const std::vector<std::string> &_varlist, std::vector<Domain> &_domains, std::vector<VarInterval> _callee) : 
+    BackwardIntervalInference(const std::vector<std::string> &_varlist, std::vector<Domain> &_domains, std::vector<DomInterval> _callee) : 
         callee(_callee), varname(""), varlist(_varlist), domains(_domains) {
         assert(_callee.size() == Domain::MaxDomains && "Incorrect number of callee intervals provided");
     }
@@ -291,7 +248,7 @@ private:
 
     void set_callee_exact_false() {
         for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-            callee[j].poison = const_true();
+            callee[j].exact = false;
         }
     }
     
@@ -329,7 +286,7 @@ private:
                 // Mark that variable also as inexact in the domain, although the data is not changed
                 // because we are not touching the data that may already exist.
                 for (unsigned int j = Domain::Valid; j < domains.size(); j++) {
-                    domains[j].intervals[found].poison = const_true();
+                    domains[j].intervals[found].exact = false;
                 }
             }
             return; // Do not override the variable that we are studying.
@@ -347,10 +304,7 @@ private:
             log(4,"DOMINF") << "Add constant\n";
             for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
                 log(4,"DOMINF") << "Before [" << j << "]: " << callee[j] << "\n";
-                if (callee[j].imin.defined())
-                    callee[j].imin = callee[j].imin - op->b;
-                if (callee[j].imax.defined())
-                    callee[j].imax = callee[j].imax - op->b;
+                callee[j].interval = inverseAdd(callee[j].interval, op->b);
                 log(4,"DOMINF") << "After  [" << j << "]: " << callee[j] << "\n";
             }
             // Process the tree recursively
@@ -363,10 +317,7 @@ private:
             e.accept(this);
         }
         else {
-            assert(! is_const(op->a) && "Simplify did not put constant on RHS of Add");
             set_callee_exact_false(); // Expression cannot be solved as it has branches not simplified out.
-            op->a.accept(this); // Process tree recursively to mark all variables as inexact
-            op->b.accept(this);
         }
     }
     
@@ -377,15 +328,7 @@ private:
             // e = k - x
             // x = k - e
             for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-                bool xmindef = callee[j].imin.defined();
-                bool xmaxdef = callee[j].imax.defined();
-                Expr new_xmin = callee[j].imax;
-                if (xmaxdef)
-                    new_xmin = op->a - callee[j].imax;
-                if (xmindef)
-                    callee[j].imax = op->a - callee[j].imin;
-                if (xmaxdef)
-                    callee[j].imin = new_xmin;
+                callee[j].interval = inverseSubA(op->a, callee[j].interval);
             }
             op->b.accept(this);
         }
@@ -393,17 +336,12 @@ private:
             // e = x - k
             // x = e + k
             for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-                if (callee[j].imin.defined())
-                    callee[j].imin = callee[j].imin + op->b;
-                if (callee[j].imax.defined())
-                    callee[j].imax = callee[j].imax + op->b;
+                callee[j].interval = inverseSub(callee[j].interval, op->b);
             }
             op->a.accept(this);
         }
         else {
             set_callee_exact_false();
-            op->a.accept(this);
-            op->b.accept(this);
         }
     }
     
@@ -413,15 +351,8 @@ private:
             // e = x * k
             // x = e / k
             // As a range, however, it is ceil(min/k) , floor(max/k)
-            // ????????? BUG: WE NEED FLOORDIV AND CEILDIV TO MAKE THIS WORK CORRECTLY
-            // We assume positive remainder semantics for division,
-            // which is a valid assumption if the interval bounds are positive
-            // Under these semantics, integer division always yields the floor.
             for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-                if (callee[j].imin.defined())
-                    callee[j].imin = (callee[j].imin + op->b - 1) / op->b;
-                if (callee[j].imax.defined())
-                    callee[j].imax = callee[j].imax / op->b;
+                callee[j].interval = inverseMul(callee[j].interval, op->b);
             }
             op->a.accept(this);
         }
@@ -432,8 +363,6 @@ private:
         }
         else {
             set_callee_exact_false();
-            op->a.accept(this);
-            op->b.accept(this);
         }
     }
     
@@ -442,26 +371,19 @@ private:
             // e = x / k
             // x = e * k
             // As a range, however, it is min * k to (max + 1) * k - 1
-            // ????????? BUGGY ASSUMPTIONS
-            // This is based on assumption of positive remainder semantics for
-            // division and is intended to ensure that dividing by 2 produces a new
-            // image that has every pixel repeated; i.e. the dimension is doubled.
             for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-                if (callee[j].imin.defined())
-                    callee[j].imin = callee[j].imin * op->b;
-                if (callee[j].imax.defined())
-                    callee[j].imax = (callee[j].imax + 1) * op->b - 1;
+                callee[j].interval = zoom(callee[j].interval, op->b);
             }
             op->a.accept(this);
         }
         else {
             // e = k / x is not handled because it is not a linear transformation
             set_callee_exact_false();
-            op->a.accept(this);
-            op->b.accept(this);
         }
     }
 
+    // How to handle Mod if it is NOT treated as border handling
+    // To handle it as border handling, call clamp_limits.
     void visit(const Mod *op) {
         for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
             log(3,"DOMINF") << "Mod(" << op->a << ",  " << op->b << ") on " << callee[j] << "\n";
@@ -477,78 +399,66 @@ private:
             // Given the definition of Mod, it may be possible to determine
             // a better canonical range for x; however, it would still be an inexact representation.
             for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-                if ((! callee[j].imin.defined() || proved(callee[j].imin <= 0)) && (! callee[j].imax.defined() || proved(callee[j].imax >= op->b - 1))) {
-                    // This is a special case hack. If the range includes 0 to k-1 then
-                    // the mod operator makes the range infinite.
-                    callee[j].imin = Expr();
-                    callee[j].imax = Expr();
-                }
-                else {
-                    set_callee_exact_false(); // This is not an exact representation of the range.
-                    callee[j].imin = simplify(max(callee[j].imin, 0));
-                    callee[j].imax = simplify(min(callee[j].imax, op->b - 1));
-                }
+                callee[j].interval = inverseMod(callee[j].interval, op->b);
             }
             op->a.accept(this);
         }
         else {
             // e = k % x is not handled because it is not linear
             set_callee_exact_false();
-            op->a.accept(this);
-            op->b.accept(this);
         }
     }
     
+    /** Domain inference on border handlers.
+     * Consider a call f(clamp(x)) where clamp is some clamp-like border handling index expression.
+     * The question is: Given the domains of f, what are the domains of x?
+     * Effective border handler.  A border handler is considered EFFECTIVE if the clamp limits
+     * are contained in the valid domain of f.  This means that the border handler prevents access
+     * to pixels outside the valid domain of f.
+     * Computable domain: If the border handler is effective, then the computable domain applicable to
+     *    x is infinite.  If the border handler is not effective, then the computable domain is restricted
+     *    to the computable domain of f intersected with the clamp interval.
+     * Valid domain: If the border handler is effective, then the valid domain is the clamp interval
+     *    because data outside that interval is border handled.  If the border handler is not effective,
+     *    then the valid domain is the intersection of valid domain of f with clamp.
+     * Partially effective border handler: One clamp limit is within the valid domain of f, the other is not.
+     *    General border handlers cannot be partially effective. Halide's clamp operator, i.e. Min and Max,
+     *    can be partially effective because when the clamp is applied, the value is moved to the clamp
+     *    limit.  In this case, if a clamp limit is within the valid domain of f, then that 
+     *    limit is partially effective in its own right.  The corresponding limit of x is infinite.
+     *    An operation like mod (or Border::wrap) cannot be partially effective because a value of x
+     *    just outside one limit is wrapped to the other limit; for the wrapped value to be in range,
+     *    both limits must be in range.
+     */
+    
     // Method to handle clamp-like operations, which are treated as border handlers.
-    void clamp_limits(Expr op_a, Expr op_min, Expr op_max) {
-        if (op_min.defined()) {
-            // If it can be proved that the valid domain is at least as extensive as the callee domain
-            // then we have an effective border handler.
-            if (is_constant_expr(op_min) && 
-                (! callee[Domain::Valid].imin.defined() || proved(callee[Domain::Valid].imin <= op_min))) {
-                // The result of clamping is:
-                // The Computable domain limit becomes infinite. (Could have special code for partial border handlers)
-                // The Valid domain limit becomes the clamp limit, because outside that range is border handled.
-                // The Efficient domain is restricted to the clamp limit, because outside that range is border handled.
-                callee[Domain::Computable].imin = Expr();
-                // The computable domain is now inexact if the valid domain was inexact, because then
-                // we could not be certain that the limits really are valid.  (The inexact limits can be
-                // more generous than the actual limits, so the actual limits may mean that border handling
-                // is not effective.)
-                callee[Domain::Computable].poison = callee[Domain::Valid].poison;
-                // The limit of the valid domain is now restricted to the clamp limit
-                callee[Domain::Valid].imin = op_min;
-                // The limit of the efficient domain is now restricted to the clamp limit
-                if (callee[Domain::Efficient].imin.defined()) {
-                    callee[Domain::Efficient].imin = max(op_min,callee[Domain::Efficient].imin);
-                } else {
-                    callee[Domain::Efficient].imin = op_min;
-                }
-            }
-            else {
-                // Not an effective border handler.
-                set_callee_exact_false();
-                op_min.accept(this);
-            }
+    // Clamp(op_a, op_min, op_max)
+    void clamp_limits(Expr op_a, Expr op_min, Expr op_max, bool partially_effective) {
+        // Determine whether the limits are individually effective
+        bool effective_min = proved(op_min >= callee[Domain::Valid].interval.min);
+        bool effective_max = proved(op_max <= callee[Domain::Valid].interval.max);
+        if (! partially_effective) {
+            // Clamp-like operator that cannot be partially effective.
+            // Must be effective at both ends, or neither is considered effective
+            effective_min &= effective_max;
+            effective_max = effective_min;
         }
-        if (op_max.defined()) {
-            if (is_constant_expr(op_max) && 
-                (! callee[Domain::Valid].imax.defined() || proved(callee[Domain::Valid].imax >= op_max))) {
-                //
-                callee[Domain::Computable].imax = Expr();
-                callee[Domain::Computable].poison = callee[Domain::Valid].poison;
-                callee[Domain::Valid].imax = op_max;
-                if (callee[Domain::Efficient].imax.defined()) {
-                    callee[Domain::Efficient].imax = min(op_max,callee[Domain::Efficient].imax);
-                } else {
-                    callee[Domain::Efficient].imax = op_max;
-                }
-            }
-            else {
-                // Not an effective border handler.
-                set_callee_exact_false();
-                op_max.accept(this);
-            }
+        if (effective_min) {
+            callee[Domain::Computable].interval.min = make_infinity(op_a.type(), -1);
+            callee[Domain::Valid].interval.min = op_min;
+        } else {
+            // Note: These definitions are conservative in the case that the border handler
+            // is actually effective but cannot be proved to be so.
+            // ??????? Is this the right way to be conservative????
+            callee[Domain::Computable].interval.min = simplify(max(op_min, callee[Domain::Computable].interval.min));
+            callee[Domain::Valid].interval.min = simplify(max(op_min, callee[Domain::Valid].interval.min));
+        }
+        if (effective_max) {
+            callee[Domain::Computable].interval.max = make_infinity(op_a.type(), +1);
+            callee[Domain::Valid].interval.max = op_max;
+        } else {
+            callee[Domain::Computable].interval.max = simplify(min(op_max, callee[Domain::Computable].interval.max));
+            callee[Domain::Valid].interval.max = simplify(min(op_max, callee[Domain::Valid].interval.max));
         }
         op_a.accept(this);
     }
@@ -559,58 +469,57 @@ private:
         }
         // Clamp operators are particularly significant for forward domain inference.
         if (op->clamptype == Clamp::None) {
-            // None is simply an indicator that the computable domain is to be the same
-            // as the valid domain.  First determine the domains on the expression.
-            op->a.accept(this);
+            // Clamp::None indicates that the valid domain of the callee should be
+            // used as the computable domain - i.e. disallow access outside the valid domain.
+            // So, simply put, whatever Valid domain we have inferred for the Clamp::None(e(x)) expression,
+            // that also becomes the computable domain for e(x).  Of course, e(x) may then
+            // apply border handling although such as strategy is rare.
             callee[Domain::Computable] = callee[Domain::Valid];
+            op->a.accept(this);
         }
         else {
-            clamp_limits(op->a, op->min, op->max);
+            clamp_limits(op->a, op->min, op->max, op->clamptype == Clamp::Replicate); // replicate can be partially effective.
         }
     }
 
-    // Max
+    // Max as border handler
     void visit(const Max *op) {
         for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
             log(3,"DOMINF") << "Max(" << op->a << ",  " << op->b << ") on " << callee[j] << "\n";
         }
         if (is_constant_expr(op->b)) {
             // max(a,b) is equivalent to clamping on the range (b,infinity)
-            clamp_limits(op->a, op->b, Expr());
+            clamp_limits(op->a, op->b, make_infinity(op->b.type(), +1), true);  // Can be partially effective 
         }
         else if (is_constant_expr(op->a)) {
             // Interchange the parameters
-            clamp_limits(op->b, op->a, Expr());
+            clamp_limits(op->b, op->a, make_infinity(op->a.type(), +1), true);
         }
         else {
             // max of two non-constant expressions will lead to inexact results
             // because it is not linear
             // Note: if the expressions were max(x+k1, x+k2) or similar then
-            // simplification would reduce the expression if it could prove one of them bigger.
+            // simplification could reduce the expression if it could prove one of them bigger.
             set_callee_exact_false();
-            op->a.accept(this);
-            op->b.accept(this);
         }
     }
     
-    // Min
+    // Min as border handler
     void visit(const Min *op) {
         for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
             log(3,"DOMINF") << "Min(" << op->a << ",  " << op->b << ") on " << callee[j] << "\n";
         }
         if (is_constant_expr(op->b)) {
-            clamp_limits(op->a, Expr(), op->b);
+            clamp_limits(op->a, make_infinity(op->b.type(), -1), op->b, true); // Can be partially effective
         }
         else if (is_constant_expr(op->a)) {
             // Interchange the parameters
-            clamp_limits(op->b, Expr(), op->a);
+            clamp_limits(op->b, make_infinity(op->a.type(), -1), op->a, true);
         }
         else {
             // min of two non-constant expressions will lead to inexact results
             // because it is not linear
             set_callee_exact_false();
-            op->a.accept(this);
-            op->b.accept(this);
         }
     }
     
@@ -619,7 +528,8 @@ private:
 
 
 
-std::vector<VarInterval> backwards_interval(const std::vector<std::string> &varlist, std::vector<Domain> &domains, Expr e, std::vector<VarInterval> callee) {
+std::vector<DomInterval> backwards_interval(const std::vector<std::string> &varlist, std::vector<Domain> &domains, Expr e, 
+                                            std::vector<DomInterval> callee, std::string* varname = NULL) {
     assert(callee.size() == Domain::MaxDomains && "Incorrect number of callee intervals");
     for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
         log(3,"DOMINF") << "e: " << e << "  [" << j << "]: " << callee[j] << '\n';
@@ -629,44 +539,21 @@ std::vector<VarInterval> backwards_interval(const std::vector<std::string> &varl
     Expr e1 = simplify(e);
     e1.accept(&infers);
     
-    std::vector<VarInterval> &result = infers.callee;
+    std::vector<DomInterval> &result = infers.callee;
     
-    // Store the target function variable name in the result
+    // Check for default processing (unhandled tree nodes) and update exact flag
     for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-        result[j].varname = infers.varname;
-    }
-    
-    // Simplify and update inexact flag
-    for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-        if (result[j].imin.defined()) result[j].imin = simplify(result[j].imin);
-        if (result[j].imax.defined()) result[j].imax = simplify(result[j].imax);
-        if (result[j].poison.defined()) {
-            // If there was an unhandled tree node encountered, then all estimates are inexact
-            result[j].poison = result[j].poison || Internal::make_bool(infers.defaulted);
-            result[j].poison = simplify(result[j].poison);
-        }
-        else {
-            result[j].poison = Internal::make_bool(infers.defaulted);
-        }
+        //if (result[j].imin.defined()) result[j].imin = simplify(result[j].imin);
+        //if (result[j].imax.defined()) result[j].imax = simplify(result[j].imax);
+        if (infers.defaulted) result[j].exact = false; // Unhandled tree node - result is not exact.
         
-        // If it is known that the expression is inexact, then the range is set to infinite.
-        // This is because whatever information was computed is incomplete and could be incorrect
-        // This wont work if poison is an expression that is not constant: it becomes true always
-        // because we have discarded the partial information that would apply when poison was not
-        // true.  We could capture the detail by expressions of the form 
-        // select(poison-expression,infinity,partial-information)
-        // This is different than the case when separate expressions are analysed and one gives
-        // concrete data and the other is inexact; in this case the result is inexact but
-        // is restricted to the concrete data.  Of course, if we wanted to use expressions then
-        // we could represent all the cases.
+        // If it is known that the expression is not exact, then the range is set to infinite.
+        // This is because whatever information was computed is incomplete and could be incorrect.
         log(2,"DOMINF") << "Result[" << j << "]: " << result[j] << "\n";
-        if (result[j].poison.defined() && ! equal(result[j].poison, const_false())) {
-            result[j].imin = Expr();
-            result[j].imax = Expr();
-            if (! equal(result[j].poison, const_true())) {
-                log(0) << "Warning: Poison was an expression; lost information.\n";
-                result[j].poison = const_true();
-            }
+        if (! result[j].exact) {
+            assert(result[j].interval.min.defined() && result[j].interval.max.defined());
+            result[j].interval.min = make_infinity(result[j].interval.min.type(), -1);
+            result[j].interval.max = make_infinity(result[j].interval.max.type(), +1);
         }
     }
     
@@ -682,29 +569,31 @@ std::vector<VarInterval> backwards_interval(const std::vector<std::string> &varl
         log(2) << "result[0]: " << result[0] << "  callee[0]: " << callee[0] <<"\n";
         // If kernel semantics apply, then the computable domain is whatever was computed by
         // backwards interval analysis, but the valid domain is copied from the callee and then is intersected
-        // with the computable domain.  The efficient domain is as computed above.
+        // with the computable domain.
         result[Domain::Valid] = callee[Domain::Valid];
-        result[Domain::Valid].varname = infers.varname; // Update the variable name
-        result[Domain::Valid].update(result[Domain::Computable]); // Intersect with the computable domain
+        result[Domain::Valid].intersect(result[Domain::Computable]); // Intersect with the computable domain
     }
     else
         log(2) << "Kernel semantics do not apply\n";
+        
+    if (varname)
+        *varname = infers.varname; // Return the found variable name if the caller wants to know it.
     
     return result;
 }
 
 
 
-std::vector<VarInterval> backwards_interval(const std::vector<std::string> &varlist, std::vector<Domain> &domains, Expr e, Expr xmin, Expr xmax, Expr xpoison = const_false()) {
-    VarInterval callee("", xpoison, xmin, xmax);
-    std::vector<VarInterval> intervals;
+std::vector<DomInterval> backwards_interval(const std::vector<std::string> &varlist, std::vector<Domain> &domains, Expr e, InfInterval xint, std::string *varname = NULL) {
+    DomInterval callee(xint);
+    std::vector<DomInterval> intervals;
     // Expand a single interval to represent all the different domain types.
     // This applies to images and to testing.
     for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
         intervals.push_back(callee);
         log(2) << "backward interval initialisation [" << j << "]: " << intervals[j] << '\n';
     }
-    return backwards_interval(varlist, domains, e, intervals);
+    return backwards_interval(varlist, domains, e, intervals, varname);
 }
 
 
@@ -728,7 +617,7 @@ public:
         for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
             domains.push_back(Domain()); // An empty domain
             for (size_t i = 0; i < variables.size(); i++) {
-                domains[j].intervals.push_back(VarInterval(variables[i], Internal::make_bool(false), Expr(), Expr()));
+                domains[j].intervals.push_back(DomInterval(make_infinity(Int(32), -1), make_infinity(Int(32), +1)));
             }
         }
     }
@@ -774,27 +663,28 @@ private:
         for (size_t i = 0; i < func_call->args.size(); i++)
         {
             // func_call->args[i] is the i'th dimension index expression for the call.
-            // For now, just print it out.
             //log(0,"LH") << "arg " << i << ": " << func_call->args[i] << '\n';
             
             // Perform backward interval analysis on the argument expression.
             // Have to know the valid domain for the actual argument of the function.
             // For images, just use image dimensions.  All the different types of domain are the same
             // for images.
-            std::vector<VarInterval> result;
+            std::vector<DomInterval> result;
+            std::string result_varname;
             if (func_call->call_type == Call::Image)
             {
                 if (func_call->image.defined()) {
                     // All domains are the same for an image.
                     log(2,"DOMINF") << "Domain Inference on Image buffer " << func_call->image.name() << "\n";
                     result = backwards_interval(varlist, domains, func_call->args[i],
-                                            func_call->image.min(i), 
-                                            func_call->image.min(i) + func_call->image.extent(i) - 1);
+                                            InfInterval(func_call->image.min(i), 
+                                            func_call->image.min(i) + func_call->image.extent(i) - 1), &result_varname);
                 }
                 else if (func_call->param.defined()) {
                     log(2,"DOMINF") << "Domain Inference on Image parameter " << func_call->param.name() << "\n";
                     result = backwards_interval(varlist, domains, func_call->args[i],
-                                            func_call->param.min(i), func_call->param.min(i) + func_call->param.extent(i) - 1);
+                                            InfInterval(func_call->param.min(i), 
+                                            func_call->param.min(i) + func_call->param.extent(i) - 1), &result_varname);
                 }
                 else
                     assert(0 && "Call to Image is neither image nor imageparam\n");
@@ -802,13 +692,13 @@ private:
             else if (func_call->call_type == Call::Halide)
             {
                 // For Halide calls, access the domain in the function object.
-                // We need to know the VarInterval of the i'th parameter of the called function.
+                // We need to know the DomInterval of the i'th parameter of the called function.
                 log(2,"DOMINF") << "Domain Inference on Halide call to " << func_call->func.name() << "\n";
                 log(4,"DOMINF") << "Variables: ";
                 for (size_t ii = 0; ii < varlist.size(); ii++) { log(4,"DOMINF") << varlist[ii] << " "; }
                 log(4,"DOMINF") << "\n";
                 result = backwards_interval(varlist, domains, func_call->args[i],
-                                        func_call->func.domain_intervals(i));
+                                        func_call->func.domain_intervals(i), &result_varname);
             }
             
             // For known call types, log results and update the caller's domain.
@@ -828,12 +718,12 @@ private:
                         
                 // Search through the variables in the Domain and update the appropriate one
                 for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-                    int index = find(varlist, result[j].varname);
+                    int index = find(varlist, result_varname);
                     if (index >= 0) {
-                        domains[j].intervals[index].update(result[j]);
+                        domains[j].intervals[index].intersect(result[j]);
                     }
-                    else if (! result[j].varname.empty()) { // Empty varname means no interval information.
-                        log(0) << "Warning: The interval variable " << result[j].varname << " is unknown\n";
+                    else if (! result_varname.empty()) { // Empty varname means no interval information.
+                        log(0) << "Warning: The interval variable " << result_varname << " is unknown\n";
                     }
                 }
                 
@@ -871,50 +761,45 @@ std::vector<Domain> domain_inference(const std::vector<std::string> &variables, 
 
 
 void check_interval(std::vector<std::string> varlist, Expr e, Expr xmin, Expr xmax, 
-                    bool correct_poison_bool, Expr correct_min, Expr correct_max, 
+                    bool correct_exact, Expr correct_min, Expr correct_max, 
                     std::string correct_varname) {
-    Expr correct_poison;
-    Domain dom("x", false, Expr(), Expr(), "y", false, Expr(), Expr()); // A working domain for the test variables x and y
+    Domain dom = Domain(Expr(), Expr(), Expr(), Expr()); // A working domain for the test variables x and y
     std::vector<Domain> doms = vec(dom);
-    correct_poison = Internal::make_bool(correct_poison_bool);
-    std::vector<VarInterval> result = backwards_interval(varlist, doms, e, xmin, xmax);
+    std::string result_varname;
+    std::vector<DomInterval> result = backwards_interval(varlist, doms, e, InfInterval(xmin, xmax), &result_varname);
     
     Expr e1 = simplify(e); // Duplicate simplification for debugging only
     log(1,"DOMINF") << "e: " << e << "    ";
     log(2,"DOMINF") << "e1: " << e1 << "    ";
     
-    if (equal(result[0].poison, const_true()))
+    if (! result[Domain::Valid].exact)
         log(1,"DOMINF") << "inexact\n";
     else {
-        log(1,"DOMINF") << "imin: " << result[0].imin << "    ";
-        log(1,"DOMINF") << "imax: " << result[0].imax << "    ";
-        log(1,"DOMINF") << "v: " << result[0].varname;
-        if (! equal(result[0].poison, const_false()))
-            log(1,"DOMINF") << "    inexact: " << result[0].poison << '\n';
-        else
-            log(1,"DOMINF") << '\n';
+        log(1,"DOMINF") << "exact min: " << result[Domain::Valid].interval.min << "    ";
+        log(1,"DOMINF") << "max: " << result[Domain::Valid].interval.max << "    ";
+        log(1,"DOMINF") << "v: " << result_varname << "\n";
     }
     
     bool success = true;
-    if (! equal(result[0].poison, correct_poison)) {
-        std::cout << "Incorrect poison: " << result[0].poison << "    "
-                  << "Should have been: " << correct_poison << std::endl;
+    if (! (result[Domain::Valid].exact == correct_exact)) {
+        std::cout << "Incorrect exact: " << result[Domain::Valid].exact << "    "
+                  << "Should have been: " << correct_exact << std::endl;
         success = false;
     }
-    if (! correct_poison_bool) {
-        // Only bother to check the details if it is not supposed to be poison
-        if (!equal(result[0].imin, correct_min)) {
-            std::cout << "Incorrect imin: " << result[0].imin << "    "
+    if (correct_exact) {
+        // Only bother to check the details if it is supposed to be exact
+        if (!equal(result[Domain::Valid].interval.min, correct_min)) {
+            std::cout << "Incorrect min: " << result[Domain::Valid].interval.min << "    "
                       << "Should have been: " << correct_min << std::endl;
             success = false;
         }
-        if (!equal(result[0].imax, correct_max)) {
-            std::cout << "Incorrect imax: " << result[0].imax << "    "
+        if (!equal(result[Domain::Valid].interval.max, correct_max)) {
+            std::cout << "Incorrect max: " << result[Domain::Valid].interval.max << "    "
                       << "Should have been: " << correct_max << std::endl;
             success = false;
         }
-        if (result[0].varname != correct_varname) {
-            std::cout << "Incorrect variable name: " << result[0].varname << "    "
+        if (result_varname != correct_varname) {
+            std::cout << "Incorrect variable name: " << result_varname << "    "
                       << "Should have been: " << correct_varname << std::endl;
             success = false;
         }
@@ -929,46 +814,46 @@ void backward_interval_test() {
     std::vector<std::string> varlist = vecS("x","y","z","w");
     
     // Tests of backward interval inference
-    check_interval(varlist, x, 0, 100, false, 0, 100, "x");
-    check_interval(varlist, x + 1, 0, 100, false, -1, 99, "x");
-    check_interval(varlist, 1 + x, 0, 100, false, -1, 99, "x");
-    check_interval(varlist, 1 + x + 1, 0, 100, false, -2, 98, "x");
-    check_interval(varlist, x - 1, 0, 100, false, 1, 101, "x");
-    check_interval(varlist, 1 - x, 0, 100, false, -99, 1, "x");
+    check_interval(varlist, x, 0, 100, true, 0, 100, "x");
+    check_interval(varlist, x + 1, 0, 100, true, -1, 99, "x");
+    check_interval(varlist, 1 + x, 0, 100, true, -1, 99, "x");
+    check_interval(varlist, 1 + x + 1, 0, 100, true, -2, 98, "x");
+    check_interval(varlist, x - 1, 0, 100, true, 1, 101, "x");
+    check_interval(varlist, 1 - x, 0, 100, true, -99, 1, "x");
     //check_interval(varlist, x + x, 0, 100, cmin, cmax, v);
     // Tests that use * and / should ensure that results are positive
     // so that positive remainder semantics hold for division
     // (until these semantics are actually implemented in Halide)
-    check_interval(varlist, 2 * x, 10, 100, false, 5, 50, "x");
-    check_interval(varlist, x * 2, 10, 100, false, 5, 50, "x");
-    check_interval(varlist, x / 2, 10, 100, false, 20, 201, "x");
+    check_interval(varlist, 2 * x, 10, 100, true, 5, 50, "x");
+    check_interval(varlist, x * 2, 10, 100, true, 5, 50, "x");
+    check_interval(varlist, x / 2, 10, 100, true, 20, 201, "x");
     // x = 19  e = (19 + 1) / 2 = 10
     // x = 200  e = (201) / 2 = 100
-    check_interval(varlist, (x + 1) / 2, 10, 100, false, 19, 200, "x");
-    check_interval(varlist, (x + 2) / 2, 10, 100, false, 18, 199, "x");
+    check_interval(varlist, (x + 1) / 2, 10, 100, true, 19, 200, "x");
+    check_interval(varlist, (x + 2) / 2, 10, 100, true, 18, 199, "x");
     // (2 * x + 4) / 2 is the same as x + 2
-    check_interval(varlist, (2 * x + 4) / 2, 10, 100, false, 8, 98, "x");
+    check_interval(varlist, (2 * x + 4) / 2, 10, 100, true, 8, 98, "x");
     // x = 8  e = (16 + 5) / 2 = 10
     // x = 98  e = (196 + 5) / 2 = 201 / 2 = 100
     // This expression also simplifies to x + 2
-    check_interval(varlist, (2 * x + 5) / 2, 10, 100, false, 8, 98, "x");
+    check_interval(varlist, (2 * x + 5) / 2, 10, 100, true, 8, 98, "x");
     // x = 5  e = (15 + 5) / 2 = 10
     // x = 65  e = (195 + 5) / 2 = 100   but x = 66 is too big
-    check_interval(varlist, (3 * x + 5) / 2, 10, 100, false, 5, 65, "x");
+    check_interval(varlist, (3 * x + 5) / 2, 10, 100, true, 5, 65, "x");
     // x = 7  e = (21 + 5) / 2 - 2 = 11  but x=6 e=(18+5)/2-2 = 9
     // x = 66  e = (198 + 5) / 2 - 2 = 99   but x=67 e=(201+5)/2-2=101
-    check_interval(varlist, (3 * x + 5) / 2 - 2, 10, 100, false, 7, 66, "x");
+    check_interval(varlist, (3 * x + 5) / 2 - 2, 10, 100, true, 7, 66, "x");
     
     // Constant expressions return an infinite domain because there is no constraint
     // on the caller's variables.
-    check_interval(varlist, Expr(5) + 7, 0, 100, true, Expr(), Expr(), "");
-    check_interval(varlist, 105, 0, 100, true, Expr(), Expr(), "");
-    // Expression is poison because it contains a node type that 
+    check_interval(varlist, Expr(5) + 7, 0, 100, false, Expr(), Expr(), "");
+    check_interval(varlist, 105, 0, 100, false, Expr(), Expr(), "");
+    // Expression is inexact because it contains a node type that 
     // is not explicitly handled
-    check_interval(varlist, sin(x), 10, 100, true, 0, 0, "");
-    // Expression is poison because it contains more than one variable
-    // Actually, it is detected as poison by Add node because it is not x + k
-    check_interval(varlist, x + y, 0, 100, true, 0, 0, "");
+    check_interval(varlist, sin(x), 10, 100, false, 0, 0, "");
+    // Expression is inexact because it contains more than one variable
+    // Actually, it is detected as inexact by Add node because it is not x + k
+    check_interval(varlist, x + y, 0, 100, false, 0, 0, "");
     return;
 }
 
@@ -982,10 +867,10 @@ void check_domain_expr(Domain::DomainType dtype, std::vector<std::string> variab
     
     log(1,"DOMINF") << "e: " << e << '\n';
     for (size_t i = 0; i < edom[j].intervals.size(); i++)
-        log(1,"DOMINF") << "    " << edom[j].intervals[i].varname 
-                    << ": imin: " << edom[j].intervals[i].imin 
-                    << "  imax: " << edom[j].intervals[i].imax 
-                    << "  poison: " << edom[j].intervals[i].poison << '\n';
+        log(1,"DOMINF") << "   (" << i
+                    << ") min: " << edom[j].intervals[i].interval.min 
+                    << "  max: " << edom[j].intervals[i].interval.max 
+                    << "  exact: " << edom[j].intervals[i].exact << '\n';
     
     // Compare the computed domain with the expected domain
     bool success = true;
@@ -995,30 +880,20 @@ void check_domain_expr(Domain::DomainType dtype, std::vector<std::string> variab
         success = false;
     }
     for (size_t i = 0; i < edom[j].intervals.size(); i++) {
-        if (edom[j].intervals[i].varname != variables[i]) {
-            std::cout << "Incorrect variable name: " << edom[j].intervals[i].varname
-                      << "    Should have been: " << variables[i] << '\n';
+        if (! (edom[j].intervals[i].exact == d.intervals[i].exact)) {
+            std::cout << "Incorrect exact: " << edom[j].intervals[i].exact
+                      << "    Should have been: " << d.intervals[i].exact << '\n';
             success = false;
         }
-        if (edom[j].intervals[i].varname != d.intervals[i].varname) {
-            std::cout << "Incorrect variable name: " << edom[j].intervals[i].varname
-                      << "    Template answer: " << d.intervals[i].varname << '\n';
+        // Check the numeric range even if it is not exact
+        if (! equal(edom[j].intervals[i].interval.min, d.intervals[i].interval.min)) {
+            std::cout << "Incorrect min: " << edom[j].intervals[i].interval.min
+                      << "    Should have been: " << d.intervals[i].interval.min << '\n';
             success = false;
         }
-        if (! equal(edom[j].intervals[i].poison, d.intervals[i].poison)) {
-            std::cout << "Incorrect poison: " << edom[j].intervals[i].poison
-                      << "    Should have been: " << d.intervals[i].poison << '\n';
-            success = false;
-        }
-        // Check the numeric range even if it is poison
-        if (! equal(edom[j].intervals[i].imin, d.intervals[i].imin)) {
-            std::cout << "Incorrect imin: " << edom[j].intervals[i].imin
-                      << "    Should have been: " << d.intervals[i].imin << '\n';
-            success = false;
-        }
-        if (! equal(edom[j].intervals[i].imax, d.intervals[i].imax)) {
-            std::cout << "Incorrect imax: " << edom[j].intervals[i].imax
-                      << "    Should have been: " << d.intervals[i].imax << '\n';
+        if (! equal(edom[j].intervals[i].interval.max, d.intervals[i].interval.max)) {
+            std::cout << "Incorrect max: " << edom[j].intervals[i].interval.max
+                      << "    Should have been: " << d.intervals[i].interval.max << '\n';
             success = false;
         }
     }
@@ -1026,10 +901,10 @@ void check_domain_expr(Domain::DomainType dtype, std::vector<std::string> variab
     if (! success) {
         std::cout << "Expression: " << e << '\n';
         for (size_t i = 0; i < edom[j].intervals.size(); i++)
-            std::cout << "    " << edom[j].intervals[i].varname 
-                      << ": imin: " << edom[j].intervals[i].imin 
-                      << "  imax: " << edom[j].intervals[i].imax 
-                      << "  inexact: " << edom[j].intervals[i].poison << '\n';
+            std::cout << "    (" << i 
+                      << ") min: " << edom[j].intervals[i].interval.min 
+                      << "  max: " << edom[j].intervals[i].interval.max 
+                      << "  exact: " << edom[j].intervals[i].exact << '\n';
     }
     assert(success && "Domain inference test failed");
 }
@@ -1043,58 +918,57 @@ void domain_expr_test()
     Expr False = Internal::make_bool(false);
     Expr True = Internal::make_bool(true);
     
-    check_domain_expr(Domain::Valid, vecS("iv.0", "iv.1"), in, Domain("iv.0", False, 0, 19, "iv.1", False, 0, 39));
-    check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y), Domain("x", False, 2, 21, "y", False, 0, 39));
-    check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y) + in(x,y), Domain("x", False, 2, 19, "y", False, 0, 39));
+    check_domain_expr(Domain::Valid, vecS("iv.0", "iv.1"), in, Domain(0, 19, 0, 39));
+    check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y), Domain(2, 21, 0, 39));
+    check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y) + in(x,y), Domain(2, 19, 0, 39));
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y) + in(x,y) + in(x,y+5), 
-                        Domain("x", False, 2, 19, "y", False, 0, 34));
+                        Domain(2, 19, 0, 34));
     // Exact result including use of min function.  min(y+5,15) limits the upper range of y+5 to 15 so it
     // ensures that it remains in bounds at the upper end.  However, as a border handler, it means that
     // the valid domain of y is limited to 10.
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y) + in(x,y) + in(x,min(y+5,15)), 
-                        Domain("x", False, 2, 19, "y", False, 0, 10));
+                        Domain(2, 19, 0, 10));
     // Exact results including use of max and min functions.  min(x,9) limits x <= 9 for valid domain.
     // max(x,0) limits x >= 0 for valid domain.  max(y,1) limits y >= 1 for valid domain.
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,max(y,1)) + in(max(x,0),y) + in(min(x,9),y+5), 
-                        Domain("x", False, 2, 9, "y", False, 1, 34));
+                        Domain(2, 9, 1, 34));
     // Test interchange of variables (flip the domain of the function)
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(y,x), 
-                        Domain("x", False, 0, 39, "y", False, 0, 19));
+                        Domain(0, 39, 0, 19));
     // Test an external function.
     check_domain_expr(Domain::Valid, vecS("x", "y"), sin(in(x,y)),
-                        Domain("x", False, 0, 19, "y", False, 0, 39));
+                        Domain(0, 19, 0, 39));
     // Test multiple use of the same variable
     check_domain_expr(Domain::Valid, vecS("x"), in(x,x), 
-                        Domain("x", False, 0, 19));
+                        Domain(0, 19));
     // Test mixture of variables
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x+y,y), 
-                        Domain("x", True, Expr(), Expr(), "y", True, 0, 39));
+                        Domain(Expr(), Expr(), 0, 39));
     // Test domain of a constant expression
     check_domain_expr(Domain::Valid, vecS("x", "y"), 3, 
-                        Domain("x", False, Expr(), Expr(), "y", False, Expr(), Expr()));
+                        Domain(Expr(), Expr(), Expr(), Expr()));
     // Test domain with a constant variable - treat it as though it were not a variable
     check_domain_expr(Domain::Valid, vecS("x", "y"), ext, 
-                        Domain("x", False, Expr(), Expr(), "y", False, Expr(), Expr()));
+                        Domain(Expr(), Expr(), Expr(), Expr()));
     // Test domain with a constant variable - treat it as though it were not a variable
     // Expressions will include the constant variable
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x - ext, y), 
-                        Domain("x", False, ext, ext + 19, "y", False, 0, 39));
+                        Domain(ext, ext + 19, 0, 39));
 
     f(x,y) = in(x-1,y) - in(x,y);
-    check_domain_expr(Domain::Valid, vecS("x","y"), f(x,y-1), Domain("x", False, 1, 19, "y", False, 1, 40));
+    check_domain_expr(Domain::Valid, vecS("x","y"), f(x,y-1), Domain(1, 19, 1, 40));
     
     // Function g is in with border replication simulated by clamp with manual setting of computable and valid regions
     g(x,y) = in(clamp(x,0,in.width()-1), clamp(y,0,in.height()-1)); // Old way to clamp
-	// The notation g.infinite() is untidy - it would seem that we should use Domain::infinite() instead, but
-    // the problem is that the number of dimensions is unknown.  One option is to assume that a complete lack
-    // of information in a dimension means infinite, in which case the empty Domain is also an finite Domain.
-    g.set_computable() = g.infinite(); // Set the computable region first (in case we intersect valid with it)
+	// Creating an infinite domain:
+    // We use Domain::infinite with the dimensionality of the function as an argument.
+    g.set_computable() = Domain::infinite(g.dimensions()); // Set the computable region first (in case we intersect valid with it)
     g.set_valid() = in.valid(); // Manually update the valid region.
     
     // h is a kernel function of g, using the border handling
     h(a,b) = g(a,b)+g(a,b-1)+g(a,b+1);
     h.local(g); // h is a kernel function of g, so the valid region is copied and intersected with computable region
-    check_domain_expr(Domain::Valid, vecS("x","y"), h(x,y), Domain("x", False, 0, 19, "y", False, 0, 39));
+    check_domain_expr(Domain::Valid, vecS("x","y"), h(x,y), Domain(0, 19, 0, 39));
     //check_domain_expr(Domain::Computable, vecS("x","y"), h(x,y), Domain("x", False, Expr(), Expr(), "y", False, Expr(), Expr()));
 
     // fa is a kernel function of both g and inb
@@ -1103,7 +977,7 @@ void domain_expr_test()
     // Before declaring fa to be kernel function, the automatically derived domains should be as follows.
     // The shifts of the valid domains have impacted the final valid domain, and the computable domain is 
     // also influenced by shifting of inb.
-    check_domain_expr(Domain::Valid, vecS("x","y"), fa(x,y), Domain("x", False, 1, 20, "y", False, 2, 36));
+    check_domain_expr(Domain::Valid, vecS("x","y"), fa(x,y), Domain(1, 20, 2, 36));
     //check_domain_expr(Domain::Computable, vecS("x","y"), fa(x,y), Domain("x", False, 0, 29, "y", False, 2, 36));
     
     // The following is not valid because fa() has been used already for domain inference.
@@ -1115,7 +989,7 @@ void domain_expr_test()
     // Declaring fa to be a kernel function overrides the shifts implicit in the definition of fa.
     // For g, this means that the valid domain is copied but for inb the computable domain is restricting the valid
     // domain.
-    check_domain_expr(Domain::Valid, vecS("x","y"), ffa(x,y), Domain("x", False, 0, 19, "y", False, 2, 34));
+    check_domain_expr(Domain::Valid, vecS("x","y"), ffa(x,y), Domain(0, 19, 2, 34));
     //check_domain_expr(Domain::Computable, vecS("x","y"), fa(x,y), Domain("x", False, 0, 29, "y", False, 2, 36));
     return;
 }

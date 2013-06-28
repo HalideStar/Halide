@@ -588,7 +588,7 @@ Stmt code_1 () {
                              new Cast(Int(16), -17));
     Stmt store = new Store("buf", select, x - 1);
     LoopSplitInfo autosplit(true); // Select auto loop spliting.
-    Stmt for_loop = new For("x", 0, 100, For::Parallel, autosplit, store);
+    Stmt for_loop = new For("x", 0, 100, For::Serial, autosplit, store);
     Expr call = new Call(i32, "buf", vec(max(min(x,100),0)));
     Expr call2 = new Call(i32, "buf", vec(max(min(x-1,100),0)));
     Expr call3 = new Call(i32, "buf", vec(Expr(new Clamp(Clamp::Reflect, x+1, 0, 100))));
@@ -606,7 +606,7 @@ Stmt code_1 () {
 # if (LIFT_CONSTANT_MIN_MAX == 0 && LOOP_SPLIT_CONDITIONAL == 0)
 std::string correct_simplified =
 "produce buf {\n"
-"  parallel (x, 0, 100, auto [-infinity, infinity]) {\n"
+"  for (x, 0, 100, auto [-infinity, infinity]) {\n"
 "    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
 "  }\n"
 "} consume {\n"
@@ -617,7 +617,7 @@ std::string correct_simplified =
 
 std::string correct_presolver =
 "produce buf {\n"
-"  parallel (x, 0, 100, auto [-infinity, infinity]) {\n"
+"  for (x, 0, 100, auto [-infinity, infinity]) {\n"
 "    stmtTargetVar(x) {\n"
 "      buf[(x + -1)] = select((3 < x), select((x < 87), input(((solve([0, 99]: (x + -10)) % 100) + 10)), i16(-17)), i16(-17))\n"
 "    }\n"
@@ -632,7 +632,7 @@ std::string correct_presolver =
 
 std::string correct_solved =
 "produce buf {\n"
-"  parallel (x, 0, 100, auto [-infinity, infinity]) {\n"
+"  for (x, 0, 100, auto [-infinity, infinity]) {\n"
 "    stmtTargetVar(x) {\n"
 "      buf[(x + -1)] = select((3 < x), select((x < 87), input((((solve([10, 109]: x) + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
 "    }\n"
@@ -651,13 +651,13 @@ std::string correct_loop_split =
 "produce buf {\n"
 "  let x.start = 10\n"
 "  let x.end = 100\n"
-"  parallel (x, 0, min((x.start - 0), 100), before) {\n"
+"  for (x, 0, min((x.start - 0), 100), before) {\n"
 "    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
 "  }\n"
-"  parallel (x, max(x.start, 0), (min(x.end, (0 + 100)) - max(x.start, 0)), main auto [-infinity, infinity]) {\n"
+"  for (x, max(x.start, 0), (min(x.end, (0 + 100)) - max(x.start, 0)), main auto [-infinity, infinity]) {\n"
 "    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
 "  }\n"
-"  parallel (x, x.end, ((0 + 100) - x.end), after) {\n"
+"  for (x, x.end, ((0 + 100) - x.end), after) {\n"
 "    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
 "  }\n"
 "} consume {\n"
@@ -678,7 +678,7 @@ std::string correct_loop_split =
 # if (LIFT_CONSTANT_MIN_MAX == 0 && LOOP_SPLIT_CONDITIONAL == 1)
 std::string correct_simplified =
 "produce buf {\n"
-"  parallel (x, 0, 100, auto [-infinity, infinity]) {\n"
+"  for (x, 0, 100, auto [-infinity, infinity]) {\n"
 "    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
 "  }\n"
 "} consume {\n"
@@ -689,7 +689,7 @@ std::string correct_simplified =
 
 std::string correct_presolver =
 "produce buf {\n"
-"  parallel (x, 0, 100, auto [-infinity, infinity]) {\n"
+"  for (x, 0, 100, auto [-infinity, infinity]) {\n"
 "    stmtTargetVar(x) {\n"
 "      buf[(x + -1)] = select((3 < solve([4, infinity]: x)), select((solve([-infinity, 86]: x) < 87), input(((solve([0, 99]: (x + -10)) % 100) + 10)), i16(-17)), i16(-17))\n"
 "    }\n"
@@ -704,7 +704,7 @@ std::string correct_presolver =
 
 std::string correct_solved =
 "produce buf {\n"
-"  parallel (x, 0, 100, auto [-infinity, infinity]) {\n"
+"  for (x, 0, 100, auto [-infinity, infinity]) {\n"
 "    stmtTargetVar(x) {\n"
 "      buf[(x + -1)] = select((3 < solve([4, infinity]: x)), select((solve([-infinity, 86]: x) < 87), input((((solve([10, 109]: x) + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
 "    }\n"
@@ -723,13 +723,13 @@ std::string correct_loop_split =
 "produce buf {\n"
 "  let x.start = 10\n"
 "  let x.end = 87\n"
-"  parallel (x, 0, min((x.start - 0), 100), before) {\n"
+"  for (x, 0, min((x.start - 0), 100), before) {\n"
 "    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
 "  }\n"
-"  parallel (x, max(x.start, 0), (min(x.end, (0 + 100)) - max(x.start, 0)), main auto [-infinity, infinity]) {\n"
+"  for (x, max(x.start, 0), (min(x.end, (0 + 100)) - max(x.start, 0)), main auto [-infinity, infinity]) {\n"
 "    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
 "  }\n"
-"  parallel (x, x.end, ((0 + 100) - x.end), after) {\n"
+"  for (x, x.end, ((0 + 100) - x.end), after) {\n"
 "    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
 "  }\n"
 "} consume {\n"
@@ -751,7 +751,7 @@ std::string correct_loop_split =
 // Alternate solution where additional simplification rules are active, lifting constant addends outside min and max.
 std::string correct_simplified = 
 "produce buf {\n"
-"  parallel (x, 0, 100, auto [-infinity, infinity]) {\n"
+"  for (x, 0, 100, auto [-infinity, infinity]) {\n"
 "    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
 "  }\n"
 "} consume {\n"
@@ -762,7 +762,7 @@ std::string correct_simplified =
 
 std::string correct_presolver =
 "produce buf {\n"
-"  parallel (x, 0, 100, auto [-infinity, infinity]) {\n"
+"  for (x, 0, 100, auto [-infinity, infinity]) {\n"
 "    stmtTargetVar(x) {\n"
 "      buf[(x + -1)] = select((3 < solve([4, infinity]: x)), select((solve([-infinity, 86]: x) < 87), input(((solve([0, 99]: (x + -10)) % 100) + 10)), i16(-17)), i16(-17))\n"
 "    }\n"
@@ -777,7 +777,7 @@ std::string correct_presolver =
 
 std::string correct_solved =
 "produce buf {\n"
-"  parallel (x, 0, 100, auto [-infinity, infinity]) {\n"
+"  for (x, 0, 100, auto [-infinity, infinity]) {\n"
 "    stmtTargetVar(x) {\n"
 "      buf[(x + -1)] = select((3 < solve([4, infinity]: x)), select((solve([-infinity, 86]: x) < 87), input((((solve([10, 109]: x) + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
 "    }\n"
@@ -794,13 +794,13 @@ std::string correct_loop_split =
 "produce buf {\n"
 "  let x.start = 10\n"
 "  let x.end = 87\n"
-"  parallel (x, 0, min((x.start - 0), 100), before) {\n"
+"  for (x, 0, min((x.start - 0), 100), before) {\n"
 "    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
 "  }\n"
-"  parallel (x, max(x.start, 0), (min(x.end, (0 + 100)) - max(x.start, 0)), main auto [-infinity, infinity]) {\n"
+"  for (x, max(x.start, 0), (min(x.end, (0 + 100)) - max(x.start, 0)), main auto [-infinity, infinity]) {\n"
 "    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
 "  }\n"
-"  parallel (x, x.end, ((0 + 100) - x.end), after) {\n"
+"  for (x, x.end, ((0 + 100) - x.end), after) {\n"
 "    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
 "  }\n"
 "} consume {\n"
