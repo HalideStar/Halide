@@ -570,7 +570,7 @@ Stmt loop_split(Stmt s) {
     Stmt pre = LoopPreSolver().mutate(s);
     code_logger.log(pre, "pre_solver");
     code_logger.section("solved");
-    Stmt solved = solver(pre);
+    Stmt solved = loop_solver(pre);
     code_logger.log(solved, "solved");
     loop_part.solved = solved;
     code_logger.section("loop_partition");
@@ -875,7 +875,7 @@ void test_loop_split_1() {
     //std::cout << "LoopPreSolver:\n" << pre << "\n";
     code_compare ("loop split pre-solver", "Presolved code:", pre, correct_presolver);
     
-    Stmt solved = solver(pre);
+    Stmt solved = loop_solver(pre);
     code_compare ("loop split solver", "Solved code:", solved, correct_solved);
     //std::cout << "Solved:\n" << solved << "\n";
     //std::vector<Solution> solutions = extract_solutions("x", Stmt(), solved);

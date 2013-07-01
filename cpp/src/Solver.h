@@ -24,8 +24,8 @@ namespace Internal {
  * If you want additional functionality in the solver, derive a class from it
  * and add your new functionality.
  */
-EXPORT Stmt solver(Stmt s);
-EXPORT Expr solver(Expr e);
+EXPORT Stmt loop_solver(Stmt s);
+EXPORT Expr loop_solver(Expr e);
 
 EXPORT bool is_constant_expr(std::vector<std::string> varlist, Expr e);
 
