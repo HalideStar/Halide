@@ -42,19 +42,19 @@ private:
         if (dims == 0)
             dom = Domain(); // An empty domain that has not been initialised.
         else if (dims == 1)
-            dom = Domain(InfInterval(buffer.min(0), buffer.min(0) + buffer.extent(0) - 1));
+            dom = Domain(DomInterval(buffer.min(0), buffer.min(0) + buffer.extent(0) - 1, true));
         else if (dims == 2)
-            dom = Domain(InfInterval(buffer.min(0), buffer.min(0) + buffer.extent(0) - 1),
-                         InfInterval(buffer.min(1), buffer.min(1) + buffer.extent(1) - 1));
+            dom = Domain(DomInterval(buffer.min(0), buffer.min(0) + buffer.extent(0) - 1, true),
+                         DomInterval(buffer.min(1), buffer.min(1) + buffer.extent(1) - 1, true));
         else if (dims == 3)
-            dom = Domain(InfInterval(buffer.min(0), buffer.min(0) + buffer.extent(0) - 1),
-                         InfInterval(buffer.min(1), buffer.min(1) + buffer.extent(1) - 1),
-                         InfInterval(buffer.min(2), buffer.min(2) + buffer.extent(2) - 1));
+            dom = Domain(DomInterval(buffer.min(0), buffer.min(0) + buffer.extent(0) - 1, true),
+                         DomInterval(buffer.min(1), buffer.min(1) + buffer.extent(1) - 1, true),
+                         DomInterval(buffer.min(2), buffer.min(2) + buffer.extent(2) - 1, true));
         else if (dims == 4)
-            dom = Domain(InfInterval(buffer.min(0), buffer.min(0) + buffer.extent(0) - 1),
-                         InfInterval(buffer.min(1), buffer.min(1) + buffer.extent(1) - 1),
-                         InfInterval(buffer.min(2), buffer.min(2) + buffer.extent(2) - 1),
-                         InfInterval(buffer.min(3), buffer.min(3) + buffer.extent(3) - 1));
+            dom = Domain(DomInterval(buffer.min(0), buffer.min(0) + buffer.extent(0) - 1, true),
+                         DomInterval(buffer.min(1), buffer.min(1) + buffer.extent(1) - 1, true),
+                         DomInterval(buffer.min(2), buffer.min(2) + buffer.extent(2) - 1, true),
+                         DomInterval(buffer.min(3), buffer.min(3) + buffer.extent(3) - 1, true));
     }
 
     /** Prepare the buffer to be used as an image. Makes sure that the

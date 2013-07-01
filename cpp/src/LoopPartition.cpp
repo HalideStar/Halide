@@ -87,7 +87,7 @@ class LoopPreSolver : public InlineLet {
         Expr b = mutate(op->b);
         if (is_constant_expr(a) && ! is_constant_expr(b)) std::swap(a,b);
         if (!is_constant_expr(a) && is_constant_expr(b)) {
-            expr = new Min(new Solve(a, InfInterval(make_infinity(b.type(), -1), b)), b);
+            expr = new Min(new Solve(a, DomInterval(make_infinity(b.type(), -1), b, true)), b);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
@@ -104,7 +104,7 @@ class LoopPreSolver : public InlineLet {
         Expr b = mutate(op->b);
         if (is_constant_expr(a) && ! is_constant_expr(b)) std::swap(a,b);
         if (!is_constant_expr(a) && is_constant_expr(b)) {
-            expr = new Max(new Solve(a, InfInterval(b, make_infinity(b.type(), +1))), b);
+            expr = new Max(new Solve(a, DomInterval(b, make_infinity(b.type(), +1), true)), b);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
@@ -123,20 +123,20 @@ class LoopPreSolver : public InlineLet {
         Expr b = mutate(op->b);
         if (is_constant_expr(a)) {
             // ka < b: Solve for b on (ka+1,infinity) [integer types] or (ka,infinity) [float]
-            InfInterval bounds_a = bounds.bounds(a);
+            DomInterval bounds_a = bounds.bounds(a);
             Expr limit = bounds_a.max; // Must exceed the maximum of the other side.
             if (b.type().is_int() || b.type().is_uint()) {
                 limit = simplify(limit + make_one(b.type()));
             }
-            expr = new LT(a, new Solve(b, InfInterval(limit, make_infinity(b.type(), +1))));
+            expr = new LT(a, new Solve(b, DomInterval(limit, make_infinity(b.type(), +1), true)));
         } else if (is_constant_expr(b)) {
             // a < kb: Solve for a on (-infinity, kb-1) or (-infinity,kb)
-            InfInterval bounds_b = bounds.bounds(b);
+            DomInterval bounds_b = bounds.bounds(b);
             Expr limit = bounds_b.min; // Must stay below the minimum of the other side.
             if (a.type().is_int() || a.type().is_uint()) {
                 limit = simplify(limit - make_one(a.type()));
             }
-            expr = new LT(new Solve(a, InfInterval(make_infinity(a.type(), -1), limit)), b);
+            expr = new LT(new Solve(a, DomInterval(make_infinity(a.type(), -1), limit, true)), b);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
@@ -147,7 +147,10 @@ class LoopPreSolver : public InlineLet {
     
     // Do not solve for equality/inequality because it does not generate a useful
     // loop partition (a single case is isolated).  Note that, for small loops,
-    // loop unrolling may make each case individual.
+    // loop unrolling may make each case individual; then each case is optimised separately
+    // anhow and can be optimised.  So... if a code module uses equality tests on
+    // an index variable then a likely candidate for optimisation is to unroll the variable
+    // first.
     
     // Mod can be eliminated in a loop body if the expression passed to Mod is
     // known to be in the range of the Mod.
@@ -163,14 +166,14 @@ class LoopPreSolver : public InlineLet {
             if (a.type().is_int() || a.type().is_uint()) {
                 limit = simplify(limit - make_one(a.type()));
             }
-            expr = new Mod(new Solve(a, InfInterval(make_zero(a.type()), limit)), b);
+            expr = new Mod(new Solve(a, DomInterval(make_zero(a.type()), limit, true)), b);
         } else if (is_negative_const(b)) {
             // a % kb: Solve for a on (kb+1,0) or (kb,0)
             Expr limit = b;
             if (a.type().is_int() || a.type().is_uint()) {
                 limit = simplify(limit + make_one(a.type()));
             }
-            expr = new Mod(new Solve(a, InfInterval(limit, make_zero(a.type()))), b);
+            expr = new Mod(new Solve(a, DomInterval(limit, make_zero(a.type()), true)), b);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
@@ -187,7 +190,7 @@ class LoopPreSolver : public InlineLet {
         
         if (is_constant_expr(min) && is_constant_expr(max)) {
             // a on (min, max)
-            expr = new Clamp(op->clamptype, new Solve(a, InfInterval(min, max)), min, max, p1);
+            expr = new Clamp(op->clamptype, new Solve(a, DomInterval(min, max, true)), min, max, p1);
         } else if (a.same_as(op->a) && min.same_as(op->min) && 
                    max.same_as(op->max) && p1.same_as(op->p1)) {
             expr = op;
@@ -375,7 +378,7 @@ protected:
             (global_options.loop_split_parallel && op->for_type == For::Parallel)) &&
             (op->loop_split.status == LoopSplitInfo::Ordinary)) {
             log(LOGLEVEL) << "Considering splitting loop:\n" << Stmt(op);
-            InfInterval part;
+            DomInterval part;
             if (op->loop_split.interval_defined()) {
                 part = op->loop_split.interval;
             } else if (op->loop_split.auto_split == LoopSplitInfo::Yes || 
@@ -431,7 +434,8 @@ protected:
                     part_end = part_end - 1;
                 }
                 
-                part = InfInterval(part_start, part_end);
+                // Exactness of partition poiunts is not important
+                part = DomInterval(simplify(part_start), simplify(part_end), true);
                 
                 log(LOGLEVEL) << "Auto partition: " << op->name << " " << part << "\n";
             }
@@ -593,7 +597,7 @@ Stmt code_1 () {
     Expr call2 = new Call(i32, "buf", vec(max(min(x-1,100),0)));
     Expr call3 = new Call(i32, "buf", vec(Expr(new Clamp(Clamp::Reflect, x+1, 0, 100))));
     Stmt store2 = new Store("out", call + call2 + call3 + 1, x);
-    LoopSplitInfo manualsplit(InfInterval(1,99)); // Specify manual partitioning interval.
+    LoopSplitInfo manualsplit(DomInterval(1,99,true)); // Specify manual partitioning interval.
     Stmt for_loop2 = new For("x", 0, 100, For::Serial, manualsplit, store2);
     Stmt pipeline = new Pipeline("buf", for_loop, Stmt(), for_loop2);
     

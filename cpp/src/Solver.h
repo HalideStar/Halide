@@ -7,7 +7,7 @@
  */
 
 #include "IR.h"
-#include "InfInterval.h"
+#include "DomInterval.h"
 
 namespace Halide { 
 namespace Internal {
@@ -44,10 +44,10 @@ public:
     Stmt stmt_source;
     
     // Intervals that define the individual solutions.
-    std::vector<InfInterval> intervals;
+    std::vector<DomInterval> intervals;
     
     Solution() {}
-    Solution(std::string _var, Expr expr_s, Stmt stmt_s, std::vector<InfInterval> _intervals) : 
+    Solution(std::string _var, Expr expr_s, Stmt stmt_s, std::vector<DomInterval> _intervals) : 
         var(_var), expr_source(expr_s), stmt_source(stmt_s), intervals(_intervals) {}
 };
     

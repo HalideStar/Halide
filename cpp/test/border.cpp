@@ -68,16 +68,19 @@ static bool check_domain (std::string name, std::string dname, Domain d, Domain 
         std::cout << name <<": " << dname << ": Domain sizes differ\n";
     }
     for (size_t i = 0; i < d.intervals.size() && i < expect.intervals.size(); i++) {
-        if (! equal(d.intervals[i].interval.min, expect.intervals[i].interval.min)) {
-            std::cout << name << ": " << dname << "[" << i << "]: Expected imin: " << expect.intervals[i].interval.min << "  Got: " << d.intervals[i].interval.min << "\n";
+        if (! equal(d.intervals[i].min, expect.intervals[i].min)) {
+            std::cout << name << ": " << dname << "[" << i << "]: Expected min: " 
+                      << expect.intervals[i].min << "  Got: " << d.intervals[i].min << "\n";
             success = false;
         }
-        if (! equal(d.intervals[i].interval.max, expect.intervals[i].interval.max)) {
-            std::cout << name << ": " << dname << "[" << i << "]: Expected imax: " << expect.intervals[i].interval.max << "  Got: " << d.intervals[i].interval.max << "\n";
+        if (! equal(d.intervals[i].max, expect.intervals[i].max)) {
+            std::cout << name << ": " << dname << "[" << i << "]: Expected max: " 
+                      << expect.intervals[i].max << "  Got: " << d.intervals[i].max << "\n";
             success = false;
         }
         if (d.intervals[i].exact != expect.intervals[i].exact) {
-            std::cout << name << ": " << dname << "[" << i << "]: Expected exact: " << expect.intervals[i].exact << "  Got: " << d.intervals[i].exact << "\n";
+            std::cout << name << ": " << dname << "[" << i << "]: Expected exact: " 
+                      << expect.intervals[i].exact << "  Got: " << d.intervals[i].exact << "\n";
             success = false;
         }
     }

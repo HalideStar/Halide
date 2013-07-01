@@ -5,26 +5,6 @@
 #define HALIDE_DOMAININFERENCE_H
 
 namespace Halide {
-namespace Internal {
-struct DomInterval
-{
-    InfInterval interval; // The interval bounds, possibly with infinity in them
-    bool exact; // True if the interval is exact; set to false if an equation cannot be solved.
-    
-    DomInterval(InfInterval _interval, bool _exact = true) : interval(_interval), exact(_exact) {}
-    DomInterval(Expr min, Expr max, bool _exact = true) : interval(InfInterval(Int(32), min, max)), exact(_exact) {}
-    DomInterval() : interval(InfInterval()), exact(true) {}
-    
-    // Intersect the interval with another interval; AND the exact flags together.
-    void intersect(DomInterval result);
-};
-
-/** Emit a DomInterval on an output stream (such as std::cout) in a
- * human-readable form */
-std::ostream &operator<<(std::ostream &stream, DomInterval);
-
-}
-
 # define NextDomainType(dt) ((int) dt)++)
 
 struct Domain {
@@ -34,7 +14,7 @@ struct Domain {
     // None of the others may have defined values because we loop over the enum.
     typedef enum {Valid = 0, Computable, MaxDomains} DomainType;
 
-    std::vector<Halide::Internal::DomInterval> intervals;
+    std::vector<Halide::DomInterval> intervals;
 
 private:
     bool domain_locked;
@@ -49,11 +29,11 @@ public:
     Domain(Expr xmin, Expr xmax, Expr ymin, Expr ymax, Expr zmin, Expr zmax);
     Domain(Expr xmin, Expr xmax, Expr ymin, Expr ymax, Expr zmin, Expr zmax, Expr wmin, Expr wmax);
     
-    Domain(InfInterval xint);
-    Domain(InfInterval xint, InfInterval yint);
-    Domain(InfInterval xint, InfInterval yint, InfInterval zint);
-    Domain(InfInterval xint, InfInterval yint, InfInterval zint,
-           InfInterval wint);
+    Domain(DomInterval xint);
+    Domain(DomInterval xint, DomInterval yint);
+    Domain(DomInterval xint, DomInterval yint, DomInterval zint);
+    Domain(DomInterval xint, DomInterval yint, DomInterval zint,
+           DomInterval wint);
            
     Domain intersection(const Domain other) const;
     

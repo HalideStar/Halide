@@ -6,7 +6,7 @@
 #include "IROperator.h"
 #include "IREquality.h"
 #include "IRPrinter.h"
-#include "InfInterval.h"
+#include "DomInterval.h"
 #include "Util.h"
 #include "Var.h"
 #include "Log.h"
@@ -33,8 +33,8 @@ public:
     using Super::visit;
 
     void visit(const Mod *op) {
-        InfInterval bounds_a = bounds.bounds(op->a);
-        InfInterval bounds_b = bounds.bounds(op->b);
+        DomInterval bounds_a = bounds.bounds(op->a);
+        DomInterval bounds_b = bounds.bounds(op->b);
         code_logger.log() << "BoundsSimplify Mod: " << Expr(op) << "\n";
         code_logger.log() << "    Interval a " << bounds_a << "\n";
         code_logger.log() << "    Interval b " << bounds_b << "\n";
@@ -57,9 +57,9 @@ public:
 
 	//LH
     void visit(const Clamp *op) {
-        InfInterval bounds_a = bounds.bounds(op->a);
-        InfInterval bounds_min = bounds.bounds(op->min);
-        InfInterval bounds_max = bounds.bounds(op->max);
+        DomInterval bounds_a = bounds.bounds(op->a);
+        DomInterval bounds_min = bounds.bounds(op->min);
+        DomInterval bounds_max = bounds.bounds(op->max);
         code_logger.log() << "BoundsSimplify Clamp: " << Expr(op) << "\n";
         code_logger.log() << "    Interval a " << bounds_a << "\n";
         code_logger.log() << "    Interval min " << bounds_min << "\n";
@@ -81,8 +81,8 @@ public:
     }
 
     void visit(const Min *op) {
-        InfInterval bounds_a = bounds.bounds(op->a);
-        InfInterval bounds_b = bounds.bounds(op->b);
+        DomInterval bounds_a = bounds.bounds(op->a);
+        DomInterval bounds_b = bounds.bounds(op->b);
         code_logger.log() << "BoundsSimplify Min: " << Expr(op) << "\n";
         code_logger.log() << "    Interval a " << bounds_a << "\n";
         code_logger.log() << "    Interval b " << bounds_b << "\n";
@@ -100,8 +100,8 @@ public:
     }
 
     void visit(const Max *op) {
-        InfInterval bounds_a = bounds.bounds(op->a);
-        InfInterval bounds_b = bounds.bounds(op->b);
+        DomInterval bounds_a = bounds.bounds(op->a);
+        DomInterval bounds_b = bounds.bounds(op->b);
         code_logger.log() << "BoundsSimplify Max: " << Expr(op) << "\n";
         code_logger.log() << "    Interval a " << bounds_a << "\n";
         code_logger.log() << "    Interval b " << bounds_b << "\n";
@@ -124,8 +124,8 @@ public:
     // conditional expressions, but you also need to handle other conditionals.
     // This code IS useful for debugging when a conditional is not solved by Select.
     void visit(const LT *op) {
-        InfInterval bounds_a = bounds.bounds(op->a);
-        InfInterval bounds_b = bounds.bounds(op->b);
+        DomInterval bounds_a = bounds.bounds(op->a);
+        DomInterval bounds_b = bounds.bounds(op->b);
         code_logger.log() << "BoundsSimplify LT: " << Expr(op) << "\n";
         code_logger.log() << "    Interval a " << bounds_a << "\n";
         code_logger.log() << "    Interval b " << bounds_b << "\n";
@@ -147,7 +147,7 @@ public:
         // perform bounds-based optimisation of the condition expression itself.
         // That is because bounds analysis computes bounds intervals on the
         // two sides of the condition, and then tries to prove them true or false.
-        InfInterval bounds_cond = bounds.bounds(op->condition);
+        DomInterval bounds_cond = bounds.bounds(op->condition);
         code_logger.log() << "BoundsSimplify Select: " << Expr(op) << "\n";
         code_logger.log() << "    Interval cond " << bounds_cond << "\n";
         if (is_one(bounds_cond.min)) {

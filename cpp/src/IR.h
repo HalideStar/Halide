@@ -585,9 +585,9 @@ namespace Internal {
  * It is stored in the Dim portion of the Schedule, and later into the For loops. */
     struct LoopSplitInfo {
         /** One option is for the user to partition the main loop manually.
-         * Specify an InfInterval for the loop.  The bounds can be expressions.
+         * Specify an DomInterval for the loop.  The bounds can be expressions.
          * If not used, the expressions will be undefined. */
-        Halide::InfInterval interval;
+        Halide::DomInterval interval;
         /** Boolean options translate to tristate variables internally because they can
          * be undefined. */
         enum TriState { Undefined, No, Yes };
@@ -602,7 +602,7 @@ namespace Internal {
             auto_split = do_split ? Yes : No;
             status = Ordinary;
         }
-        LoopSplitInfo(InfInterval _interval) { 
+        LoopSplitInfo(DomInterval _interval) { 
             interval = _interval; 
             auto_split = Undefined; 
             status = Ordinary;
@@ -882,14 +882,14 @@ struct Variable : public ExprNode<Variable> {
  */
 struct Solve : public ExprNode<Solve> {
     Expr body;
-    std::vector<InfInterval> v;
+    std::vector<DomInterval> v;
     
-    // Solve over a vector of InfInterval.
-    Solve(Expr _e, std::vector<InfInterval> _v) : ExprNode<Solve>(_e.type()), body(_e), v(_v) {}
-    // Solve over one InfInterval
-    Solve(Expr _e, InfInterval _i) : ExprNode<Solve>(_e.type()), body(_e), v(vec(_i)) {}
-    // Solve over two InfInterval
-    Solve(Expr _e, InfInterval _i, InfInterval _j) : ExprNode<Solve>(_e.type()), body(_e), v(vec(_i, _j)) {}
+    // Solve over a vector of DomInterval.
+    Solve(Expr _e, std::vector<DomInterval> _v) : ExprNode<Solve>(_e.type()), body(_e), v(_v) {}
+    // Solve over one DomInterval
+    Solve(Expr _e, DomInterval _i) : ExprNode<Solve>(_e.type()), body(_e), v(vec(_i)) {}
+    // Solve over two DomInterval
+    Solve(Expr _e, DomInterval _i, DomInterval _j) : ExprNode<Solve>(_e.type()), body(_e), v(vec(_i, _j)) {}
 };
 
 struct TargetVar : public ExprNode<TargetVar> {

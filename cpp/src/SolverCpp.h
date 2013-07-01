@@ -1,5 +1,5 @@
 #include "Solver.h"
-#include "InfInterval.h"
+#include "DomInterval.h"
 #include "BoundsAnalysis.h"
 
 namespace Halide { 
@@ -135,44 +135,44 @@ private:
 
 namespace {
 // Convenience methods for building solve nodes.
-Expr solve(Expr e, InfInterval i) {
+Expr solve(Expr e, DomInterval i) {
     return new Solve(e, i);
 }
 
-Expr solve(Expr e, std::vector<InfInterval> i) {
+Expr solve(Expr e, std::vector<DomInterval> i) {
     return new Solve(e, i);
 }
 
-// Apply unary operator to a vector of InfInterval by applying it to each InfInterval
-inline std::vector<InfInterval> v_apply(InfInterval (*f)(InfInterval), std::vector<InfInterval> v) {
-    std::vector<InfInterval> result;
+// Apply unary operator to a vector of DomInterval by applying it to each DomInterval
+inline std::vector<DomInterval> v_apply(DomInterval (*f)(DomInterval), std::vector<DomInterval> v) {
+    std::vector<DomInterval> result;
     for (size_t i = 0; i < v.size(); i++) {
         result.push_back((*f)(v[i]));
     }
     return result;
 }
 
-// Apply binary operator to a vector of InfInterval by applying it to each InfInterval
-inline std::vector<InfInterval> v_apply(InfInterval (*f)(InfInterval, Expr), std::vector<InfInterval> v, Expr b) {
-    std::vector<InfInterval> result;
+// Apply binary operator to a vector of DomInterval by applying it to each DomInterval
+inline std::vector<DomInterval> v_apply(DomInterval (*f)(DomInterval, Expr), std::vector<DomInterval> v, Expr b) {
+    std::vector<DomInterval> result;
     for (size_t i = 0; i < v.size(); i++) {
         result.push_back((*f)(v[i], b));
     }
     return result;
 }
 
-// Apply binary operator to a vector of InfInterval by applying it to each InfInterval
-inline std::vector<InfInterval> v_apply(InfInterval (*f)(InfInterval, InfInterval), std::vector<InfInterval> v, InfInterval w) {
-    std::vector<InfInterval> result;
+// Apply binary operator to a vector of DomInterval by applying it to each DomInterval
+inline std::vector<DomInterval> v_apply(DomInterval (*f)(DomInterval, DomInterval), std::vector<DomInterval> v, DomInterval w) {
+    std::vector<DomInterval> result;
     for (size_t i = 0; i < v.size(); i++) {
         result.push_back((*f)(v[i], w));
     }
     return result;
 }
 
-// Apply binary operator to a vector of InfInterval by applying it to each InfInterval
-inline std::vector<InfInterval> v_apply(InfInterval (*f)(InfInterval, InfInterval), std::vector<InfInterval> u, std::vector<InfInterval> v) {
-    std::vector<InfInterval> result;
+// Apply binary operator to a vector of DomInterval by applying it to each DomInterval
+inline std::vector<DomInterval> v_apply(DomInterval (*f)(DomInterval, DomInterval), std::vector<DomInterval> u, std::vector<DomInterval> v) {
+    std::vector<DomInterval> result;
     assert(u.size() == v.size() && "Vectors of intervals of different sizes");
     for (size_t i = 0; i < v.size(); i++) {
         result.push_back((*f)(u[i], v[i]));
@@ -180,49 +180,49 @@ inline std::vector<InfInterval> v_apply(InfInterval (*f)(InfInterval, InfInterva
     return result;
 }
 
-// Apply binary operator to a vector of InfInterval by applying it to each InfInterval, with additional int parameter
-inline std::vector<InfInterval> v_apply(InfInterval (*f)(InfInterval, InfInterval, int), std::vector<InfInterval> v, InfInterval w, int k) {
-    std::vector<InfInterval> result;
+// Apply binary operator to a vector of DomInterval by applying it to each DomInterval, with additional int parameter
+inline std::vector<DomInterval> v_apply(DomInterval (*f)(DomInterval, DomInterval, int), std::vector<DomInterval> v, DomInterval w, int k) {
+    std::vector<DomInterval> result;
     for (size_t i = 0; i < v.size(); i++) {
         result.push_back((*f)(v[i], w, k));
     }
     return result;
 }
 
-InfInterval inverseMin(InfInterval v, Expr k) {
+DomInterval inverseMin(DomInterval v, Expr k) {
     // inverse of min on an interval against constant expression k.
     // If v.max >= k then the Min ensures that the upper bound is in
     // the target interval, so the new max is +infinity; otherwise
     // the new max is v.max.
-    return InfInterval(v.min, simplify(select(v.max >= k, make_infinity(v.max.type(), +1), v.max)));
+    return DomInterval(v.min, simplify(select(v.max >= k, make_infinity(v.max.type(), +1), v.max)), v.exact);
 }
 
-InfInterval inverseMin(InfInterval v, InfInterval k) {
+DomInterval inverseMin(DomInterval v, DomInterval k) {
     // inverse of min on an interval against constant expression k.
     // If v.max >= k.max then the Min ensures that the upper bound is in
     // the target interval, so the new max is +infinity; otherwise
     // the new max is v.max.
-    return InfInterval(v.min, simplify(select(v.max >= k.max, make_infinity(v.max.type(), +1), v.max)));
+    return DomInterval(v.min, simplify(select(v.max >= k.max, make_infinity(v.max.type(), +1), v.max)), v.exact && k.exact);
 }
 
-InfInterval inverseMax(InfInterval v, Expr k) {
+DomInterval inverseMax(DomInterval v, Expr k) {
     // inverse of max on an interval against constant expression k.
     // If v.min <= k then the Max ensures that the lower bound is in
     // the target interval, so the new min is -infinity; otherwise
     // the new min is v.min.
-    return InfInterval(simplify(select(v.min <= k, make_infinity(v.min.type(), -1), v.min)), v.max);
+    return DomInterval(simplify(select(v.min <= k, make_infinity(v.min.type(), -1), v.min)), v.max, v.exact);
 }
 
-InfInterval inverseMax(InfInterval v, InfInterval k) {
+DomInterval inverseMax(DomInterval v, DomInterval k) {
     // inverse of max on an interval against constant expression k.
     // If v.min <= k.min then the Max ensures that the lower bound is in
     // the target interval, so the new min is -infinity; otherwise
     // the new min is v.min.
     // The new max is v.max.
-    return InfInterval(simplify(select(v.min <= k.min, make_infinity(v.min.type(), -1), v.min)), v.max);
+    return DomInterval(simplify(select(v.min <= k.min, make_infinity(v.min.type(), -1), v.min)), v.max, v.exact && k.exact);
 }
 
-InfInterval inverseRamp(InfInterval v, InfInterval s, int width) {
+DomInterval inverseRamp(DomInterval v, DomInterval s, int width) {
     // Compute an interval such that a ramp with base in the result interval
     // and designated stride interval always results in an interval no bigger than v.
     // v will in fact be a vector interval but the result is not a vector interval.
@@ -246,15 +246,21 @@ InfInterval inverseRamp(InfInterval v, InfInterval s, int width) {
     Expr basemin, basemax, stridemin, stridemax;
     if (ramp_vmin) { basemin = ramp_vmin->base; stridemin = ramp_vmin->stride; }
     else if (broadcast_vmin) { basemin = broadcast_vmin->value; stridemin = make_zero(basemin.type()); }
-    else if (infinity_count(v.min) != 0) { basemin = make_infinity(v.min.type().element_of(), infinity_count(v.min)); stridemin = make_infinity(v.min.type().element_of(), infinity_count(v.min)); }
+    else if (infinity_count(v.min) != 0) { 
+        basemin = make_infinity(v.min.type().element_of(), infinity_count(v.min)); 
+        stridemin = make_infinity(v.min.type().element_of(), infinity_count(v.min)); 
+    }
     if (ramp_vmax) { basemax = ramp_vmax->base; stridemax = ramp_vmax->stride; }
     else if (broadcast_vmax) { basemax = broadcast_vmax->value; stridemax = make_zero(basemax.type()); }
-    else if (infinity_count(v.max) != 0) { basemax = make_infinity(v.max.type().element_of(), infinity_count(v.max)); stridemax = make_infinity(v.max.type().element_of(), infinity_count(v.max)); }
+    else if (infinity_count(v.max) != 0) { 
+        basemax = make_infinity(v.max.type().element_of(), infinity_count(v.max)); 
+        stridemax = make_infinity(v.max.type().element_of(), infinity_count(v.max)); 
+    }
     
     // From the above, we can see one immediate solution.
     // If p == c and  q == d then a = m and b = n.
     if (equal(stridemin, s.min) && equal(stridemax, s.max)) {
-        return InfInterval(basemin, basemax);
+        return DomInterval(basemin, basemax, v.exact && s.exact);
     }
     
     // The general solution requires that Ramp(a,p) <= Ramp(m,c) for all indices in the vector
@@ -262,9 +268,65 @@ InfInterval inverseRamp(InfInterval v, InfInterval s, int width) {
     // Ramp(a,p) <= Ramp(m,c) means a <= m and a + p * (w-1) <= m + c * (w-1).
     // Solving for m we get: m >= a and m >= a + p * (w-1) - c * (w-1)
     // i.e. m = max(a, a + (p - c) * (w-1));
-    return InfInterval(simplify(max(basemin, basemin + (stridemin - s.min) * (width-1))),
-                       simplify(min(basemax, basemax + (stridemax - s.max) * (width-1))));
+    return DomInterval(simplify(max(basemin, basemin + (stridemin - s.min) * (width-1))),
+                       simplify(min(basemax, basemax + (stridemax - s.max) * (width-1))), v.exact && s.exact);
 }
+
+/** Domain inference on border handlers.
+ * Consider a call f(clamp(x)) where clamp is some clamp-like border handling index expression.
+ * The question is: Given the domains of f, what are the domains of x?
+ * Effective border handler.  A border handler is considered EFFECTIVE if the clamp limits
+ * are contained in the valid domain of f.  This means that the border handler prevents access
+ * to pixels outside the valid domain of f.
+ * Computable domain: If the border handler is effective, then the computable domain applicable to
+ *    x is infinite.  If the border handler is not effective, then the computable domain is restricted
+ *    to the computable domain of f intersected with the clamp interval.
+ * Valid domain: If the border handler is effective, then the valid domain is the clamp interval
+ *    because data outside that interval is border handled.  If the border handler is not effective,
+ *    then the valid domain is the intersection of valid domain of f with clamp.
+ * Partially effective border handler: One clamp limit is within the valid domain of f, the other is not.
+ *    General border handlers cannot be partially effective. Halide's clamp operator, i.e. Min and Max,
+ *    can be partially effective because when the clamp is applied, the value is moved to the clamp
+ *    limit.  In this case, if a clamp limit is within the valid domain of f, then that 
+ *    limit is partially effective in its own right.  The corresponding limit of x is infinite.
+ *    An operation like mod (or Border::wrap) cannot be partially effective because a value of x
+ *    just outside one limit is wrapped to the other limit; for the wrapped value to be in range,
+ *    both limits must be in range.
+ */
+
+ # if 0
+// Method to handle clamp-like operations, which are treated as border handlers.
+// Clamp(op_a, op_min, op_max)
+std::vector< clamp_limits(Expr op_a, Expr op_min, Expr op_max, bool partially_effective) {
+    // Determine whether the limits are individually effective
+    bool effective_min = proved(op_min >= callee[Domain::Valid].interval.min);
+    bool effective_max = proved(op_max <= callee[Domain::Valid].interval.max);
+    if (! partially_effective) {
+        // Clamp-like operator that cannot be partially effective.
+        // Must be effective at both ends, or neither is considered effective
+        effective_min &= effective_max;
+        effective_max = effective_min;
+    }
+    if (effective_min) {
+        callee[Domain::Computable].interval.min = make_infinity(op_a.type(), -1);
+        callee[Domain::Valid].interval.min = op_min;
+    } else {
+        // Note: These definitions are conservative in the case that the border handler
+        // is actually effective but cannot be proved to be so.
+        // ??????? Is this the right way to be conservative????
+        callee[Domain::Computable].interval.min = simplify(max(op_min, callee[Domain::Computable].interval.min));
+        callee[Domain::Valid].interval.min = simplify(max(op_min, callee[Domain::Valid].interval.min));
+    }
+    if (effective_max) {
+        callee[Domain::Computable].interval.max = make_infinity(op_a.type(), +1);
+        callee[Domain::Valid].interval.max = op_max;
+    } else {
+        callee[Domain::Computable].interval.max = simplify(min(op_max, callee[Domain::Computable].interval.max));
+        callee[Domain::Valid].interval.max = simplify(min(op_max, callee[Domain::Valid].interval.max));
+    }
+    op_a.accept(this);
+}
+# endif
 
 // end anonymous namespace
 }
@@ -296,7 +358,7 @@ public:
 
 protected:
     bool equal_bounds(Expr k) {
-        InfInterval b = bounds.bounds(k);
+        DomInterval b = bounds.bounds(k);
         return equal(b.min, b.max);
     }
     
@@ -314,12 +376,12 @@ protected:
         const Max *max_e = e.as<Max>();
         const Ramp *ramp_e = e.as<Ramp>();
         
-        //if (solve_e) {
-            // solve(solve(e)) --> solve(e) on intersection of intervals.
+        /* if (solve_e) {
+            solve(solve(e)) --> solve(e) on intersection of intervals.
             // This is one approach to combining solutions, and makes it easier
             // to match them and pick them out.
-            //expr = mutate(solve(solve_e->e, v_apply(intersection, op->v, solve_e->v)));
-        //} else 
+            expr = mutate(solve(solve_e->e, v_apply(intersection, op->v, solve_e->v)));
+        } else */ 
         if (add_e && is_constant_expr(add_e->b)) {
             //expr = mutate(solve(add_e->a, v_apply(operator-, op->v, add_e->b)) + add_e->b);
             expr = mutate(solve(add_e->a, v_apply(inverseAdd, op->v, bounds.bounds(add_e->b))) + add_e->b);
@@ -739,8 +801,8 @@ void logSolver(Expr a, Expr b) {
     }
 }
 
-void checkInverseRamp(InfInterval comb, InfInterval stride, int width, InfInterval base) {
-    InfInterval test = inverseRamp(comb, stride, width);
+void checkInverseRamp(DomInterval comb, DomInterval stride, int width, DomInterval base) {
+    DomInterval test = inverseRamp(comb, stride, width);
     if (! equal(test.min, base.min) || ! equal(test.max, base.max)) {
         std::cerr << "inverseRamp failed\n";
         std::cerr << "  combined: " << comb << "\n";
@@ -755,64 +817,64 @@ void checkInverseRamp(InfInterval comb, InfInterval stride, int width, InfInterv
 void solver_test() {
     Var x("x"), y("y"), c("c"), d("d"), k("k");
     
-    checkInverseRamp(InfInterval(new Ramp(0,1,8), new Ramp(1,1,8)), InfInterval(1,1), 8, InfInterval(0,1));
-    checkInverseRamp(InfInterval(new Ramp(0,1,8), new Ramp(3,2,8)), InfInterval(1,2), 8, InfInterval(0,3));
-    checkInverseRamp(InfInterval(new Broadcast(3,8), new Broadcast(10,8)), InfInterval(0,0), 8, InfInterval(3,10));
-    checkInverseRamp(InfInterval(new Broadcast(3,8), new Broadcast(10,8)), InfInterval(1,1), 8, InfInterval(3,3));
+    checkInverseRamp(DomInterval(new Ramp(0,1,8), new Ramp(1,1,8),true), DomInterval(1,1,true), 8, DomInterval(0,1,true));
+    checkInverseRamp(DomInterval(new Ramp(0,1,8), new Ramp(3,2,8),true), DomInterval(1,2,true), 8, DomInterval(0,3,true));
+    checkInverseRamp(DomInterval(new Broadcast(3,8), new Broadcast(10,8),true), DomInterval(0,0,true), 8, DomInterval(3,10,true));
+    checkInverseRamp(DomInterval(new Broadcast(3,8), new Broadcast(10,8),true), DomInterval(1,1,true), 8, DomInterval(3,3,true));
     
-    checkSolver(solve(x, InfInterval(0,10)), solve(x, InfInterval(0,10)));
-    checkSolver(solve(x + 4, InfInterval(0,10)), solve(x, InfInterval(-4,6)) + 4);
-    checkSolver(solve(4 + x, InfInterval(0,10)), solve(x, InfInterval(-4,6)) + 4);
-    checkSolver(solve(x + 4 + d, InfInterval(0,10)), solve(x, InfInterval(-4-d, 6-d)) + d + 4);
-    checkSolver(solve(x - d, InfInterval(0,10)), solve(x, InfInterval(d, d+10)) - d);
-    checkSolver(solve(x - (4 - d), InfInterval(0,10)), solve(x, InfInterval(4-d, 14-d)) + d + -4);
-    checkSolver(solve(x - 4 - d, InfInterval(0,10)), solve(x, InfInterval(d+4, d+14)) - d + -4);
+    checkSolver(solve(x, DomInterval(0,10,true)), solve(x, DomInterval(0,10,true)));
+    checkSolver(solve(x + 4, DomInterval(0,10,true)), solve(x, DomInterval(-4,6,true)) + 4);
+    checkSolver(solve(4 + x, DomInterval(0,10,true)), solve(x, DomInterval(-4,6,true)) + 4);
+    checkSolver(solve(x + 4 + d, DomInterval(0,10,true)), solve(x, DomInterval(-4-d, 6-d,true)) + d + 4);
+    checkSolver(solve(x - d, DomInterval(0,10,true)), solve(x, DomInterval(d, d+10,true)) - d);
+    checkSolver(solve(x - (4 - d), DomInterval(0,10,true)), solve(x, DomInterval(4-d, 14-d,true)) + d + -4);
+    checkSolver(solve(x - 4 - d, DomInterval(0,10,true)), solve(x, DomInterval(d+4, d+14,true)) - d + -4);
     // Solve 4-x on the interval (0,10).
     // 0 <= 4-x <= 10.
     // -4 <= -x <= 6.  solve(-x) + 4
     // 4 >= x >= -6.   -solve(x) + 4  i.e.  4 - solve(x)
-    checkSolver(solve(4 - x, InfInterval(0,10)), 4 - solve(x, InfInterval(-6,4)));
-    checkSolver(solve(4 - d - x, InfInterval(0,10)), 4 - (solve(x, InfInterval(-6 - d, 4 - d)) + d));
-    checkSolver(solve(4 - d - x, InfInterval(0,10)) + 1, 5 - (solve(x, InfInterval(-6 - d, 4 - d)) + d));
+    checkSolver(solve(4 - x, DomInterval(0,10,true)), 4 - solve(x, DomInterval(-6,4,true)));
+    checkSolver(solve(4 - d - x, DomInterval(0,10,true)), 4 - (solve(x, DomInterval(-6 - d, 4 - d,true)) + d));
+    checkSolver(solve(4 - d - x, DomInterval(0,10,true)) + 1, 5 - (solve(x, DomInterval(-6 - d, 4 - d,true)) + d));
     // Solve c - (x + d) on (0,10).
     // 0 <= c - (x + d) <= 10.
     // -c <= -(x+d) <= 10-c.
     // c >= x+d >= c-10.
     // c-d >= d >= c-d-10.
-    checkSolver(solve(c - (x + d), InfInterval(0,10)), c - (solve(x, InfInterval(c-d+-10, c-d)) + d));
+    checkSolver(solve(c - (x + d), DomInterval(0,10,true)), c - (solve(x, DomInterval(c-d+-10, c-d,true)) + d));
     
-    checkSolver(solve(x * 2, InfInterval(0,10)), solve(x, InfInterval(0,5)) * 2);
-    checkSolver(solve(x * 3, InfInterval(1,17)), solve(x, InfInterval(1,5)) * 3);
-    checkSolver(solve(x * -3, InfInterval(1,17)), solve(x, InfInterval(-5,-1)) * -3);
-    checkSolver(solve((x + 3) * 2, InfInterval(0,10)), solve(x, InfInterval(-3, 2)) * 2 + 6);
+    checkSolver(solve(x * 2, DomInterval(0,10,true)), solve(x, DomInterval(0,5,true)) * 2);
+    checkSolver(solve(x * 3, DomInterval(1,17,true)), solve(x, DomInterval(1,5,true)) * 3);
+    checkSolver(solve(x * -3, DomInterval(1,17,true)), solve(x, DomInterval(-5,-1,true)) * -3);
+    checkSolver(solve((x + 3) * 2, DomInterval(0,10,true)), solve(x, DomInterval(-3, 2,true)) * 2 + 6);
     // Solve 0 <= (x + 4) * 3 <= 10
     // 0 <= (x + 4) <= 3
     // -4 <= x <= -1
-    checkSolver(solve((x + 4) * 3, InfInterval(0,10)), solve(x, InfInterval(-4, -1)) * 3 + 12);
+    checkSolver(solve((x + 4) * 3, DomInterval(0,10,true)), solve(x, DomInterval(-4, -1,true)) * 3 + 12);
     // Solve 0 <= (x + c) * -3 <= 10
     // 0 >= (x + c) >= -3
     // -c >= x >= -3 - c
-    checkSolver(solve((x + c) * -3, InfInterval(0,10)), (solve(x, InfInterval(-3 - c, 0 - c)) + c) * -3);
+    checkSolver(solve((x + c) * -3, DomInterval(0,10,true)), (solve(x, DomInterval(-3 - c, 0 - c,true)) + c) * -3);
     
-    checkSolver(solve(x / 3, InfInterval(0,10)), solve(x, InfInterval(0, 32)) / 3);
-    checkSolver(solve(x / -3, InfInterval(0,10)), solve(x, InfInterval(-32,0)) / -3);
+    checkSolver(solve(x / 3, DomInterval(0,10,true)), solve(x, DomInterval(0, 32,true)) / 3);
+    checkSolver(solve(x / -3, DomInterval(0,10,true)), solve(x, DomInterval(-32,0,true)) / -3);
     // Solve 1 <= (x + c) / 3 <= 17
     // 3 <= (x + c) <= 53
     // 3 - c <= x <= 53 - c
-    checkSolver(solve((x + c) / 3, InfInterval(1,17)), (solve(x, InfInterval(3 - c, 53 - c)) + c) / 3);
-    checkSolver(solve((x * d) / d, InfInterval(1,17)), solve(x, InfInterval(1,17)));
-    checkSolver(solve((x * d + d) / d, InfInterval(1,17)), solve(x, InfInterval(0,16)) + 1);
-    checkSolver(solve((x * d - d) / d, InfInterval(1,17)), solve(x, InfInterval(2,18)) + -1);
+    checkSolver(solve((x + c) / 3, DomInterval(1,17,true)), (solve(x, DomInterval(3 - c, 53 - c,true)) + c) / 3);
+    checkSolver(solve((x * d) / d, DomInterval(1,17,true)), solve(x, DomInterval(1,17,true)));
+    checkSolver(solve((x * d + d) / d, DomInterval(1,17,true)), solve(x, DomInterval(0,16,true)) + 1);
+    checkSolver(solve((x * d - d) / d, DomInterval(1,17,true)), solve(x, DomInterval(2,18,true)) + -1);
     
-    checkSolver(solve(x + 4, InfInterval(0,new Infinity(Int(32), +1))), solve(x, InfInterval(-4,new Infinity(Int(32), +1))) + 4);
-    checkSolver(solve(x + 4, InfInterval(new Infinity(Int(32), -1),10)), solve(x, InfInterval(new Infinity(Int(32), -1),6)) + 4);
+    checkSolver(solve(x + 4, DomInterval(0,make_infinity(Int(32), +1),true)), solve(x, DomInterval(-4,make_infinity(Int(32), +1),true)) + 4);
+    checkSolver(solve(x + 4, DomInterval(make_infinity(Int(32), -1),10,true)), solve(x, DomInterval(make_infinity(Int(32), -1),6,true)) + 4);
     
     // A few complex expressions
-    checkSolver(solve(x + c + 2 * y + d, InfInterval(0,10)), solve(x + y * 2, InfInterval(0 - d - c, 10 - d - c)) + c + d);
+    checkSolver(solve(x + c + 2 * y + d, DomInterval(0,10,true)), solve(x + y * 2, DomInterval(0 - d - c, 10 - d - c,true)) + c + d);
     // Solve 0 <= x + 10 + x + 15 <= 10
     // -25 <= x * 2 <= -15
     // -12 <= x <= -8
-    checkSolver(solve(x + 10 + x + 15, InfInterval(0,10)), solve(x, InfInterval(-12, -8)) * 2 + 25);
+    checkSolver(solve(x + 10 + x + 15, DomInterval(0,10,true)), solve(x, DomInterval(-12, -8,true)) * 2 + 25);
     
     checkSolver(x * x, x * x);
     checkSolver(x * d, x * d);
@@ -822,7 +884,7 @@ void solver_test() {
     checkSolver((min(x, 1) + c) + min(y, 1), (min(x, 1) + min(y, 1)) + c);
     checkSolver((min(x, 1) + c) + min(d, 1), min(d, 1) + (min(x, 1) + c)); // Simplify reorders expression
     
-    //logSolver(solve(2 * x + k + (x + 5), InfInterval(0, 100)), solve(x, InfInterval((-6-k)/3+1,(95-k)/3))*3 + k + 5);
+    //logSolver(solve(2 * x + k + (x + 5), DomInterval(0, 100,true)), solve(x, DomInterval((-6-k)/3+1,(95-k)/3,true))*3 + k + 5);
     
     std::cout << "Solve test passed" << std::endl;
 }

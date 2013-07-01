@@ -2,7 +2,7 @@
 #define HALIDE_BOUNDS_ANALYSIS_H
 
 #include "IR.h"
-#include "InfInterval.h"
+#include "DomInterval.h"
 #include "IREquality.h"
 #include "IRLazyScope.h"
 #include "IRPrinter.h"
@@ -28,26 +28,26 @@ using std::string;
  * is being performed.  This may result in information being cached,
  * but that it why we use IRLazyScope and the ContextManager.
  *
- * This class uses InfInterval to represent the interval, with infinity
+ * This class uses DomInterval to represent the interval, with infinity
  * for unbounded intervals.
  */
 
 class BoundsAnalysis : public IRLazyScope<IRProcess> {
-    InfInterval interval;
+    DomInterval interval;
     
     // Ideally the interval cache would be static and shared
     // in the same way as ContextManager.  It would then
     // want to be reset whenever the context manager is reset.
     // To do this in a tidy manner is difficult.  The untidy way
     // is to include it in the context manager.
-    std::map<NodeKey, InfInterval> interval_cache;
+    std::map<NodeKey, DomInterval> interval_cache;
     
 public:
-    InfInterval bounds(Expr e) { 
+    DomInterval bounds(Expr e) { 
         // Insert caching here once it is working correctly.
 # if 1
         NodeKey key = node_key(e);
-        std::map<NodeKey, InfInterval>::const_iterator found = interval_cache.find(key);
+        std::map<NodeKey, DomInterval>::const_iterator found = interval_cache.find(key);
         if (found != interval_cache.end()) {
             return found->second;
         }
@@ -58,26 +58,26 @@ public:
     }
 
 private:
-    InfInterval bounds_of_type(Type t) {
+    DomInterval bounds_of_type(Type t) {
         if (t.is_uint()) {
-            if (t.bits <= 31) { // Previously, more than 16 bits was unbounded, but in practice that meant 32
-                return InfInterval(t.min(), t.max());
+            if (t.bits <= 31) { // Previously, more than 16 bits was unbounded, but in practice that meant 32 bits
+                return DomInterval(t.min(), t.max(), true);
             } else {
                 // Hack: Treat 32 bit unsigned int as unbounded.
-                // Previously, min was undef, but zero is sensible.
-                return InfInterval(t.min(), new Infinity(t, 1));
+                // Previously, min was undef, but zero is sensible for an unsigned integer.
+                return DomInterval(t.min(), new Infinity(t, 1), true);
             }
         } else if (t.is_int()) {
             if (t.bits <= 31) { // Previously, more than 16 bbits was unbounded, but in practice that meant 32
-                return InfInterval(t.min(), t.max());
+                return DomInterval(t.min(), t.max(), true);
             } else {
                 // Hack: Treat 32 bit signed integer as unbounded.
-                return InfInterval(new Infinity(t, -1), new Infinity(t, 1));
+                return DomInterval(new Infinity(t, -1), new Infinity(t, 1), true);
             }
             
         } else {
             // Floating point types are treated as unbounded for analysis
-            return InfInterval(new Infinity(t, -1), new Infinity(t, 1));
+            return DomInterval(new Infinity(t, -1), new Infinity(t, 1), true);
         }        
     }
 
@@ -85,17 +85,17 @@ protected:
     using IRLazyScope<IRProcess>::visit;
     
     virtual void visit(const IntImm *op) {
-        interval = InfInterval(op, op);
+        interval = DomInterval(op, op, true);
     }
     
     virtual void visit(const FloatImm *op) {
-        interval = InfInterval(op, op);
+        interval = DomInterval(op, op, true);
     }
 
     virtual void visit(const Cast *op) {
         // Assume no overflow
-        InfInterval value = bounds(op->value);
-        interval = InfInterval(new Cast(op->type, value.min), new Cast(op->type, value.max));
+        DomInterval value = bounds(op->value);
+        interval = DomInterval(new Cast(op->type, value.min), new Cast(op->type, value.max), value.exact);
     }
 
     virtual void visit(const Variable *op) {
@@ -112,13 +112,13 @@ protected:
                 // Defined as a For loop.  The interval is easily determined.
                 //log(0) << "    for loop in context " << current_context() << "\n";
                 //log(0) << "        interval of " << def_for->min << "\n";
-                InfInterval formin = bounds(def_for->min);
+                DomInterval formin = bounds(def_for->min);
                 Expr emax = def_for->min + (def_for->extent - 1);
                 //log(0) << "        interval of " << emax << "\n";
-                InfInterval formax = bounds(emax);
+                DomInterval formax = bounds(emax);
                 //log(0) << "    min: " << formin << " " << def_for->min << "\n";
                 //log(0) << "    max: " << formax << " " << emax << "\n";
-                interval = InfInterval(formin.min, formax.max);
+                interval = DomInterval(formin.min, formax.max, formin.exact && formax.exact);
             } else if (def_let) {
                 //log(0) << "    let\n";
                 interval = bounds(def_let->value);
@@ -126,8 +126,8 @@ protected:
                 //log(0) << "    letstmt " << op->name << "\n";
                 interval = bounds(def_letstmt->value);
             } else {
-                assert(0 && "Unknown defining node for variable");
-                interval = InfInterval(new Infinity(-1), new Infinity(1));
+                assert(0 && "Unknown defining node for variable"); // This is a fatal error, actually
+                interval = DomInterval(new Infinity(-1), new Infinity(1), false); // How can it be exact if we dont know what it is?
             }
             log(BOUNDS_ANALYSIS_LOGLEVEL) << "bounds(" << op->name << "): " << interval << "\n";
             ret(found);
@@ -135,7 +135,7 @@ protected:
             // Keep the variable name in the absence of a definition.
             // This allows symbolic reasoning (i.e. simplify) to reduce
             // expressions.
-            interval = InfInterval(op, op);
+            interval = DomInterval(op, op, true);
         }
     }
     
@@ -180,24 +180,24 @@ protected:
         // The resulting interval is no larger than the clamping interval and also no larger
         // than the interval of expression a.
         interval = intersection(bounds(op->a), 
-                                infinterval_union(bounds(op->min), bounds(op->max)));
+                                interval_union(bounds(op->min), bounds(op->max)));
         log(BOUNDS_ANALYSIS_LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const EQ *op) {
-        InfInterval a = bounds(op->a);
-        InfInterval b = bounds(op->b);
+        DomInterval a = bounds(op->a);
+        DomInterval b = bounds(op->b);
         // Any variables in the interval expressions cannot be
         // further resolved, so there is no need for the current
         // variable bindings to be used by proved() below.
         if (proved(a.max < b.min) || proved(a.min > b.max)) {
             // The intervals do not overlap. Equality is disproved.
-            interval = InfInterval(const_false(op->type.width), const_false(op->type.width));
+            interval = DomInterval(const_false(op->type.width), const_false(op->type.width), a.exact && b.exact);
         } else if (equal(a.min, a.max) && equal(a.min, b.min) && equal(a.min, b.max)) {
             // Both intervals are unique constants and equal.
-            interval = InfInterval(const_true(op->type.width), const_true(op->type.width));
+            interval = DomInterval(const_true(op->type.width), const_true(op->type.width), a.exact && b.exact);
         } else {
-            interval = InfInterval(const_false(op->type.width), const_true(op->type.width));
+            interval = DomInterval(const_false(op->type.width), const_true(op->type.width), a.exact && b.exact);
         }
         log(BOUNDS_ANALYSIS_LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
@@ -208,31 +208,31 @@ protected:
     }
     
     virtual void visit(const LT *op) {
-        InfInterval a = bounds(op->a);
-        InfInterval b = bounds(op->b);
+        DomInterval a = bounds(op->a);
+        DomInterval b = bounds(op->b);
         if (proved(a.max < b.min)) {
             // a is always less than b
-            interval = InfInterval(const_true(op->type.width), const_true(op->type.width));
+            interval = DomInterval(const_true(op->type.width), const_true(op->type.width), a.exact && b.exact);
         } else if (proved(a.min >= b.max)) {
             // a is never less than b.
-            interval = InfInterval(const_false(op->type.width), const_false(op->type.width));
+            interval = DomInterval(const_false(op->type.width), const_false(op->type.width), a.exact && b.exact);
         } else {
-            interval = InfInterval(const_false(op->type.width), const_true(op->type.width));
+            interval = DomInterval(const_false(op->type.width), const_true(op->type.width), a.exact && b.exact);
         }
         log(BOUNDS_ANALYSIS_LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const LE *op) {
-        InfInterval a = bounds(op->a);
-        InfInterval b = bounds(op->b);
+        DomInterval a = bounds(op->a);
+        DomInterval b = bounds(op->b);
         if (proved(a.max <= b.min)) {
             // a is always <= b
-            interval = InfInterval(const_true(op->type.width), const_true(op->type.width));
+            interval = DomInterval(const_true(op->type.width), const_true(op->type.width), a.exact && b.exact);
         } else if (proved(a.min > b.max)) {
             // a is never <= b.
-            interval = InfInterval(const_false(op->type.width), const_false(op->type.width));
+            interval = DomInterval(const_false(op->type.width), const_false(op->type.width), a.exact && b.exact);
         } else {
-            interval = InfInterval(const_false(op->type.width), const_true(op->type.width));
+            interval = DomInterval(const_false(op->type.width), const_true(op->type.width), a.exact && b.exact);
         }
         log(BOUNDS_ANALYSIS_LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
@@ -248,76 +248,86 @@ protected:
     }
     
     virtual void visit(const And *op) {
-        InfInterval a = bounds(op->a);
-        InfInterval b = bounds(op->b);
+        DomInterval a = bounds(op->a);
+        DomInterval b = bounds(op->b);
         if (is_zero(a.max)) {
             // If one is proved false, then it is the result
             interval = a;
+            interval.exact = a.exact && b.exact;
         } else if (is_zero(b.max)) {
             interval = b;
+            interval.exact = a.exact && b.exact;
         } else if (is_one(a.min)) {
             // If one is proved true, then the other is the result.
             interval = b;
+            interval.exact = a.exact && b.exact;
         } else if (is_one(b.min)) {
             interval = a;
+            interval.exact = a.exact && b.exact;
         } else {
             // Neither is proved true nor proved false.
             // The result is uncertain.
-            interval = InfInterval(const_false(op->type.width), const_true(op->type.width));
+            interval = DomInterval(const_false(op->type.width), const_true(op->type.width), a.exact && b.exact);
         }
         log(BOUNDS_ANALYSIS_LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const Or *op) {
-        InfInterval a = bounds(op->a);
-        InfInterval b = bounds(op->b);
+        DomInterval a = bounds(op->a);
+        DomInterval b = bounds(op->b);
         if (is_one(a.min)) {
             // If one is proved true, then it is the result
             interval = a;
+            interval.exact = a.exact && b.exact;
         } else if (is_one(b.min)) {
             interval = b;
+            interval.exact = a.exact && b.exact;
         } else if (is_zero(a.max)) {
             // If one is proved false, then the other is the result.
             interval = b;
+            interval.exact = a.exact && b.exact;
         } else if (is_zero(b.max)) {
             interval = a;
+            interval.exact = a.exact && b.exact;
         } else {
             // Neither is proved true nor proved false.
             // The result is uncertain.
-            interval = InfInterval(const_false(op->type.width), const_true(op->type.width));
+            interval = DomInterval(const_false(op->type.width), const_true(op->type.width), a.exact && b.exact);
         }
         log(BOUNDS_ANALYSIS_LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const Not *op) {
-        InfInterval a = bounds(op->a);
+        DomInterval a = bounds(op->a);
         if (is_one(a.min)) {
             // If a is proved true, then the result is false
-            interval = InfInterval(const_false(op->type.width), const_false(op->type.width));
+            interval = DomInterval(const_false(op->type.width), const_false(op->type.width), a.exact);
         } else if (is_zero(a.max)) {
             // If a is proved false, then the result is true.
-            interval = InfInterval(const_true(op->type.width), const_true(op->type.width));
+            interval = DomInterval(const_true(op->type.width), const_true(op->type.width), a.exact);
         } else {
             // Neither proved true nor proved false.
             // The result is uncertain.
-            interval = InfInterval(const_false(op->type.width), const_true(op->type.width));
+            interval = DomInterval(const_false(op->type.width), const_true(op->type.width), a.exact);
         }
         log(BOUNDS_ANALYSIS_LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
     
     virtual void visit(const Select *op) {
-        InfInterval condition = bounds(op->condition);
+        DomInterval condition = bounds(op->condition);
         if (is_one(condition.min)) {
             // If condition is proved true, then the result is always the true_value
             interval = bounds(op->true_value);
+            interval.exact = interval.exact && condition.exact;
         } else if (is_zero(condition.max)) {
             // If condition is proved false, then the result is always the false_value
             interval = bounds(op->false_value);
+            interval.exact = interval.exact && condition.exact;
         } else {
             // Neither proved true nor proved false.
             // The result can be either expressions.
-            interval = infinterval_union(bounds(op->true_value),
-                                  bounds(op->false_value));
+            // Ironically, this result can be exact even though the condition is not exact.
+            interval = interval_union(bounds(op->true_value), bounds(op->false_value));
         }
         log(BOUNDS_ANALYSIS_LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
@@ -330,18 +340,18 @@ protected:
     }
 
     virtual void visit(const Ramp *op) {
-        InfInterval base = bounds(op->base);
-        InfInterval stride = bounds(op->stride);
+        DomInterval base = bounds(op->base);
+        DomInterval stride = bounds(op->stride);
         
         // Here we return a ramp representing the interval of values in each position of the
         // interpreted Ramp node.
-        interval = InfInterval(new Ramp(base.min, stride.min, op->width), new Ramp(base.max, stride.max, op->width));
+        interval = DomInterval(new Ramp(base.min, stride.min, op->width), new Ramp(base.max, stride.max, op->width), base.exact && stride.exact);
         log(BOUNDS_ANALYSIS_LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
 
     virtual void visit(const Broadcast *op) {
-        InfInterval value = bounds(op->value);
-        interval = InfInterval(new Broadcast(value.min, op->width), new Broadcast(value.max, op->width));
+        DomInterval value = bounds(op->value);
+        interval = DomInterval(new Broadcast(value.min, op->width), new Broadcast(value.max, op->width), value.exact);
         log(BOUNDS_ANALYSIS_LOGLEVEL) << "bounds(" << Expr(op) << "): " << interval << "\n";
     }
 
@@ -370,47 +380,47 @@ protected:
     }
     
     virtual void visit(const LetStmt *op) {
-        interval = InfInterval(); 
+        interval = DomInterval(); 
     }
 
     virtual void visit(const PrintStmt *op) {
-        interval = InfInterval(); 
+        interval = DomInterval(); 
     }
 
     virtual void visit(const AssertStmt *op) {
-        interval = InfInterval(); 
+        interval = DomInterval(); 
     }
 
     virtual void visit(const Pipeline *op) {
-        interval = InfInterval(); 
+        interval = DomInterval(); 
     }
 
     virtual void visit(const For *op) {
-        interval = InfInterval(); 
+        interval = DomInterval(); 
     }
 
     virtual void visit(const Store *op) {
-        interval = InfInterval(); 
+        interval = DomInterval(); 
     }
 
     virtual void visit(const Provide *op) {
-        interval = InfInterval(); 
+        interval = DomInterval(); 
     }
 
     virtual void visit(const Allocate *op) {
-        interval = InfInterval(); 
+        interval = DomInterval(); 
     }
 
     virtual void visit(const Realize *op) {
-        interval = InfInterval(); 
+        interval = DomInterval(); 
     }
 
     virtual void visit(const Block *op) {
-        interval = InfInterval(); 
+        interval = DomInterval(); 
     }
     
     virtual void visit(const StmtTargetVar *op) {
-        interval = InfInterval(); 
+        interval = DomInterval(); 
     }
     
     virtual void visit(const Infinity *op) {

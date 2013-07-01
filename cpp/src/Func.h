@@ -240,7 +240,7 @@ public:
      * Overrides automatic loop splitting (for the specified variable) if previously specified. 
      * Because of automatic type conversion, you can pass any type of IntRange
      * object such as Interval or Range. */
-    EXPORT ScheduleHandle &loop_split(Var var, InfInterval bounds);
+    EXPORT ScheduleHandle &loop_split(Var var, DomInterval bounds);
     /** Index-set split a loop automatically, or not, under control of boolean. 
      * Overrides manual loop splitting if already specified. */
     EXPORT ScheduleHandle &loop_split(Var var, bool auto_split = true);
@@ -592,7 +592,7 @@ public:
 
     //LH
     /** Scheduling of loop splitting. */
-    EXPORT Func &loop_split(Var var, InfInterval mainloop);
+    EXPORT Func &loop_split(Var var, DomInterval mainloop);
     EXPORT Func &loop_split(Var var, bool auto_split = true);
     EXPORT Func &loop_split(bool auto_split = true);
     EXPORT Func &loop_split_all(bool auto_split = true);

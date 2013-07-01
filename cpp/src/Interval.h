@@ -15,7 +15,9 @@ class Interval : public Internal::IntRange {
 private:
     int extent; // Hide the extent member so that it cannot be used from Interval.
 public:
-    Interval(Expr min, Expr max) : IntRange(Mode_Interval, min, max) {}
+    /** Construct an Interval. If exact is not specified, then it is assumed to be true.
+     * As, for instance, if a programmer specifies an interval for a Domain. */
+    Interval(Expr min, Expr max, bool exact = true) : IntRange(Mode_Interval, min, max, exact) {}
     Interval() : IntRange() {}
     
     int imin();

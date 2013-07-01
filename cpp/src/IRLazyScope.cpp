@@ -224,7 +224,7 @@ void lazy_scope_test() {
     Expr call2 = new Call(i32, "buf", vec(max(min(x-1,100),0)));
     Expr call3 = new Call(i32, "buf", vec(Expr(new Clamp(Clamp::Reflect, x+1, 0, 100))));
     Stmt store2 = new Store("out", call + call2 + call3 + 1 + y, x); // y is undefined here
-    LoopSplitInfo manualsplit(InfInterval(1,99));
+    LoopSplitInfo manualsplit(DomInterval(1,99,true));
     Stmt for_loop2 = new For("x", 0, 100, For::Serial, manualsplit, store2);
     Stmt pipeline = new Pipeline("buf", letstmt, Stmt(), for_loop2);
     

@@ -37,7 +37,7 @@ ostream &operator<<(ostream &stream, const vector<Halide::Interval> &v) {
     return stream;
 }
 
-ostream &operator<<(ostream &stream, const vector<Halide::InfInterval> &v) {
+ostream &operator<<(ostream &stream, const vector<Halide::DomInterval> &v) {
     for (size_t i = 0; i < v.size(); i++) {
         stream << v[i];
         if (i+1 < v.size()) {
@@ -101,12 +101,22 @@ ostream &operator<<(ostream &stream, Domain d) {
 }
 
 ostream &operator<<(ostream &stream, Interval v) {
+    stream << "interval";
+    if (! v.exact) stream << "~"; // Approximate, not exact interval.
+    stream << "(" << v.min << ", " << v.max << ")";
+    return stream;
+}
+
+ostream &operator<<(ostream &stream, DomInterval v) {
+    if (! v.exact) stream << "~"; // Approximate, not exact interval.
     stream << "[" << v.min << ", " << v.max << "]";
     return stream;
 }
 
-ostream &operator<<(ostream &stream, InfInterval v) {
-    stream << "[" << v.min << ", " << v.max << "]";
+ostream &operator<<(ostream &stream, Range v) {
+    stream << "range";
+    if (! v.exact) stream << "~"; // Approximate, not exact range.
+    stream << "(" << v.min << ", " << v.extent << ")";
     return stream;
 }
 

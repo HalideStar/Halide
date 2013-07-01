@@ -382,7 +382,7 @@ ScheduleHandle &ScheduleHandle::loop_split(Var var, bool auto_split) {
     return *this;
 }
 
-ScheduleHandle &ScheduleHandle::loop_split(Var var, InfInterval interval) {
+ScheduleHandle &ScheduleHandle::loop_split(Var var, DomInterval interval) {
     record_partition(schedule, var, LoopSplitInfo(interval));
     return *this;
 }
@@ -472,7 +472,7 @@ Func &Func::reorder(Var x, Var y, Var z, Var w, Var t) {
     return *this;
 }
 
-Func &Func::loop_split(Var x, InfInterval split) {
+Func &Func::loop_split(Var x, DomInterval split) {
     ScheduleHandle(func.schedule()).loop_split(x, split);
     return *this;
 }
