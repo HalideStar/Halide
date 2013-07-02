@@ -712,7 +712,7 @@ protected:
     // but the same name are not hidden, they are overloaded.
     using Solver::visit;
 
-# if 0
+# if 1
     /** Domain inference on border handlers.
      * Consider a call f(clamp(x)) where clamp is some clamp-like border handling index expression.
      * The question is: Given the domains of f, what are the domains of x?
@@ -746,13 +746,12 @@ protected:
      * partially_effective: True if the clamp operation can be partially effective.
      * return value: The domain intervals applicable to the enclosing expression.
      */
-    void solve_clamp_limits(std::vector<DomInterval> v, Type t, Expr op_min, Expr op_max, bool partially_effective) {
+    std::vector<DomInterval> solve_clamp_limits(std::vector<DomInterval> v, Type t, Expr op_min, Expr op_max, bool partially_effective) {
         // Expressions representing whether the limits are effective or not.
-        Expr e_effective_min = op_min >= v[Domain::valid].min;
-        Expr e_effective_max = op_max <= v[Domain::valid].max;
-        std::vector<DomInterval> result;
-        // Start with two infinite domain intervals - one for Valid, one for Computable.
-        result = vec(DomInterval(), DomInterval());
+        Expr e_effective_min = op_min >= v[Domain::Valid].min;
+        Expr e_effective_max = op_max <= v[Domain::Valid].max;
+        // Start with two meaningless domain intervals - one for Valid, one for Computable.
+        std::vector<DomInterval> result(2,DomInterval());
         if (! partially_effective) {
             // Clamp-like operator that cannot be partially effective.
             // Must be effective at both ends, or neither is considered effective
@@ -764,50 +763,16 @@ protected:
         // If the border handler is not effective at the end, then both the computable and
         // the valid domains are limited to the tighter of the clamp limit or the
         // incoming valid domain.
+        // In fact, whether or not the border handler is effective, the valid domain
+        // is limited to the tighter of the clamp limit and the incoming valid domain
+        // because when it is effective it is the clamp limit that is tighter.
         result[Domain::Computable].min = simplify(select(e_effective_min, make_infinity(t, -1),
                                                          max(op_min, v[Domain::Valid].min)));
         result[Domain::Computable].max = simplify(select(e_effective_max, make_infinity(t, +1),
                                                          min(op_max, v[Domain::Valid].max)));
-        if (partially_effective) {
-            result[Domain::Valid].min = simplify(max(op_min, v[Domain::Valid].min));
-        } else {
-            // Complicate case: The min is only effective if both min and max are
-            // effective
-            
-/* COnfusing:
-Seems that both limits can only be effective if one is effective.
-Seems that valid domain expression is always max(op_min,v.min) and min(op_max,v.max)
-*/
-            result[Domain::Valid].min = simplify(select(e_effective_min, op_min,
-                                                        max(op_min, v[Domain::Valid].min)));
-        result[Domain::Valid].max = simplify(select(e_effective_min, op_min,
-                                                    max(op_min, v[Domain::Valid].min)));
-        if (effective_min) {
-            // Effective at the min end.  This means that the computable domain
-            // is infinite [ALTHOUGH we could define clamp-like operators that
-            // are not so generous] and the valid domain is limited to the clamp limit.
-            result[Domain::Computable].min = make_infinity(t, -1);
-            result[Domain::Valid].min = op_min;
-        } else {
-            // In the case that the border handler is not effective (at this end)
-            // then the computable domain is limited to the incoming valid domain
-            // intersected with the clamp interval.  The logic is: Border handling is
-            // being applied to extend the borders; it is not valid to access the underlying
-            // function/image beyond its valid borders.
-            // Because we dont know that the border handler is necessarily ineffective,
-            // we build select expressions.
-            result[Domain::Computable].min = simplify(select(e_effective_min,
-                                                             max(op_min, v[Domain::Computable].min));
-            result[Domain::Valid].min = simplify(max(op_min, v[Domain::Valid].min));
-        }
-        if (effective_max) {
-            callee[Domain::Computable].max = make_infinity(op_a.type(), +1);
-            callee[Domain::Valid].max = op_max;
-        } else {
-            callee[Domain::Computable].max = simplify(min(op_max, callee[Domain::Computable].max));
-            callee[Domain::Valid].max = simplify(min(op_max, callee[Domain::Valid].max));
-        }
-        op_a.accept(this);
+        result[Domain::Valid].min = simplify(max(op_min, v[Domain::Valid].min));
+        result[Domain::Valid].max = simplify(min(op_max, v[Domain::Valid].max));
+        return result;
     }
 # endif
 

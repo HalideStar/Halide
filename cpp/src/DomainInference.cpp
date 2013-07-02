@@ -384,28 +384,80 @@ private:
     /** Domain inference on border handlers.
      * Consider a call f(clamp(x)) where clamp is some clamp-like border handling index expression.
      * The question is: Given the domains of f, what are the domains of x?
+     * 
      * Effective border handler.  A border handler is considered EFFECTIVE if the clamp limits
      * are contained in the valid domain of f.  This means that the border handler prevents access
      * to pixels outside the valid domain of f.
      * Computable domain: If the border handler is effective, then the computable domain applicable to
      *    x is infinite.  If the border handler is not effective, then the computable domain is restricted
-     *    to the computable domain of f intersected with the clamp interval.
+     *    to the VALID domain of f intersected with the clamp interval because the semantics of applying
+     *    a border handler is that no access (not even a padded access) can exceed the valid domain
+     *    of the underlying image/function.
      * Valid domain: If the border handler is effective, then the valid domain is the clamp interval
      *    because data outside that interval is border handled.  If the border handler is not effective,
-     *    then the valid domain is the intersection of valid domain of f with clamp.
+     *    then the valid domain is the intersection of valid domain of f with clamp interval.
      * Partially effective border handler: One clamp limit is within the valid domain of f, the other is not.
      *    General border handlers cannot be partially effective. Halide's clamp operator, i.e. Min and Max,
      *    can be partially effective because when the clamp is applied, the value is moved to the clamp
      *    limit.  In this case, if a clamp limit is within the valid domain of f, then that 
-     *    limit is partially effective in its own right.  The corresponding limit of x is infinite.
+     *    limit is partially effective in its own right: everything above/below that limit is
+     *    clamped to a value inside the valid domain of f.  The corresponding limit of x is infinite.
      *    An operation like mod (or Border::wrap) cannot be partially effective because a value of x
      *    just outside one limit is wrapped to the other limit; for the wrapped value to be in range,
      *    both limits must be in range.
+     *
+     * Parameters
+     * v: The domain intervals of the enclosing clamp expression.
+     * t: The Halide type of the operand of the clamp expression - used to create infinities.
+     * op_min, op_max: The minimum and maximum limit expressions.  In the case that
+     *    the operator has only one limit expression, the other MUST be undefined to indicate
+     *    that it is not even trying to impose a limit.
+     * partially_effective: True if the clamp operation can be partially effective.
+     * return value: The domain intervals applicable to the enclosing expression.
      */
+    std::vector<DomInterval> solve_clamp_limits(std::vector<DomInterval> v, Type t, Expr op_min, Expr op_max, bool partially_effective) {
+        // Start with a copy of the input domain intervals
+        std::vector<DomInterval> result(v);
+        bool min_def = op_min.defined();
+        bool max_def = op_max.defined();
+        // Expressions representing whether the limits are effective or not.
+        Expr e_effective_min, e_effective_max;
+        if (min_def) e_effective_min = op_min >= v[Domain::Valid].min;
+        if (max_def) e_effective_max = op_max <= v[Domain::Valid].max;
+        if (! partially_effective && min_def && max_def) {
+            // Clamp-like operator that cannot be partially effective.
+            // Must be effective at both ends, or neither is considered effective
+            e_effective_min = e_effective_max = (e_effective_min && e_effective_max);
+        }
+        // If the border handler is effective at a particular end then the
+        // computable domain at that end becomes infinity and the valid domain limit
+        // becomes the clamp limit.
+        // If the border handler is not effective at the end, then both the computable and
+        // the valid domains are limited to the tighter of the clamp limit or the
+        // incoming valid domain.
+        // In fact, whether or not the border handler is effective, the valid domain
+        // is limited to the tighter of the clamp limit and the incoming valid domain
+        // because when it is effective it is the clamp limit that is tighter.
+        // However, if op_min or op_max is undefined (i.e. no limit being applied)
+        // then the corresponding bounds of the domain intervals are unchanged.
+        if (min_def) {
+            result[Domain::Computable].min = simplify(select(e_effective_min, make_infinity(t, -1),
+                                                             max(op_min, v[Domain::Valid].min)));
+            result[Domain::Valid].min = simplify(max(op_min, v[Domain::Valid].min));
+        }
+        if (max_def) {
+            result[Domain::Computable].max = simplify(select(e_effective_max, make_infinity(t, +1),
+                                                             min(op_max, v[Domain::Valid].max)));
+            result[Domain::Valid].max = simplify(min(op_max, v[Domain::Valid].max));
+        }
+        return result;
+    }
+
     
     // Method to handle clamp-like operations, which are treated as border handlers.
     // Clamp(op_a, op_min, op_max)
     void clamp_limits(Expr op_a, Expr op_min, Expr op_max, bool partially_effective) {
+# if 0
         // Determine whether the limits are individually effective
         bool effective_min = proved(op_min >= callee[Domain::Valid].min);
         bool effective_max = proved(op_max <= callee[Domain::Valid].max);
@@ -432,10 +484,16 @@ private:
             callee[Domain::Computable].max = simplify(min(op_max, callee[Domain::Computable].max));
             callee[Domain::Valid].max = simplify(min(op_max, callee[Domain::Valid].max));
         }
+# else
+        log(3,"DOMINF") << "C: " << callee[Domain::Computable] << "  V: " << callee[Domain::Valid] << "\n";
+        callee = solve_clamp_limits(callee, op_a.type(), op_min, op_max, partially_effective);
+        log(3,"DOMINF") << "C: " << callee[Domain::Computable] << "  V: " << callee[Domain::Valid] << "\n";
+# endif
         op_a.accept(this);
     }
     
     void visit(const Clamp *op) {
+        log(2,"DOMINF") << Expr(op) << "\n";
         for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
             log(3,"DOMINF") << Expr(op) << " on " << callee[j] << "\n";
         }
@@ -456,16 +514,17 @@ private:
 
     // Max as border handler
     void visit(const Max *op) {
+        log(2,"DOMINF") << Expr(op) << "\n";
         for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
             log(3,"DOMINF") << "Max(" << op->a << ",  " << op->b << ") on " << callee[j] << "\n";
         }
         if (is_constant_expr(op->b)) {
             // max(a,b) is equivalent to clamping on the range (b,infinity)
-            clamp_limits(op->a, op->b, make_infinity(op->b.type(), +1), true);  // Can be partially effective 
+            clamp_limits(op->a, op->b, Expr(), true);  // Can be partially effective 
         }
         else if (is_constant_expr(op->a)) {
             // Interchange the parameters
-            clamp_limits(op->b, op->a, make_infinity(op->a.type(), +1), true);
+            clamp_limits(op->b, op->a, Expr(), true);
         }
         else {
             // max of two non-constant expressions will lead to inexact results
@@ -478,15 +537,16 @@ private:
     
     // Min as border handler
     void visit(const Min *op) {
+        log(2,"DOMINF") << Expr(op) << "\n";
         for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
             log(3,"DOMINF") << "Min(" << op->a << ",  " << op->b << ") on " << callee[j] << "\n";
         }
         if (is_constant_expr(op->b)) {
-            clamp_limits(op->a, make_infinity(op->b.type(), -1), op->b, true); // Can be partially effective
+            clamp_limits(op->a, Expr(), op->b, true); // Can be partially effective
         }
         else if (is_constant_expr(op->a)) {
             // Interchange the parameters
-            clamp_limits(op->b, make_infinity(op->a.type(), -1), op->a, true);
+            clamp_limits(op->b, Expr(), op->a, true);
         }
         else {
             // min of two non-constant expressions will lead to inexact results

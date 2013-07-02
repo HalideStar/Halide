@@ -68,19 +68,11 @@ static bool check_domain (std::string name, std::string dname, Domain d, Domain 
         std::cout << name <<": " << dname << ": Domain sizes differ\n";
     }
     for (size_t i = 0; i < d.intervals.size() && i < expect.intervals.size(); i++) {
-        if (! equal(d.intervals[i].min, expect.intervals[i].min)) {
-            std::cout << name << ": " << dname << "[" << i << "]: Expected min: " 
-                      << expect.intervals[i].min << "  Got: " << d.intervals[i].min << "\n";
-            success = false;
-        }
-        if (! equal(d.intervals[i].max, expect.intervals[i].max)) {
-            std::cout << name << ": " << dname << "[" << i << "]: Expected max: " 
-                      << expect.intervals[i].max << "  Got: " << d.intervals[i].max << "\n";
-            success = false;
-        }
-        if (d.intervals[i].exact != expect.intervals[i].exact) {
-            std::cout << name << ": " << dname << "[" << i << "]: Expected exact: " 
-                      << expect.intervals[i].exact << "  Got: " << d.intervals[i].exact << "\n";
+        if (! equal(d.intervals[i].min, expect.intervals[i].min) ||
+            ! equal(d.intervals[i].max, expect.intervals[i].max) ||
+            d.intervals[i].exact != expect.intervals[i].exact) {
+            std::cout << name << ": " << dname << "[" << i << "]: Expected: " 
+                      << expect.intervals[i] << "  Got: " << d.intervals[i] << "\n";
             success = false;
         }
     }
@@ -153,6 +145,8 @@ void border_test() {
     check("Border::reflect101()", Border::reflect101(init), expect_reflect101);
     check("Border::constant(0)()", Border::constant(0)(init), expect_constant0);
     check("Border::tile(2,3)()", Border::tile(2,3)(init), expect_tile23); 
+    
+    std::cout << "Border handling implementation tests passed.\n";
     
     // Test with a realized image as the input.
     Func input("input");;
