@@ -272,62 +272,6 @@ DomInterval inverseRamp(DomInterval v, DomInterval s, int width) {
                        simplify(min(basemax, basemax + (stridemax - s.max) * (width-1))), v.exact && s.exact);
 }
 
-/** Domain inference on border handlers.
- * Consider a call f(clamp(x)) where clamp is some clamp-like border handling index expression.
- * The question is: Given the domains of f, what are the domains of x?
- * Effective border handler.  A border handler is considered EFFECTIVE if the clamp limits
- * are contained in the valid domain of f.  This means that the border handler prevents access
- * to pixels outside the valid domain of f.
- * Computable domain: If the border handler is effective, then the computable domain applicable to
- *    x is infinite.  If the border handler is not effective, then the computable domain is restricted
- *    to the computable domain of f intersected with the clamp interval.
- * Valid domain: If the border handler is effective, then the valid domain is the clamp interval
- *    because data outside that interval is border handled.  If the border handler is not effective,
- *    then the valid domain is the intersection of valid domain of f with clamp.
- * Partially effective border handler: One clamp limit is within the valid domain of f, the other is not.
- *    General border handlers cannot be partially effective. Halide's clamp operator, i.e. Min and Max,
- *    can be partially effective because when the clamp is applied, the value is moved to the clamp
- *    limit.  In this case, if a clamp limit is within the valid domain of f, then that 
- *    limit is partially effective in its own right.  The corresponding limit of x is infinite.
- *    An operation like mod (or Border::wrap) cannot be partially effective because a value of x
- *    just outside one limit is wrapped to the other limit; for the wrapped value to be in range,
- *    both limits must be in range.
- */
-
- # if 0
-// Method to handle clamp-like operations, which are treated as border handlers.
-// Clamp(op_a, op_min, op_max)
-std::vector< clamp_limits(Expr op_a, Expr op_min, Expr op_max, bool partially_effective) {
-    // Determine whether the limits are individually effective
-    bool effective_min = proved(op_min >= callee[Domain::Valid].interval.min);
-    bool effective_max = proved(op_max <= callee[Domain::Valid].interval.max);
-    if (! partially_effective) {
-        // Clamp-like operator that cannot be partially effective.
-        // Must be effective at both ends, or neither is considered effective
-        effective_min &= effective_max;
-        effective_max = effective_min;
-    }
-    if (effective_min) {
-        callee[Domain::Computable].interval.min = make_infinity(op_a.type(), -1);
-        callee[Domain::Valid].interval.min = op_min;
-    } else {
-        // Note: These definitions are conservative in the case that the border handler
-        // is actually effective but cannot be proved to be so.
-        // ??????? Is this the right way to be conservative????
-        callee[Domain::Computable].interval.min = simplify(max(op_min, callee[Domain::Computable].interval.min));
-        callee[Domain::Valid].interval.min = simplify(max(op_min, callee[Domain::Valid].interval.min));
-    }
-    if (effective_max) {
-        callee[Domain::Computable].interval.max = make_infinity(op_a.type(), +1);
-        callee[Domain::Valid].interval.max = op_max;
-    } else {
-        callee[Domain::Computable].interval.max = simplify(min(op_max, callee[Domain::Computable].interval.max));
-        callee[Domain::Valid].interval.max = simplify(min(op_max, callee[Domain::Valid].interval.max));
-    }
-    op_a.accept(this);
-}
-# endif
-
 // end anonymous namespace
 }
 
@@ -370,8 +314,7 @@ protected:
         const Sub *sub_e = e.as<Sub>();
         const Mul *mul_e = e.as<Mul>();
         const Div *div_e = e.as<Div>();
-        const Min *min_e = e.as<Min>();
-        const Max *max_e = e.as<Max>();
+        const Mod *mod_e = e.as<Mod>();
         const Ramp *ramp_e = e.as<Ramp>();
         
         /* if (solve_e) {
@@ -401,19 +344,18 @@ protected:
             // divide back down to the range (a,b).  Zoom does this.
             // DOES NOT HANDLE AN INTERVAL FOR THE CONSTANT EXPRESSION
             expr = mutate(solve(div_e->a, v_apply(zoom, op->v, div_e->b)) / div_e->b);
-        } else if (min_e && is_constant_expr(min_e->a)) {
-            // Min, Max: push outside of Solve nodes.
-            // solve(min(k,v)) on (a,b) --> min(k,solve(v)). 
-            expr = mutate(new Min(min_e->a, solve(min_e->b, v_apply(inverseMin, op->v, bounds.bounds(min_e->a)))));
-        } else if (min_e && is_constant_expr(min_e->b)) {
-            // solve(min(v,k)) on (a,b) --> min(solve(v),k). 
-            expr = mutate(new Min(solve(min_e->a, v_apply(inverseMin, op->v, bounds.bounds(min_e->b))), min_e->b));
-        } else if (max_e && is_constant_expr(max_e->a)) {
-            // solve(max(k,v)) on (a,b) --> max(k,solve(v)). 
-            expr = mutate(new Max(max_e->a, solve(max_e->b, v_apply(inverseMax, op->v, bounds.bounds(max_e->a)))));
-        } else if (max_e && is_constant_expr(max_e->b)) {
-            // solve(max(v,k)) on (a,b) --> max(solve(v),k). 
-            expr = mutate(new Max(solve(max_e->a, v_apply(inverseMax, op->v, bounds.bounds(max_e->b))), max_e->b));
+        } else if (mod_e && is_constant_expr(mod_e->b)) {
+            // solve(e % k) on (a,b) --> solve(e) % k with interval as follows.
+            // Define the modulus interval as the interval of (-infinity,infinity)%k; 
+            // i.e. for integer k>0 it is (0,k-1).
+            // If (a,b) is no smaller than the modulus interval then
+            // the interval of e is -infinity,infinity.  Otherwise,
+            // constraining e%k to (a,b) means constraining e to 
+            // the intersection of (a,b) and the modulus
+            // interval.  Of course, there are other ranges of e that
+            // could be taken as canonical, but there is no way to know which
+            // one to prefer.
+            expr = mutate(solve(mod_e->a, v_apply(inverseMod, op->v, mod_e->b)) % mod_e->b);
         } else if (ramp_e && is_constant_expr(ramp_e->stride)) {
             // solve(ramp(v,k,w)) on (a,b)
             //std::cout << "Solve " << e << "\n";
@@ -645,8 +587,10 @@ virtual void visit(const Add *op) {
         log(loglevel) << depth << " XDiv simplified to " << expr << "\n";
     }
 
-    
     //virtual void visit(const Mod *op) {
+    // The types of rules we could add here (where k1,... are constant expressions)
+    // (e * k1 + k2) % k1 --> k2
+
     //virtual void visit(const Min *op) {
     //virtual void visit(const Max *op) {
     //virtual void visit(const EQ *op) {
@@ -692,6 +636,43 @@ class LoopSolver : public Solver {
 public:
     LoopSolver() : Solver(solver_cache) {}
 
+protected:
+    using Solver::visit;
+    
+    virtual void visit(const Solve *op) {
+        log(loglevel) << depth << " LoopSolver Solve simplify " << Expr(op) << "\n";
+        Expr e = mutate(op->body);
+        
+        log(loglevel) << depth << " LoopSolver Solve using " << e << "\n";
+
+        const Min *min_e = e.as<Min>();
+        const Max *max_e = e.as<Max>();
+        // Not included (yet)
+        // Clamp, Mod
+        // What difference would it make to include them?
+        // Then we could solve loop split points with nested calls as Mod(...Clamp(...)...),
+        // Clamp(...Min(...)...) etc.
+        // As it is, only Min and Max are allowed to be nested, and that is primarily because
+        // clamp() is implemented as nested min with max.
+        
+        if (min_e && is_constant_expr(min_e->a)) {
+            // Min, Max: push outside of Solve nodes.
+            // solve(min(k,v)) on (a,b) --> min(k,solve(v)). 
+            expr = mutate(new Min(solve(min_e->b, v_apply(inverseMin, op->v, bounds.bounds(min_e->a))), min_e->a));
+        } else if (min_e && is_constant_expr(min_e->b)) {
+            // solve(min(v,k)) on (a,b) --> min(solve(v),k). 
+            expr = mutate(new Min(solve(min_e->a, v_apply(inverseMin, op->v, bounds.bounds(min_e->b))), min_e->b));
+        } else if (max_e && is_constant_expr(max_e->a)) {
+            // solve(max(k,v)) on (a,b) --> max(k,solve(v)). 
+            expr = mutate(new Max(solve(max_e->b, v_apply(inverseMax, op->v, bounds.bounds(max_e->a))), max_e->a));
+        } else if (max_e && is_constant_expr(max_e->b)) {
+            // solve(max(v,k)) on (a,b) --> max(solve(v),k). 
+            expr = mutate(new Max(solve(max_e->a, v_apply(inverseMax, op->v, bounds.bounds(max_e->b))), max_e->b));
+        } else {
+            Solver::visit(op);
+        }
+        log(loglevel) << depth << " LoopSolver Solve simplified to " << expr << "\n";
+    }
 };
 
 Stmt loop_solver(Stmt s) {
@@ -706,13 +687,20 @@ Expr loop_solver(Expr e) {
  * In addition to the basic Solver, it provides for interpretation of various border
  * handling idioms and infers the Valid and Computable domains appropriately. */
 class DomainSolver : public Solver {
+    // use our own cache for IRCacheMutator.
+    // Each different mutator must have its own cache.
+    // Simplify uses a shared cache, so we need to override that.
+    IRCacheMutator::Cache solver_cache;
+    
+public:
+    DomainSolver() : Solver(solver_cache) {}
+
 protected:
     // using parent::visit indicates that
     // methods of the base class with different parameters
     // but the same name are not hidden, they are overloaded.
     using Solver::visit;
 
-# if 1
     /** Domain inference on border handlers.
      * Consider a call f(clamp(x)) where clamp is some clamp-like border handling index expression.
      * The question is: Given the domains of f, what are the domains of x?
@@ -742,17 +730,21 @@ protected:
      * v: The domain intervals of the enclosing clamp expression.
      * t: The Halide type of the operand of the clamp expression - used to create infinities.
      * op_min, op_max: The minimum and maximum limit expressions.  In the case that
-     *    the operator has only one limit expression, the other can be made as infinity.
+     *    the operator has only one limit expression, the other MUST be undefined to indicate
+     *    that it is not even trying to impose a limit.
      * partially_effective: True if the clamp operation can be partially effective.
      * return value: The domain intervals applicable to the enclosing expression.
      */
     std::vector<DomInterval> solve_clamp_limits(std::vector<DomInterval> v, Type t, Expr op_min, Expr op_max, bool partially_effective) {
+        // Start with a copy of the input domain intervals
+        std::vector<DomInterval> result(v);
+        bool min_def = op_min.defined();
+        bool max_def = op_max.defined();
         // Expressions representing whether the limits are effective or not.
-        Expr e_effective_min = op_min >= v[Domain::Valid].min;
-        Expr e_effective_max = op_max <= v[Domain::Valid].max;
-        // Start with two meaningless domain intervals - one for Valid, one for Computable.
-        std::vector<DomInterval> result(2,DomInterval());
-        if (! partially_effective) {
+        Expr e_effective_min, e_effective_max;
+        if (min_def) e_effective_min = op_min >= v[Domain::Valid].min;
+        if (max_def) e_effective_max = op_max <= v[Domain::Valid].max;
+        if (! partially_effective && min_def && max_def) {
             // Clamp-like operator that cannot be partially effective.
             // Must be effective at both ends, or neither is considered effective
             e_effective_min = e_effective_max = (e_effective_min && e_effective_max);
@@ -766,56 +758,75 @@ protected:
         // In fact, whether or not the border handler is effective, the valid domain
         // is limited to the tighter of the clamp limit and the incoming valid domain
         // because when it is effective it is the clamp limit that is tighter.
-        result[Domain::Computable].min = simplify(select(e_effective_min, make_infinity(t, -1),
-                                                         max(op_min, v[Domain::Valid].min)));
-        result[Domain::Computable].max = simplify(select(e_effective_max, make_infinity(t, +1),
-                                                         min(op_max, v[Domain::Valid].max)));
-        result[Domain::Valid].min = simplify(max(op_min, v[Domain::Valid].min));
-        result[Domain::Valid].max = simplify(min(op_max, v[Domain::Valid].max));
+        // However, if op_min or op_max is undefined (i.e. no limit being applied)
+        // then the corresponding bounds of the domain intervals are unchanged.
+        if (min_def) {
+            result[Domain::Computable].min = simplify(select(e_effective_min, make_infinity(t, -1),
+                                                             max(op_min, v[Domain::Valid].min)));
+            result[Domain::Valid].min = simplify(max(op_min, v[Domain::Valid].min));
+        }
+        if (max_def) {
+            result[Domain::Computable].max = simplify(select(e_effective_max, make_infinity(t, +1),
+                                                             min(op_max, v[Domain::Valid].max)));
+            result[Domain::Valid].max = simplify(min(op_max, v[Domain::Valid].max));
+        }
         return result;
     }
-# endif
+
 
     virtual void visit(const Solve *op) {
-        log(loglevel) << depth << " DomainSolver::Solve simplify " << Expr(op) << "\n";
+        log(loglevel) << depth << " DomainSolver Solve simplify " << Expr(op) << "\n";
         Expr e = mutate(op->body);
         
-        log(loglevel) << depth << " DomainSolver::Solve using " << e << "\n";
+        log(loglevel) << depth << " DomainSolver Solve using " << e << "\n";
         const Min *min_e = e.as<Min>();
         const Max *max_e = e.as<Max>();
-        const Ramp *ramp_e = e.as<Ramp>();
+        const Clamp *clamp_e = e.as<Clamp>();
         
         /** Min, Max, Clamp are treated as border handlers.  Should Mod also be treated as such? */
         if (min_e && is_constant_expr(min_e->a)) {
             // Min, Max: push outside of Solve nodes.
             // solve(min(k,v)) on (a,b) --> min(k,solve(v)). 
-            expr = mutate(new Min(min_e->a, solve(min_e->b, v_apply(inverseMin, op->v, bounds.bounds(min_e->a)))));
+            expr = mutate(new Min(solve(min_e->b, solve_clamp_limits(op->v, op->type, Expr(), min_e->a, true)), min_e->a));
         } else if (min_e && is_constant_expr(min_e->b)) {
             // solve(min(v,k)) on (a,b) --> min(solve(v),k). 
-            expr = mutate(new Min(solve(min_e->a, v_apply(inverseMin, op->v, bounds.bounds(min_e->b))), min_e->b));
+            expr = mutate(new Min(solve(min_e->a, solve_clamp_limits(op->v, op->type, Expr(), min_e->b, true)), min_e->b));
         } else if (max_e && is_constant_expr(max_e->a)) {
             // solve(max(k,v)) on (a,b) --> max(k,solve(v)). 
-            expr = mutate(new Max(max_e->a, solve(max_e->b, v_apply(inverseMax, op->v, bounds.bounds(max_e->a)))));
+            expr = mutate(new Max(solve(max_e->b, solve_clamp_limits(op->v, op->type, max_e->a, Expr(), true)), max_e->a));
         } else if (max_e && is_constant_expr(max_e->b)) {
             // solve(max(v,k)) on (a,b) --> max(solve(v),k). 
-            expr = mutate(new Max(solve(max_e->a, v_apply(inverseMax, op->v, bounds.bounds(max_e->b))), max_e->b));
-        } else if (ramp_e && is_constant_expr(ramp_e->stride)) {
-            // solve(ramp(v,k,w)) on (a,b)
-            //std::cout << "Solve " << e << "\n";
-            //std::cout << "ramp_e->base " << ramp_e->base << "\n";
-            //std::cout << "ramp_e->stride " << ramp_e->stride << "\n";
-            //std::cout << "op->v " << op->v << "\n";
-            //std::cout << "bounds(ramp_e->stride) " << bounds.bounds(ramp_e->stride) << "\n";
-            expr = mutate(new Ramp(solve(ramp_e->base, 
-                                         v_apply(inverseRamp, op->v, bounds.bounds(ramp_e->stride), ramp_e->width)),
-                                   ramp_e->stride, ramp_e->width));
-            //std::cout << "Solution " << expr << "\n";
+            expr = mutate(new Max(solve(max_e->a, solve_clamp_limits(op->v, op->type, max_e->b, Expr(), true)), max_e->b));
+        } else if (clamp_e) {
+            // clamp.
+            if (clamp_e->clamptype == Clamp::None) {
+                // Clamp::None is used to force the Computable domain to be the same as the Valid domain - i.e.
+                // to prevent further computation from exploiting the current border handler.
+                // This particular border handler does NOT use the clamp limits!
+                std::vector<DomInterval> result = op->v;
+                result[Domain::Computable] = op->v[Domain::Valid];
+                expr = mutate(new Clamp(Clamp::None, solve(clamp_e->a, result)));
+            } else {
+                // Require clamp limits to be constant expressions - i.e. not dependent on other index variables.
+                if (! is_constant_expr(clamp_e->min) || ! is_constant_expr(clamp_e->max)) {
+                    std::cerr << "Clamp limits (border handling) must not depend on free variables\n";
+                    std::cerr << "    " << e << "\n";
+                    assert(0 && "Clamp limits must not depend on free variables\n");
+                }
+                // Identify partial border handlers.
+                // Replicate can be partially effective.
+                // Tile could possibly be partially effective, although the tile dimensions may come into play.
+                bool partial = clamp_e->clamptype == Clamp::Replicate; 
+                expr = mutate(new Clamp(clamp_e->clamptype, 
+                                        solve(clamp_e->a, solve_clamp_limits(op->v, op->type, clamp_e->min, clamp_e->max, partial)), 
+                                        clamp_e->min, clamp_e->max, clamp_e->p1));
+            }
         } else {
             // There is no specific rule for solving this inequality.
             // Try the general-purpose solver instead.
             Solver::visit(op);
         }
-        log(loglevel) << depth << " Solve simplified to " << expr << "\n";
+        log(loglevel) << depth << " DomainSolverSolve simplified to " << expr << "\n";
     }
 };
 

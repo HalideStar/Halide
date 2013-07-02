@@ -152,17 +152,34 @@ DomInterval inverseMod(DomInterval v, Expr b) {
 }
 
 
-# if 0
-// Operator% cannot simply take the modulus of the interval limits;
-// in the case that the interval includes an integer multiplier of the modulus
-// then the result interval is the full range (0,b-1) or (b+1,0) (for integer modulus).
-// e.g. (3,5) % 4.  It gets really tricky to do it right, so leave it out until actually required.
-// See also Bounds.cpp which does bounds analysis and includes some fancy handling of
-// modulus operators.  See also operator% below for two intervals.
-DomInterval operator%(DomInterval v, Expr b) { 
-    return DomInterval(simplify(v.min % b), simplify(v.max % b), v.exact); 
+DomInterval operator%(DomInterval u, Expr b) {
+    // If we can prove that u is in the range of the modulus b then DomInterval u is the result. 
+    // Otherwise, we simply that the interval from zero to b.
+    if (proved(u.min >= 0) && proved(u.max < b)) {
+        // u is a positive DomInterval and so is v.
+        return u;
+    } else if (proved(u.max <= 0) && proved(u.min > b)) {
+        // u is a negative DomInterval and so is v.
+        return u;
+    } else {
+        Expr zero = Internal::make_zero(u.min.type());
+        // rmin/rmax are the limits that apply if v can take
+        // respectively negative/positive values.
+        Expr rmin, rmax;
+        if (b.type().is_float()) {
+            rmin = b;
+        } else {
+            rmin = b + 1;
+        }
+        if (b.type().is_float()) {
+            rmax = b;
+        } else {
+            rmax = b - 1;
+        }
+        // The actual limits are further expanded to include zero.
+        return DomInterval(simplify(min(rmin,zero)), simplify(max(rmax,zero)), u.exact);
+    }
 }
-# endif
 
 int DomInterval::imin() {
     int ival;
@@ -232,7 +249,8 @@ DomInterval operator/(DomInterval u, DomInterval v) {
 }
 
 DomInterval operator%(DomInterval u, DomInterval v) {
-    // If we can prove that u is in the range of mod v then DomInterval u is the result. 
+    // If we can prove that u is in the range of the modulus v then DomInterval u is the result. 
+    // Otherwise, we simply that the interval from zero to v.
     if (proved(u.min >= 0) && proved(u.max < v.min)) {
         // u is a positive DomInterval and so is v.
         return u;
@@ -240,14 +258,22 @@ DomInterval operator%(DomInterval u, DomInterval v) {
         // u is a negative DomInterval and so is v.
         return u;
     } else {
-        Expr rmin = Internal::make_zero(u.min.type());
-        Expr rmax;
+        Expr zero = Internal::make_zero(u.min.type());
+        // rmin/rmax are the limits that apply if v can take
+        // respectively negative/positive values.
+        Expr rmin, rmax;
+        if (v.min.type().is_float()) {
+            rmin = v.min;
+        } else {
+            rmin = v.min + 1;
+        }
         if (v.max.type().is_float()) {
             rmax = v.max;
         } else {
             rmax = v.max - 1;
         }
-        return DomInterval(simplify(rmin), simplify(rmax), u.exact && v.exact);
+        // The actual limits are further expanded to include zero.
+        return DomInterval(simplify(min(rmin,zero)), simplify(max(rmax,zero)), u.exact && v.exact);
     }
 }
 

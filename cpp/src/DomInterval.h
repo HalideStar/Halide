@@ -69,8 +69,8 @@ EXPORT DomInterval operator/(DomInterval v, Expr b);
 EXPORT DomInterval decimate(DomInterval v, Expr b);
 EXPORT DomInterval unzoom(DomInterval v, Expr b);
 
-/** Operator% not implemented */
-//EXPORT DomInterval operator%(DomInterval v, Expr b);
+/** Operator% is complicated */
+EXPORT DomInterval operator%(DomInterval v, Expr b);
 
 /** Inverse operators 
  * inverseAdd returns an interval such that adding b yields the original interval.  This is equivalent to subtraction.

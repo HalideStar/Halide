@@ -596,7 +596,7 @@ Stmt code_1 () {
     Expr call = new Call(i32, "buf", vec(max(min(x,100),0)));
     Expr call2 = new Call(i32, "buf", vec(max(min(x-1,100),0)));
     Expr call3 = new Call(i32, "buf", vec(Expr(new Clamp(Clamp::Reflect, x+1, 0, 100))));
-    Stmt store2 = new Store("out", call + call2 + call3 + 1, x);
+    Stmt store2 = new Store("out", call + call2 + call3 + 23, x);
     LoopSplitInfo manualsplit(DomInterval(1,99,true)); // Specify manual partitioning interval.
     Stmt for_loop2 = new For("x", 0, 100, For::Serial, manualsplit, store2);
     Stmt pipeline = new Pipeline("buf", for_loop, Stmt(), for_loop2);
@@ -615,7 +615,7 @@ std::string correct_simplified =
 "  }\n"
 "} consume {\n"
 "  for (x, 0, 100, [1, 99]) {\n"
-"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 23)\n"
 "  }\n"
 "}\n";
 
@@ -629,7 +629,7 @@ std::string correct_presolver =
 "} consume {\n"
 "  for (x, 0, 100, [1, 99]) {\n"
 "    stmtTargetVar(x) {\n"
-"      out[x] = (((buf(max(solve([0, infinity]: min(solve([-infinity, 100]: x), 100)), 0)) + buf(max(solve([0, infinity]: min(solve([-infinity, 100]: (x + -1)), 100)), 0))) + buf(Clamp::reflect(solve([0, 100]: (x + 1)),0,100,0))) + 1)\n"
+"      out[x] = (((buf(max(solve([0, infinity]: min(solve([-infinity, 100]: x), 100)), 0)) + buf(max(solve([0, infinity]: min(solve([-infinity, 100]: (x + -1)), 100)), 0))) + buf(Clamp::reflect(solve([0, 100]: (x + 1)),0,100,0))) + 23)\n"
 "    }\n"
 "  }\n"
 "}\n";
@@ -644,7 +644,7 @@ std::string correct_solved =
 "} consume {\n"
 "  for (x, 0, 100, [1, 99]) {\n"
 "    stmtTargetVar(x) {\n"
-"      out[x] = (((buf(max(min(solve([0, infinity]: solve([-infinity, 100]: x)), 100), 0)) + buf(max(min((solve([1, infinity]: solve([-infinity, 101]: x)) + -1), 100), 0))) + buf(Clamp::reflect((solve([-1, 99]: x) + 1),0,100,0))) + 1)\n"
+"      out[x] = (((buf(max(min(solve([0, infinity]: solve([-infinity, 100]: x)), 100), 0)) + buf(max(min((solve([1, infinity]: solve([-infinity, 101]: x)) + -1), 100), 0))) + buf(Clamp::reflect((solve([-1, 99]: x) + 1),0,100,0))) + 23)\n"
 "    }\n"
 "  }\n"
 "}\n";
@@ -668,13 +668,13 @@ std::string correct_loop_split =
 "  let x.start = 1\n"
 "  let x.end = 100\n"
 "  for (x, 0, min((x.start - 0), 100), before) {\n"
-"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 23)\n"
 "  }\n"
 "  for (x, max(x.start, 0), (min(x.end, (0 + 100)) - max(x.start, 0)), main [1, 99]) {\n"
-"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 23)\n"
 "  }\n"
 "  for (x, x.end, ((0 + 100) - x.end), after) {\n"
-"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 23)\n"
 "  }\n"
 "}\n";
 # endif
@@ -687,7 +687,7 @@ std::string correct_simplified =
 "  }\n"
 "} consume {\n"
 "  for (x, 0, 100, [1, 99]) {\n"
-"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 23)\n"
 "  }\n"
 "}\n";
 
@@ -701,7 +701,7 @@ std::string correct_presolver =
 "} consume {\n"
 "  for (x, 0, 100, [1, 99]) {\n"
 "    stmtTargetVar(x) {\n"
-"      out[x] = (((buf(max(solve([0, infinity]: min(solve([-infinity, 100]: x), 100)), 0)) + buf(max(solve([0, infinity]: min(solve([-infinity, 100]: (x + -1)), 100)), 0))) + buf(Clamp::reflect(solve([0, 100]: (x + 1)),0,100,0))) + 1)\n"
+"      out[x] = (((buf(max(solve([0, infinity]: min(solve([-infinity, 100]: x), 100)), 0)) + buf(max(solve([0, infinity]: min(solve([-infinity, 100]: (x + -1)), 100)), 0))) + buf(Clamp::reflect(solve([0, 100]: (x + 1)),0,100,0))) + 23)\n"
 "    }\n"
 "  }\n"
 "}\n";
@@ -716,7 +716,7 @@ std::string correct_solved =
 "} consume {\n"
 "  for (x, 0, 100, [1, 99]) {\n"
 "    stmtTargetVar(x) {\n"
-"      out[x] = (((buf(max(min(solve([0, infinity]: solve([-infinity, 100]: x)), 100), 0)) + buf(max(min((solve([1, infinity]: solve([-infinity, 101]: x)) + -1), 100), 0))) + buf(Clamp::reflect((solve([-1, 99]: x) + 1),0,100,0))) + 1)\n"
+"      out[x] = (((buf(max(min(solve([0, infinity]: solve([-infinity, 100]: x)), 100), 0)) + buf(max(min((solve([1, infinity]: solve([-infinity, 101]: x)) + -1), 100), 0))) + buf(Clamp::reflect((solve([-1, 99]: x) + 1),0,100,0))) + 23)\n"
 "    }\n"
 "  }\n"
 "}\n";
@@ -740,13 +740,13 @@ std::string correct_loop_split =
 "  let x.start = 1\n"
 "  let x.end = 100\n"
 "  for (x, 0, min((x.start - 0), 100), before) {\n"
-"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 23)\n"
 "  }\n"
 "  for (x, max(x.start, 0), (min(x.end, (0 + 100)) - max(x.start, 0)), main [1, 99]) {\n"
-"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 23)\n"
 "  }\n"
 "  for (x, x.end, ((0 + 100) - x.end), after) {\n"
-"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 23)\n"
 "  }\n"
 "}\n";
 # endif
@@ -760,7 +760,7 @@ std::string correct_simplified =
 "  }\n"
 "} consume {\n"
 "  for (x, 0, 100, [1, 99]) {\n"
-"    out[x] = (((buf(max(min(x, 100), 0)) + buf((max(min(x, 101), 1) + -1))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf((max(min(x, 101), 1) + -1))) + buf(Clamp::reflect((x + 1),0,100,0))) + 23)\n"
 "  }\n"
 "}\n";
 
@@ -774,7 +774,7 @@ std::string correct_presolver =
 "} consume {\n"
 "  for (x, 0, 100, [1, 99]) {\n"
 "    stmtTargetVar(x) {\n"
-"      out[x] = (((buf(max(solve([0, infinity]: min(solve([-infinity, 100]: x), 100)), 0)) + buf((max(solve([1, infinity]: min(solve([-infinity, 101]: x), 101)), 1) + -1))) + buf(Clamp::reflect(solve([0, 100]: (x + 1)),0,100,0))) + 1)\n"
+"      out[x] = (((buf(max(solve([0, infinity]: min(solve([-infinity, 100]: x), 100)), 0)) + buf((max(solve([1, infinity]: min(solve([-infinity, 101]: x), 101)), 1) + -1))) + buf(Clamp::reflect(solve([0, 100]: (x + 1)),0,100,0))) + 23)\n"
 "    }\n"
 "  }\n"
 "}\n";
@@ -789,7 +789,7 @@ std::string correct_solved =
 "} consume {\n"
 "  for (x, 0, 100, [1, 99]) {\n"
 "    stmtTargetVar(x) {\n"
-"      out[x] = (((buf(max(min(solve([0, infinity]: solve([-infinity, 100]: x)), 100), 0)) + buf((max(min(solve([1, infinity]: solve([-infinity, 101]: x)), 101), 1) + -1))) + buf(Clamp::reflect((solve([-1, 99]: x) + 1),0,100,0))) + 1)\n"
+"      out[x] = (((buf(max(min(solve([0, infinity]: solve([-infinity, 100]: x)), 100), 0)) + buf((max(min(solve([1, infinity]: solve([-infinity, 101]: x)), 101), 1) + -1))) + buf(Clamp::reflect((solve([-1, 99]: x) + 1),0,100,0))) + 23)\n"
 "    }\n"
 "  }\n"
 "}\n";
@@ -811,13 +811,13 @@ std::string correct_loop_split =
 "  let x.start = 1\n"
 "  let x.end = 100\n"
 "  for (x, 0, min((x.start - 0), 100), before) {\n"
-"    out[x] = (((buf(max(min(x, 100), 0)) + buf((max(min(x, 101), 1) + -1))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf((max(min(x, 101), 1) + -1))) + buf(Clamp::reflect((x + 1),0,100,0))) + 23)\n"
 "  }\n"
 "  for (x, max(x.start, 0), (min(x.end, (0 + 100)) - max(x.start, 0)), main [1, 99]) {\n"
-"    out[x] = (((buf(max(min(x, 100), 0)) + buf((max(min(x, 101), 1) + -1))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf((max(min(x, 101), 1) + -1))) + buf(Clamp::reflect((x + 1),0,100,0))) + 23)\n"
 "  }\n"
 "  for (x, x.end, ((0 + 100) - x.end), after) {\n"
-"    out[x] = (((buf(max(min(x, 100), 0)) + buf((max(min(x, 101), 1) + -1))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"    out[x] = (((buf(max(min(x, 100), 0)) + buf((max(min(x, 101), 1) + -1))) + buf(Clamp::reflect((x + 1),0,100,0))) + 23)\n"
 "  }\n"
 "}\n";
 # endif
