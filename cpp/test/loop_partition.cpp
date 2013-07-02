@@ -517,7 +517,6 @@ main (int argc, char **argv) {
     if (CODEVIEW_1D && ! auto_test) {
         const int the_diag = 2;
         // 1-D cases for code viewing and analysis.
-        std::cout << global_options;
         for (int k = the_diag; k <= the_diag; k++) {
             std::ostringstream ss;
             ss << "f1d_" << k;
@@ -536,7 +535,6 @@ main (int argc, char **argv) {
     if (CODEVIEW_2D && ! auto_test) {
         const int the_diag = 2;
         // 2-D cases for code viewing and analysis.
-        std::cout << global_options;
         for (int k = the_diag; k <= the_diag; k++) {
             std::ostringstream ss;
             ss << "f2d_" << k;

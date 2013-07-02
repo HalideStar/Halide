@@ -2,7 +2,7 @@
 #define HALIDE_LOWERBORDER_H
 
 //#define LOWER_CLAMP 140
-//#define LOWER_CLAMP 240
+//#define LOWER_CLAMP 290
 #define LOWER_CLAMP 490
 
 namespace Halide {

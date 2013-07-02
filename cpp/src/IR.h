@@ -851,6 +851,11 @@ struct Call : public ExprNode<Call> {
         ExprNode<Call>(f.value().type()), name(f.name()), args(a), call_type(Halide), 
         func(f), image(Buffer()), param(Parameter()) {
     }
+    
+    /** Convenience constructor for replacing the args list of an existing call */
+    Call(const Call *call, const std::vector<Expr> &a) :
+        ExprNode<Call>(call->type), name(call->name), args(a), call_type(call->call_type),
+        func(call->func), image(call->image), param(call->param) {}
 };
 
 /** A named variable. Might be a loop variable, function argument,

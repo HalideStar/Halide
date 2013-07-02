@@ -26,6 +26,7 @@ namespace Internal {
  */
 EXPORT Stmt loop_solver(Stmt s);
 EXPORT Expr loop_solver(Expr e);
+EXPORT Expr domain_solver(Expr e);
 
 EXPORT bool is_constant_expr(std::vector<std::string> varlist, Expr e);
 
@@ -40,6 +41,7 @@ public:
     
     // expr_source, stmt_source: The source node that was recorded in the TargetVar or StmtTargetVar
     // the identifies the variable in var, above.  One of these will be undefined.
+    // Both may be undefined if the target variable is not identified by a TargetVar or StmtTargetVar.
     Expr expr_source;
     Stmt stmt_source;
     
@@ -51,9 +53,9 @@ public:
         var(_var), expr_source(expr_s), stmt_source(stmt_s), intervals(_intervals) {}
 };
     
-std::vector<Solution> extract_solutions(std::string var, Stmt source, Stmt solved);
+std::vector<Solution> extract_solutions(std::string var, Stmt source, Stmt solved, bool *exact = NULL);
 
-std::vector<Solution> extract_solutions(std::string var, Expr source, Expr solved);
+std::vector<Solution> extract_solutions(std::string var, Expr source, Expr solved, bool *exact = NULL);
 }
 }
 

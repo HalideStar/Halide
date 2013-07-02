@@ -30,7 +30,7 @@ using std::map;
 class LoopPreSolver : public InlineLet {
     std::vector<std::string> varlist;
 
-    using IRMutator::visit;
+    using InlineLet::visit;
     
     bool is_constant_expr(Expr a) { return Halide::Internal::is_constant_expr(varlist, a); }
     
@@ -377,15 +377,17 @@ protected:
         if ((op->for_type == For::Serial || 
             (global_options.loop_split_parallel && op->for_type == For::Parallel)) &&
             (op->loop_split.status == LoopSplitInfo::Ordinary)) {
-            log(LOGLEVEL) << "Considering splitting loop:\n" << Stmt(op);
+            log(LOGLEVEL) << "Considering splitting loop:" << op << "\n" << Stmt(op);
             DomInterval part;
             if (op->loop_split.interval_defined()) {
                 part = op->loop_split.interval;
+                log(LOGLEVEL) << "Manual split " << part << "\n";
             } else if (op->loop_split.auto_split == LoopSplitInfo::Yes || 
                       (op->loop_split.auto_split == LoopSplitInfo::Undefined && global_options.loop_split_all)) {
                 // Automatic loop splitting.  Determine an interval for the main loop.
 
                 // Search for solutions related to this particular for loop.
+                //std::vector<Solution> solutions = extract_solutions(op->name, Stmt(), solved);
                 std::vector<Solution> solutions = extract_solutions(op->name, op, solved);
                 //std::cout << global_options;
                 log(LOGLEVEL) << "Considering automatic loop splitting\n";
@@ -563,7 +565,6 @@ public:
 
 Stmt loop_split(Stmt s) {
     //return LoopSplitting().mutate(s);
-    LoopSplitting loop_part;
     s = simplify(s); // Must be fully simplified first
     code_logger.log(s, "simplify");
     code_logger.section("pre_solver");
@@ -572,6 +573,7 @@ Stmt loop_split(Stmt s) {
     code_logger.section("solved");
     Stmt solved = loop_solver(pre);
     code_logger.log(solved, "solved");
+    LoopSplitting loop_part;
     loop_part.solved = solved;
     code_logger.section("loop_partition");
     s = loop_part.mutate(s);
@@ -654,7 +656,7 @@ std::string correct_solved =
 std::string correct_loop_split = 
 "produce buf {\n"
 "  let x.start = 10\n"
-"  let x.end = 100\n"
+"  let x.end = 110\n"
 "  for (x, 0, min((x.start - 0), 100), before) {\n"
 "    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
 "  }\n"
@@ -845,10 +847,9 @@ void code_compare (std::string long_desc, std::string head, Stmt code, std::stri
         if (correct.size() != check.size()) {
             std::cerr << "Different lengths " << correct.size() << " " << check.size() << "\n";
         }
-# if LOOP_SPLIT_CONDITIONAL
+
         // Hack: until we get the correct results of the test
-        assert(0);
-# endif
+        assert(0 && "Code incorrect");
     }
 }
 

@@ -8,8 +8,10 @@
 #include "IRPrinter.h"
 #include "Log.h"
 #include "Simplify.h"
+#include "Solver.h"
 #include "InlineLet.h"
 #include "DomInterval.h"
+#include "CodeLogger.h"
 
 #include <iostream>
 
@@ -164,7 +166,7 @@ int find(const std::vector<std::string> &varlist, std::string var) {
     return -1;
 }
 
-
+# if 0
 // HasVariable walks an argument expression and determines
 // whether the expression contains any of the listed variables.
 
@@ -193,6 +195,7 @@ static bool is_constant_expr(std::vector<std::string> varlist, Expr e) {
     e.accept(&hasvar);
     return ! hasvar.result;
 }
+# endif
 
 // BackwardIntervalInference walks an argument expression and
 // determines the domain interval of a variable in the caller based on the
@@ -457,38 +460,9 @@ private:
     // Method to handle clamp-like operations, which are treated as border handlers.
     // Clamp(op_a, op_min, op_max)
     void clamp_limits(Expr op_a, Expr op_min, Expr op_max, bool partially_effective) {
-# if 0
-        // Determine whether the limits are individually effective
-        bool effective_min = proved(op_min >= callee[Domain::Valid].min);
-        bool effective_max = proved(op_max <= callee[Domain::Valid].max);
-        if (! partially_effective) {
-            // Clamp-like operator that cannot be partially effective.
-            // Must be effective at both ends, or neither is considered effective
-            effective_min &= effective_max;
-            effective_max = effective_min;
-        }
-        if (effective_min) {
-            callee[Domain::Computable].min = make_infinity(op_a.type(), -1);
-            callee[Domain::Valid].min = op_min;
-        } else {
-            // Note: These definitions are conservative in the case that the border handler
-            // is actually effective but cannot be proved to be so.
-            // ??????? Is this the right way to be conservative????
-            callee[Domain::Computable].min = simplify(max(op_min, callee[Domain::Computable].min));
-            callee[Domain::Valid].min = simplify(max(op_min, callee[Domain::Valid].min));
-        }
-        if (effective_max) {
-            callee[Domain::Computable].max = make_infinity(op_a.type(), +1);
-            callee[Domain::Valid].max = op_max;
-        } else {
-            callee[Domain::Computable].max = simplify(min(op_max, callee[Domain::Computable].max));
-            callee[Domain::Valid].max = simplify(min(op_max, callee[Domain::Valid].max));
-        }
-# else
         log(3,"DOMINF") << "C: " << callee[Domain::Computable] << "  V: " << callee[Domain::Valid] << "\n";
         callee = solve_clamp_limits(callee, op_a.type(), op_min, op_max, partially_effective);
         log(3,"DOMINF") << "C: " << callee[Domain::Computable] << "  V: " << callee[Domain::Valid] << "\n";
-# endif
         op_a.accept(this);
     }
     
@@ -556,8 +530,6 @@ private:
     }
     
 };
-
-
 
 
 std::vector<DomInterval> backwards_interval(const std::vector<std::string> &varlist, std::vector<Domain> &domains, Expr e, 
@@ -768,12 +740,17 @@ private:
 
 
 
+#define USE_SOLVER 1
+
 /* Notes
 Difference between Var and Variable.  Variable is a parse tree node.
 Var is just a name.
 */
-
+# if ! USE_SOLVER
 std::vector<Domain> domain_inference(const std::vector<std::string> &variables, Expr e)
+# else
+std::vector<Domain> old_domain_inference(const std::vector<std::string> &variables, Expr e)
+# endif
 {
     log(1,"DOMINF") << "domain_inference: Expression: " << e << "\n";
     // At this level, we use a list of variables passed in.
@@ -792,6 +769,94 @@ std::vector<Domain> domain_inference(const std::vector<std::string> &variables, 
     
     return infers.domains;
 }
+
+
+
+
+/** Prepare for domain inference. Recognise trigger expressions and insert Solve nodes. 
+ * Does not insert TargetVar nodes because the target variables are, in fact, predetermined.
+ */
+class DomainPreSolver : public InlineLet {
+protected:
+    using InlineLet::visit;
+    
+    // Call nodes are the places that trigger domain inference.
+    virtual void visit(const Call *func_call) {
+        // Arguments are in std::vector<Expr> func_call->args
+        // If it is a call to another Halide function, Function func_call->func points to it
+        // If it is a direct reference to an image, Buffer func_call->image is the buffer
+        // and if it is an image parameter, Parameter func_call->param is that.
+        // To check use ->func.value().defined(), ->image.defined() and ->param.defined().
+        
+        // If it is not an image, nor a Halide function, then it is not of interest
+        // here. It acts like any other expression element.
+        if (func_call->call_type != Call::Image && func_call->call_type != Call::Halide) {
+            InlineLet::visit(func_call);
+            return;
+        }
+        
+        // Each of the argument expressions must be processed in turn.
+        std::vector<Expr> newargs;
+        for (size_t i = 0; i < func_call->args.size(); i++)
+        {
+            std::vector<DomInterval> domain;
+            DomInterval interval;
+            
+            if (func_call->call_type == Call::Image)
+            {
+                if (func_call->image.defined()) {
+                    interval = DomInterval(func_call->image.min(i), 
+                                            func_call->image.min(i) + func_call->image.extent(i) - 1, true);
+                }
+                else if (func_call->param.defined()) {
+                    interval = DomInterval(func_call->param.min(i), 
+                                            func_call->param.min(i) + func_call->param.extent(i) - 1, true);
+                }
+                else {
+                    assert(0 && "Call to Image is neither image nor imageparam\n");
+                }
+                // All domains are the same for an image.
+                domain.push_back(interval);
+                domain.push_back(interval);
+            }
+            else if (func_call->call_type == Call::Halide)
+            {
+                // For Halide calls, access the domain in the function object.
+                // We need to know the DomInterval of the i'th parameter of the called function.
+                domain = func_call->func.domain_intervals(i);
+            }
+            newargs.push_back(new Solve(func_call->args[i], domain));
+        }
+        expr = new Call(func_call, newargs);
+        return;
+    }
+};
+
+#if USE_SOLVER
+// TO DO: CHANGE TO ACCEPT A FUNCTION DEFINITION?  (recurrent/reducing functions)
+std::vector<Domain> domain_inference(const std::vector<std::string> &variables, Expr e)
+{
+    log(0,"DOMINF") << "domain_inference: Expression: " << e << "\n";
+    assert(e.defined() && "domain_inference applied to undefined expression");
+
+    // At this level, we use a list of variables passed in.
+    code_logger.section("pre_dominf");
+    Expr pre = DomainPreSolver().mutate(e);
+    code_logger.log(pre, "pre_dominf");
+    
+    code_logger.section("solved_dominf");
+    Expr solved = domain_solver(pre);
+    code_logger.log(solved, "solved_dominf");
+    
+    // Extract the solutions and compute the domains.
+    
+    std::vector<Domain> old_result = old_domain_inference(variables, e);
+    return old_result;
+}
+#endif
+
+
+
 
 
 void check_interval(std::vector<std::string> varlist, Expr e, Expr xmin, Expr xmax, 

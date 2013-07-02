@@ -10,6 +10,7 @@ namespace Internal {
 
 class CodeLogger {
     Stmt s_prev;
+    Expr e_prev;
     // my_next_section: The section number to use when writing code.
     // my_current: The section number to use for everything else.
     // Note: When code is written, my_next_section is automatically
@@ -28,10 +29,11 @@ public:
     // If HL_LOG_FILE > 2 then the statement is logged.
     // If HL_LOG_FILE == 2 then the statement is only logged if it has changed compared to
     // the previous log.
-    void log(Stmt s, std::string description);
+    void log(Stmt s, std::string description = "");
+    void log(Expr e, std::string description = "");
 
     // Return the halide log file object for the most recent section
-    // so that use can append additional information.
+    // so that user can insert additional information into the log file.
     Halide::Internal::log log();
     
     void section(int sect, std::string description = "") { 
@@ -47,7 +49,7 @@ public:
         my_description = description; // Optional, but needed if writing other info before code
     }
     void name(std::string _name) { my_name = _name; }
-    void reset() { s_prev = Stmt(); } // Undefined starting point.
+    void reset() { s_prev = Stmt(); e_prev = Expr(); } // Undefined starting point.
 };
 
 extern CodeLogger code_logger;

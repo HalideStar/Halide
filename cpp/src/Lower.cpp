@@ -882,48 +882,48 @@ Stmt lower(Function f) {
     Stmt s = create_initial_loop_nest(f);
 
     code_logger.reset();
-    code_logger.section(100);
+    code_logger.section(200);
     code_logger.name(f.name());
     code_logger.log(s, "initial");
 
-    code_logger.section(120);
+    code_logger.section(220);
     s = schedule_functions(s, order, env, graph);
     code_logger.log(s, "realize");
     
     s = simplify(s);
     code_logger.log(s, "simplify");
 
-# if LOWER_CLAMP == 140
+# if LOWER_CLAMP == 240
     //LH
     // Lowering Clamp here does not produce the same results as using the original clamp.
-    code_logger.section(140);
+    code_logger.section(240);
     log(1) << "Lowering Clamp early\n";
     s = lower_clamp(s);
     s = simplify(s);
     code_logger.log(s, "clamp");
 # endif
 
-    code_logger.section(200);
+    code_logger.section(250);
     log(1) << "Injecting tracing...\n";
     s = inject_tracing(s);
     log(2) << "Tracing injected:\n" << s << '\n';
     code_logger.log(s, "trace");
 
-    code_logger.section(210);
+    code_logger.section(260);
     log(1) << "Adding checks for images\n";
     s = add_image_checks(s, f);    
     log(2) << "Image checks injected:\n" << s << '\n';
 
-    code_logger.section(220);
+    code_logger.section(270);
     log(1) << "Performing bounds inference...\n";
     s = bounds_inference(s, order, env);
     log(2) << "Bounds inference:\n" << s << '\n';
     code_logger.log(s, "bounds");
     
-# if LOWER_CLAMP == 240
+# if LOWER_CLAMP == 290
     //LH
     // Lowering Clamp here does not produce the same results as using the original clamp.
-    code_logger.section(240);
+    code_logger.section(290);
     log(1) << "Lowering Clamp late\n";
     s = lower_clamp(s);
     s = simplify(s);

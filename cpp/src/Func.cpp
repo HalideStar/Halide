@@ -17,6 +17,7 @@
 //LH
 #include "DomainInference.h"
 #include "Interval.h"
+#include "CodeLogger.h"
 
 namespace Halide {
 
@@ -702,6 +703,16 @@ void FuncRefVar::operator=(Expr e) {
     // Find implicit args in the expr and add them to the args list before calling define
     vector<string> a = args;
     add_implicit_vars(a, e);
+    
+    code_logger.reset();
+    code_logger.name(func.name());
+    code_logger.section(100, "definition");
+    code_logger.log() << func.name() << "(";
+    if (a.size() > 0) code_logger.log() << a[0];
+    for (size_t i = 1; i < a.size(); i++) code_logger.log() << ", " << a[i];
+    code_logger.log() << ") = \n";
+    code_logger.log(e);
+
     func.define(a, e);
 }
     
@@ -778,6 +789,12 @@ void FuncRefExpr::operator=(Expr e) {
     
     vector<Expr> a = args;
     add_implicit_vars(a, e);
+
+    code_logger.reset();
+    code_logger.name(func.name());
+    code_logger.section(150, "reduction");
+    code_logger.log() << func.name() << "(" << a << ") = \n";
+    code_logger.log(e);
 
     func.define_reduction(args, e);
 }

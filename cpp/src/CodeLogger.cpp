@@ -18,7 +18,8 @@ void CodeLogger::log(Stmt s, std::string description) {
     my_next_section++;
     if (! s.same_as(s_prev) || log::debug_level > 2) {
         std::ostringstream ss;
-        my_description = description;
+        if (description != "")
+            my_description = description;
         ss << my_name << "_" << my_current_section << "_" << my_description;
         Halide::Internal::log(ss.str(), 2) << s << "\n"; 
         my_code_written = true;
@@ -28,6 +29,26 @@ void CodeLogger::log(Stmt s, std::string description) {
         my_code_written = false;
     }
     s_prev = s;  // Remember the code for comparison in future.
+}
+
+void CodeLogger::log(Expr e, std::string description) {
+    // If there was not an explicit section call, then writing code
+    // automatically starts a new section.
+    my_current_section = my_next_section;
+    my_next_section++;
+    if (! e.same_as(e_prev) || log::debug_level > 2) {
+        std::ostringstream ss;
+        if (description != "")
+            my_description = description;
+        ss << my_name << "_" << my_current_section << "_" << my_description;
+        Halide::Internal::log(ss.str(), 2) << e << "\n"; 
+        my_code_written = true;
+    } else {
+        // record that the code has not been written and should be
+        // if the user writes other information to the log.
+        my_code_written = false;
+    }
+    e_prev = e;  // Remember the code for comparison in future.
 }
 
 Halide::Internal::log CodeLogger::log() {

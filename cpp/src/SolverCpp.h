@@ -34,7 +34,7 @@ using std::string;
 
 class HasVariable : public IRVisitor {
 private:
-    const std::vector<std::string> &varlist;
+    const std::vector<std::string>& varlist;
 
 public:
     bool result;
@@ -830,6 +830,10 @@ protected:
     }
 };
 
+Expr domain_solver(Expr e) {
+    return DomainSolver().simplify(e);
+}
+
 
 
 class ExtractSolutions : public IRLazyScopeProcess {
@@ -840,12 +844,13 @@ public:
     std::string var;
     Expr expr_source;
     Stmt stmt_source;
+    bool exact;
     
     // Extract all solutions, each with their own variable and source information
-    ExtractSolutions() : var("") {}
+    ExtractSolutions() : var("") { exact = true; }
     // Extract solutions only for a particular variable and source node
     ExtractSolutions(std::string _var, Expr expr_s, Stmt stmt_s) : 
-        var(_var), expr_source(expr_s), stmt_source(stmt_s) {}
+        var(_var), expr_source(expr_s), stmt_source(stmt_s) { exact = true; }
 
 protected:
 
@@ -877,34 +882,52 @@ protected:
 # else
             // Check whether the variable is the one we are seeking.
             if (variable->name == var) {
-                // The name matches.  Now ensure that the source matches.
+                // The name matches.  Now ensure that the source matches if specified.
                 int found = find_target(variable->name); // Find the defining context.
-                const DefiningNode *node = call(found); // Call to the defining context.
-                const TargetVar *tvar = node->node().as<TargetVar>();
-                const StmtTargetVar *svar = node->node().as<StmtTargetVar>();
-                if (tvar) {
-                    // This is defined by a TargetVar.
-                    solutions.push_back(Solution(variable->name, tvar->source, Stmt(), op->v));
-                } else if (svar) {
-                    solutions.push_back(Solution(variable->name, Expr(), svar->source, op->v));
+                if (found >= 0) {
+                    const DefiningNode *node = call(found); // Call to the defining context.
+                    const TargetVar *tvar = node->node().as<TargetVar>();
+                    const StmtTargetVar *svar = node->node().as<StmtTargetVar>();
+                    if (tvar && (! expr_source.defined() || expr_source.same_as(tvar->source))) {
+                        solutions.push_back(Solution(variable->name, tvar->source, Stmt(), op->v));
+                    } else if (svar && (! stmt_source.defined() || stmt_source.same_as(svar->source))) {
+                        solutions.push_back(Solution(variable->name, Expr(), svar->source, op->v));
+                    }
+                    ret(found); // Return from call to defining context.
+                } else {
+                    // Not found as a target variable - can still return result but not with a source node
+                    // and then only if there is no source node matching requirement.
+                    if (! expr_source.defined() && ! stmt_source.defined()) {
+                        solutions.push_back(Solution(variable->name, Expr(), Stmt(), op->v));
+                    }
                 }
-                ret(found);
             }
 #endif
+        } else {
+            // Expression is not a simple variable, nor a nested Solve node.
+            // In the case that we are collecting an exact flag, then scan expressions to see whether the requested
+            // variable is present in them.
+            std::vector<std::string> varlist;
+            varlist.push_back(var);
+            HasVariable hasit(varlist);
+            body.accept(&hasit);
+            if (hasit.result) exact = false; // Found a mention of the requested variable, so solution list is inexact
         }
     }
 };
 
 // Extract solutions where the variable name matches var and the source node is source.
-std::vector<Solution> extract_solutions(std::string var, Stmt source, Stmt solved) {
+std::vector<Solution> extract_solutions(std::string var, Stmt source, Stmt solved, bool *exact) {
     ExtractSolutions extract(var, Expr(), source);
     extract.process(solved);
+    if (exact) *exact = extract.exact;
     return extract.solutions;
 }
 
-std::vector<Solution> extract_solutions(std::string var, Expr source, Expr solved) {
+std::vector<Solution> extract_solutions(std::string var, Expr source, Expr solved, bool *exact) {
     ExtractSolutions extract(var, source, Stmt());
     extract.process(solved);
+    if (exact) *exact = extract.exact;
     return extract.solutions;
 }
 
