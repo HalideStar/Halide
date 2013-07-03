@@ -779,12 +779,34 @@ protected:
         Expr e = mutate(op->body);
         
         log(loglevel) << depth << " DomainSolver Solve using " << e << "\n";
+        const Add *add_e = e.as<Add>();
         const Min *min_e = e.as<Min>();
         const Max *max_e = e.as<Max>();
         const Clamp *clamp_e = e.as<Clamp>();
         
         /** Min, Max, Clamp are treated as border handlers.  Should Mod also be treated as such? */
-        if (min_e && is_constant_expr(min_e->a)) {
+        /** Add is handled here to detect kernel semantics which involves an add expression between
+         * a constant expression and an implicit variable. */
+        if (add_e && is_constant_expr(add_e->b)) {
+            // Special case.  Kernel expressions must be of the form iv.0 + k where k is an integer constant
+            const Variable *var_a = add_e->a.as<Variable>();
+            log(loglevel) << "Checking " << e << " for kernel semantics\n";
+            if (var_a && starts_with(var_a->name, "iv.") && is_const(add_e->b) && add_e->b.type() == Int(32)) {
+                // This is a kernel expression.  Adopt kernel semantics, which basically means to ignore the
+                // constant that is added when determining the Valid domain.
+                log(loglevel) << "Kernel semantics apply\n";
+                // Have to update Computable and Valid domains differently.
+                // Computable domain is updated in the same way as normal - considering the offset.
+                // Valid domain is updated by copying the incoming valid domain and intersecting it with
+                // the Computable domain; i.e. the offset is not considered except as it restricts computability.
+                std::vector<DomInterval> u = v_apply(inverseAdd, op->v, bounds.bounds(add_e->b));
+                u[Domain::Valid] = intersection(op->v[Domain::Valid], u[Domain::Computable]);
+                expr = mutate(solve(add_e->a, u) + add_e->b);
+            } else {
+                log(loglevel) << "Kernel semantics do not apply\n";
+                expr = mutate(solve(add_e->a, v_apply(inverseAdd, op->v, bounds.bounds(add_e->b))) + add_e->b);
+            }
+        } else if (min_e && is_constant_expr(min_e->a)) {
             // Min, Max: push outside of Solve nodes.
             // solve(min(k,v)) on (a,b) --> min(k,solve(v)). 
             expr = mutate(new Min(solve(min_e->b, solve_clamp_limits(op->v, op->type, Expr(), min_e->a, true)), min_e->a));
@@ -884,7 +906,7 @@ protected:
             if (variable->name == var) {
                 // The name matches.  Now ensure that the source matches if specified.
                 int found = find_target(variable->name); // Find the defining context.
-                if (found >= 0) {
+                if (found != Context::Invalid) {
                     const DefiningNode *node = call(found); // Call to the defining context.
                     const TargetVar *tvar = node->node().as<TargetVar>();
                     const StmtTargetVar *svar = node->node().as<StmtTargetVar>();

@@ -7,7 +7,7 @@ using std::string;
 using std::map;
 
 namespace {
-// ListVariables walks an argument expression and returns a list of
+// ListRepeatVariables walks an argument expression and returns a list of
 // all the variables found in it.  The list may contain repeat elements.
 
 class ListRepeatVariables : public IRVisitor {

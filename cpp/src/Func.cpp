@@ -11,6 +11,7 @@
 #include "Image.h"
 #include "Param.h"
 #include "Log.h"
+#include "Simplify.h"
 #include <iostream>
 #include <fstream>
 
@@ -187,7 +188,17 @@ FuncRefKernel::operator FuncRefExpr() const {
     vector<Expr> imp_args;
     for (int i = 0; i < (int) func.args().size(); i++) {
         if (i < (int) args.size()) {
-            imp_args.push_back(Var::implicit(i) + args[i]);
+            // Ensure that the kernel argument expression is just an integer constant
+            // after folding.  Programmer can write Expr(1) + Expr(3) if they really want to...
+            Expr e = simplify(args[i]);
+            if (! is_const(e)) {
+                std::cerr << "Kernel expression [" << args[i] << "] is not allowed. Kernel expressions must be constant expressions\n";
+                assert(0 && "Invalid kernel expression");
+            }
+            if (e.type() != Int(32)) {
+                e = cast(Int(32), e); // Force to Int(32) so that we dont end up with a floating point index expression
+            }
+            imp_args.push_back(Var::implicit(i) + e);
         } else {
             imp_args.push_back(Var::implicit(i));
         }

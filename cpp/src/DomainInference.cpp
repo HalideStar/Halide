@@ -201,6 +201,8 @@ static bool is_constant_expr(std::vector<std::string> varlist, Expr e) {
 // determines the domain interval of a variable in the caller based on the
 // domain interval of the expression in the callee, which is passed to it.
 
+# define BACK_LOGLEVEL 4
+
 class BackwardIntervalInference : public IRVisitor {
 public:
     std::vector<DomInterval> callee; // Intervals from the callee, updated to infer intervals for variable
@@ -255,7 +257,8 @@ private:
             return;
         }
         if (varname != "") {
-            set_callee_exact_false(); // Have already seen a variable in another branch
+            log(BACK_LOGLEVEL,"DOMINF") << "Duplicate variable " << op->name << "  (original " << varname << ")\n";
+            set_callee_exact_false(); // Have already seen a variable in another branch.  It is now not exact
             if (varname != op->name) {
                 // This is a different variable name than the one we are looking at primarily.
                 // Mark that variable also as inexact in the domain, although the data is not changed
@@ -267,7 +270,7 @@ private:
             return; // Do not override the variable that we are studying.
         }
         varname = op->name;
-        log(4,"DOMINF") << "Observe variable " << op->name << "\n";
+        log(BACK_LOGLEVEL,"DOMINF") << "Observe variable " << op->name << "\n";
     }
     
     void visit(const Add *op) {
@@ -293,6 +296,8 @@ private:
         }
         else {
             set_callee_exact_false(); // Expression cannot be solved as it has branches not simplified out.
+            // Still must process the childen recursively in order to identify variables marked not exact
+            IRVisitor::visit(op);
         }
     }
     
@@ -317,6 +322,7 @@ private:
         }
         else {
             set_callee_exact_false();
+            IRVisitor::visit(op);
         }
     }
     
@@ -338,6 +344,7 @@ private:
         }
         else {
             set_callee_exact_false();
+            IRVisitor::visit(op);
         }
     }
     
@@ -354,6 +361,7 @@ private:
         else {
             // e = k / x is not handled because it is not a linear transformation
             set_callee_exact_false();
+            IRVisitor::visit(op);
         }
     }
 
@@ -381,6 +389,7 @@ private:
         else {
             // e = k % x is not handled because it is not linear
             set_callee_exact_false();
+            IRVisitor::visit(op);
         }
     }
     
@@ -506,6 +515,7 @@ private:
             // Note: if the expressions were max(x+k1, x+k2) or similar then
             // simplification could reduce the expression if it could prove one of them bigger.
             set_callee_exact_false();
+            IRVisitor::visit(op);
         }
     }
     
@@ -526,6 +536,7 @@ private:
             // min of two non-constant expressions will lead to inexact results
             // because it is not linear
             set_callee_exact_false();
+            IRVisitor::visit(op);
         }
     }
     
@@ -536,7 +547,7 @@ std::vector<DomInterval> backwards_interval(const std::vector<std::string> &varl
                                             std::vector<DomInterval> callee, std::string* varname = NULL) {
     assert(callee.size() == Domain::MaxDomains && "Incorrect number of callee intervals");
     for (int j = Domain::Valid; j < Domain::MaxDomains; j++) {
-        log(3,"DOMINF") << "e: " << e << "  [" << j << "]: " << callee[j] << '\n';
+        log(BACK_LOGLEVEL,"DOMINF") << "e: " << e << "  [" << j << "]: " << callee[j] << '\n';
     }
     
     BackwardIntervalInference infers(varlist, domains, callee);
@@ -777,6 +788,21 @@ std::vector<Domain> old_domain_inference(const std::vector<std::string> &variabl
  * Does not insert TargetVar nodes because the target variables are, in fact, predetermined.
  */
 class DomainPreSolver : public InlineLet {
+    std::vector<std::string> variables;
+public:
+    DomainPreSolver(const std::vector<std::string>& _variables) : variables(_variables) {}
+    
+    Expr presolve(Expr e) {
+        // First mutate the entire tree
+        Expr m = mutate(e);
+        // Then insert TargetVar statements above
+        for (size_t i = 0; i < variables.size(); i++) {
+            m = new TargetVar(variables[i], m, Expr());
+        }
+        return m;
+    }
+     
+    
 protected:
     using InlineLet::visit;
     
@@ -834,14 +860,16 @@ protected:
 
 #if USE_SOLVER
 // TO DO: CHANGE TO ACCEPT A FUNCTION DEFINITION?  (recurrent/reducing functions)
+// OR SHOULD IT BE THAT the domain from the main definition becomes the domain of the
+// recurrent result computation.
 std::vector<Domain> domain_inference(const std::vector<std::string> &variables, Expr e)
 {
-    log(0,"DOMINF") << "domain_inference: Expression: " << e << "\n";
+    log(1,"DOMINF") << "domain_inference: Expression: " << e << "\n";
     assert(e.defined() && "domain_inference applied to undefined expression");
 
     // At this level, we use a list of variables passed in.
     code_logger.section("pre_dominf");
-    Expr pre = DomainPreSolver().mutate(e);
+    Expr pre = DomainPreSolver(variables).presolve(e);
     code_logger.log(pre, "pre_dominf");
     
     code_logger.section("solved_dominf");
@@ -849,8 +877,58 @@ std::vector<Domain> domain_inference(const std::vector<std::string> &variables, 
     code_logger.log(solved, "solved_dominf");
     
     // Extract the solutions and compute the domains.
+
+    // Create a vector of Domain: One Domain for each of Valid and Computable.
+    // Each domain contains a vector intervals, one DomInterval for each variable.
+    std::vector<Domain> result;
+    for (int dt = Domain::Valid; dt < Domain::MaxDomains; dt++) {
+        std::vector<DomInterval> intervals;
+        
+        for (size_t i = 0; i < variables.size(); i++) {
+            std::vector<Solution> solutions;
+            bool exact;
+            solutions = extract_solutions(variables[i], Expr(), solved, &exact);
+            
+            log(3,"DOMINF") << "Solutions:\n";
+            for (size_t j = 0; j < solutions.size(); j++) {
+                log(3,"DOMINF") << solutions[j].intervals << "\n";
+            }
+            // Intersect all the solutions to get the actual domain interval.
+            DomInterval interval(Int(32), Expr(), Expr(), exact);
+            for (size_t j = 0; j < solutions.size(); j++) {
+                assert(solutions[j].intervals.size() >= (size_t) dt && "FAILURE: Solution intervals vector is not large enough");
+                interval = intersection(interval, solutions[j].intervals[dt]);
+            }
+            intervals.push_back(interval);
+        }
+        result.push_back(Domain(intervals));
+    }
+    
+    // Intersect the valid domain with the computable.
+    //result[Domain::Valid] = result[Domain::Valid].intersection(result[Domain::Computable]);
+    
+    log(2,"DOMINF") << "Valid: " << result[Domain::Valid] << "\n";
+    log(2,"DOMINF") << "Computable: " << result[Domain::Computable] << "\n";
+    
     
     std::vector<Domain> old_result = old_domain_inference(variables, e);
+    
+    assert(old_result.size() == result.size() && old_result.size() == Domain::MaxDomains);
+    for (int dt = Domain::Valid; dt < Domain::MaxDomains; dt++) {
+        assert(old_result[dt].intervals.size() == result[dt].intervals.size() && old_result[dt].intervals.size() == variables.size());
+        for (size_t i = 0; i < variables.size(); i++) {
+            // Check old_result vs result
+            if (! equal(result[dt].intervals[i].min, old_result[dt].intervals[i].min) ||
+                ! equal(result[dt].intervals[i].max, old_result[dt].intervals[i].max) ||
+                result[dt].intervals[i].exact != old_result[dt].intervals[i].exact) {
+                std::cerr << "Mismatch in domain inference: solver: " << result[dt].intervals[i] << "  old: " << old_result[dt].intervals[i] << "\n";
+                std::cerr << "    domain: " << (dt == Domain::Valid ? "valid" : "computable")  << "  variable: " << variables[i] << "\n";
+                std::cerr << "    expression: " << e << "\n";
+                assert(0);
+            }
+        }
+    }
+    
     return old_result;
 }
 #endif
@@ -1017,7 +1095,7 @@ void domain_expr_test()
     Var x("x"), y("y"), a("a"), b("b"), ext("fff.extent.0");
     Expr False = Internal::make_bool(false);
     Expr True = Internal::make_bool(true);
-    
+
     check_domain_expr(Domain::Valid, vecS("iv.0", "iv.1"), in, Domain(0, 19, 0, 39));
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y), Domain(2, 21, 0, 39));
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y) + in(x,y), Domain(2, 19, 0, 39));
@@ -1043,7 +1121,7 @@ void domain_expr_test()
                         Domain(0, 19));
     // Test mixture of variables
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x+y,y), 
-                        Domain(DomInterval(Int(32), Expr(), Expr(), true), DomInterval(0, 39, true)));
+                        Domain(DomInterval(Int(32), Expr(), Expr(), false), DomInterval(0, 39, false)));
     // Test domain of a constant expression
     check_domain_expr(Domain::Valid, vecS("x", "y"), 3, 
                         Domain::infinite(2));

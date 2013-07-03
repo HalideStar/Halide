@@ -38,6 +38,11 @@
 namespace Halide { 
 namespace Internal {
 
+/** So you can say Context::Invalid, Context::Root. Could be made into a class if more is required. */
+namespace Context {
+    enum { Invalid = 0, Root };
+}
+    
 /** A little class for a node key.  A node key is used to build
  * a map that returns information specific to a particular node in a particular
  * context.  The key is  context x Node.  */
@@ -101,7 +106,7 @@ class ChildContext : public std::map<NodeKey, int> {
 public:
     // context 0 is invalid and 1 is the starting context, so the first new context is 2.
     // See ContextManager class definition.
-    ChildContext() : next_context(2) { }
+    ChildContext() : next_context(Context::Root + 1) { }
     
     // lookup_define method searches for map record of context to enter when
     // when pushing to node from current_context.  If not found, it creates and remembers

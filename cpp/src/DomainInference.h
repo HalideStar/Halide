@@ -35,6 +35,8 @@ public:
     Domain(DomInterval xint, DomInterval yint, DomInterval zint,
            DomInterval wint);
            
+    Domain(std::vector<DomInterval> _intervals) : intervals(_intervals), domain_locked(false) {}
+           
     Domain intersection(const Domain other) const;
     
     /** Constructor for an infinite domain of specified dimensionality */
