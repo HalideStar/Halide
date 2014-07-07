@@ -259,6 +259,9 @@ private:
 # define MAIN_NEST_IN_MAIN 1
 # define MAIN_NEST_IN_OTHER 2
     int main_nest_state; // When option loop_main_separate is true, use this variable to manage state of code generation
+# define STATUS_NO_LOOPS 0
+# define STATUS_SPLIT_LOOPS 1
+    int return_status; // Return a status from nested mutation to see whether there are loops in there or not.
 public:
     Stmt solved;
 
@@ -468,7 +471,12 @@ protected:
                     stmt = block;
                     done = true;
                 } else {
-                Stmt new_body = mutate(op->body);
+                    // Nested computation of return_status
+                    int save_return_status = return_status;
+                    return_status = STATUS_NO_LOOPS; // Initialise for nested call.
+                    Stmt new_body = mutate(op->body);
+                    int new_return_status = return_status;
+                    return_status = save_return_status;
                 log(LOGLEVEL) << "About to partition loop:\n" << Stmt(op);
                 // The partitioned loops are as follows:
                 // for (x, .min, Min(start - .min, .extent))
@@ -547,17 +555,24 @@ protected:
                     // loop (for cases where before and after are small parallel loops, probably 2
                     // iterations) but it is even faster not to split parallel loops at all.
                     //append_stmt(block, new For(op->name, before_min, before_extent, For::Serial, p, op->body));
+                    return_status = STATUS_SPLIT_LOOPS;
                 }
                 p.status = LoopSplitInfo::Main;
                 // Generate the main loop but not if loop_main_separate is true and nest state is IN_OTHER
-                if (! (global_options.loop_main_separate && main_nest_state == MAIN_NEST_IN_OTHER)) {
+                // unless new_return_status is STATUS_SPLIT_LOOPS (meaning that new_body contains split loops)
+                if (! (global_options.loop_main_separate && main_nest_state == MAIN_NEST_IN_OTHER) ||
+                    new_return_status == STATUS_SPLIT_LOOPS) {
                     append_stmt(block, new For(op->name, main_min, main_extent, op->for_type, p, new_body));
+                    // If we are including the main loop because it contains other side loops, then report that in the status 
+                    if (main_nest_state == MAIN_NEST_IN_OTHER)
+                        return_status = STATUS_SPLIT_LOOPS;
                 }
                 p.status = LoopSplitInfo::After;
                 // Generate the end loop but not if loop_main_separate is true and the nest state is IN_MAIN
                 if (end.defined() && ! (global_options.loop_main_separate && main_nest_state == MAIN_NEST_IN_MAIN)) {
                     append_stmt(block, new For(op->name, after_min, after_extent, op->for_type, p, op->body));
                     //append_stmt(block, new For(op->name, after_min, after_extent, For::Serial, p, op->body));
+                    return_status = STATUS_SPLIT_LOOPS;
                 }
                 // Let bindings that appear before the loops...
                 if (global_options.loop_split_letbind) {
@@ -637,6 +652,18 @@ Stmt code_1 () {
     Stmt pipeline = new Pipeline("buf", for_loop, Stmt(), for_loop2);
     
     return pipeline;
+}
+
+Stmt code_2() {
+    Expr x = new Variable(Int(32), "x");
+    Expr y = new Variable(Int(32), "y");
+    Expr input1 = new Call(Int(16), "input", vec((x - 10) % 100, Expr(new Clamp(Clamp::Replicate, y-3, 0, 100))));
+    Expr input2 = new Call(Int(16), "input", vec((x + 5) % 100, Expr(new Clamp(Clamp::Replicate, y+2, 0, 100))));
+    Stmt store = new Store("buf", input1 + input2, y * 100 + x);
+    LoopSplitInfo autosplit(true); // Select auto loop spliting.
+    Stmt inner_loop = new For("x", 0, 100, For::Serial, autosplit, store);
+    Stmt outer_loop = new For("y", 0, 100, For::Serial, autosplit, inner_loop);
+    return outer_loop;
 }
 
 // Selection of the appropriate solutions.
@@ -923,6 +950,40 @@ void test_loop_split_1() {
     loop_part.solved = solved;
     Stmt part = loop_part.mutate(simp);
     code_compare ("loop splitting", "Loop Split:", part, correct_loop_split);
+    
+    // ------------- SECOND TEST ----------------
+    global_options = Options();
+    global_options.lift_let = false;
+    global_options.loop_split_letbind = false;
+    global_options.loop_split = true;
+    global_options.loop_split_all = false;
+    global_options.loop_main_separate = true;
+    
+    Stmt code2 = code_2();
+
+    std::cout << "Raw:\n" << code2 << "\n";
+    Stmt simp2 = simplify(code2);
+    //code_compare ("simplify called from loop split", "Simplified code:", simp2, correct_simplified2);
+    std::cout << "Simplified:\n" << simp2 << "\n";
+    Stmt pre2 = LoopPreSolver().mutate(simp2);
+    std::cout << "LoopPreSolver:\n" << pre2 << "\n";
+    //code_compare ("loop split pre-solver", "Presolved code:", pre2, correct_presolver2);
+    
+    Stmt solved2 = loop_solver(pre2);
+    //code_compare ("loop split solver", "Solved code:", solved2, correct_solved2);
+    std::cout << "Solved:\n" << solved2 << "\n";
+    //std::vector<Solution> solutions22 = extract_solutions("x", Stmt(), solved2);
+    //for (size_t i = 0; i < solutions.size(); i++) {
+    //    std::cout << solutions2[i].var << " " << solutions2[i].intervals << "\n";
+    //}
+    
+    // Note: Loop splitting does not actually improve the code inside the loops.
+    // That is done by interval analysis simplification on the code after loop splitting.
+    LoopSplitting loop_part2;
+    loop_part.solved = solved2;
+    Stmt part2 = loop_part.mutate(simp2);
+    std::cout << "Loop Split:\n" << part2 << "\n";
+    //code_compare ("loop splitting", "Loop Split:", part2, correct_loop_split)2;
     
     global_options = the_options;
 }
