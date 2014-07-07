@@ -50,6 +50,8 @@ Options::Options() {
     // Lift let bindings outside of loops
     lift_let = true;
     
+    loop_main_separate = false;
+    
     interval_analysis_simplify = true;
     mutator_depth_limit = 1000;
     mutator_cache = true;

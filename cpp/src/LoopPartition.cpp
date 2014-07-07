@@ -254,6 +254,11 @@ bool has_variable_match(std::string pattern, Expr e) {
 // Perform loop partition optimisation on For loops
 class LoopSplitting : public IRMutator {
     using IRMutator::visit;
+private:
+# define MAIN_NEST_INIT 0
+# define MAIN_NEST_IN_MAIN 1
+# define MAIN_NEST_IN_OTHER 2
+    int main_nest_state; // When option loop_main_separate is true, use this variable to manage state of code generation
 public:
     Stmt solved;
 
@@ -373,7 +378,7 @@ protected:
         // Only apply optimisation to serial For loops and Parallel For loops.
         // Vectorised loops are not eligible, and unrolled loops should be fully
         // optimised for each iteration due to the unrolling.
-        Stmt new_body = mutate(op->body);
+        //Stmt new_body = mutate(op->body);
         if ((op->for_type == For::Serial || 
             (global_options.loop_split_parallel && op->for_type == For::Parallel)) &&
             (op->loop_split.status == LoopSplitInfo::Ordinary)) {
@@ -443,7 +448,27 @@ protected:
             }
             
             if ((part.min.defined() && infinity_count(part.min) == 0) || 
-                (part.max.defined() && infinity_count(part.max) == 0)) {
+                (part.max.defined() && infinity_count(part.max) == 0)) { 
+                
+                // Here is the point where we have decided to split this loop.
+                // If the global option loop_main_separate is true and if the
+                // main_nest_state is MAIN_NEST_INIT then we need to initialise the
+                // separate loops.
+                if (global_options.loop_main_separate && main_nest_state == MAIN_NEST_INIT) {
+                    log(LOGLEVEL) << "Initialise separate main loop:\n" << Stmt(op);
+                    main_nest_state = MAIN_NEST_IN_MAIN;
+                    Stmt main = mutate(Stmt(op));
+                    main_nest_state = MAIN_NEST_IN_OTHER;
+                    Stmt other = mutate(Stmt(op));
+                    main_nest_state = MAIN_NEST_INIT;
+                    // Construct the code block to replace the loop.
+                    Stmt block;
+                    append_stmt(block, other); // Could have a problem here with empty code block generated??
+                    append_stmt(block, main);
+                    stmt = block;
+                    done = true;
+                } else {
+                Stmt new_body = mutate(op->body);
                 log(LOGLEVEL) << "About to partition loop:\n" << Stmt(op);
                 // The partitioned loops are as follows:
                 // for (x, .min, Min(start - .min, .extent))
@@ -513,7 +538,8 @@ protected:
                 // The before and after loops use the original loop body - their nested loops
                 // are not partitioned.
                 LoopSplitInfo p = op->loop_split;
-                if (start.defined()) {
+                // Generate the start loop but not if loop_main_separate is true and the nest state is IN_MAIN
+                if (start.defined() && ! (global_options.loop_main_separate && main_nest_state == MAIN_NEST_IN_MAIN)) {
                     p.status = LoopSplitInfo::Before;
                     append_stmt(block, new For(op->name, before_min, before_extent, op->for_type, p, op->body));
                     // Test: Split before and after of parallel loop to serial.
@@ -523,12 +549,17 @@ protected:
                     //append_stmt(block, new For(op->name, before_min, before_extent, For::Serial, p, op->body));
                 }
                 p.status = LoopSplitInfo::Main;
-                append_stmt(block, new For(op->name, main_min, main_extent, op->for_type, p, new_body));
+                // Generate the main loop but not if loop_main_separate is true and nest state is IN_OTHER
+                if (! (global_options.loop_main_separate && main_nest_state == MAIN_NEST_IN_OTHER)) {
+                    append_stmt(block, new For(op->name, main_min, main_extent, op->for_type, p, new_body));
+                }
                 p.status = LoopSplitInfo::After;
-                if (end.defined()) {
+                // Generate the end loop but not if loop_main_separate is true and the nest state is IN_MAIN
+                if (end.defined() && ! (global_options.loop_main_separate && main_nest_state == MAIN_NEST_IN_MAIN)) {
                     append_stmt(block, new For(op->name, after_min, after_extent, op->for_type, p, op->body));
                     //append_stmt(block, new For(op->name, after_min, after_extent, For::Serial, p, op->body));
                 }
+                // Let bindings that appear before the loops...
                 if (global_options.loop_split_letbind) {
                     block = new LetStmt(main_extent_name, main_extent_let, block);
                     block = new LetStmt(main_min_name, main_min_let, block);
@@ -549,8 +580,10 @@ protected:
                 //log(0) << stmt;
                 done = true;
             }
+            }
         }
         if (! done) {
+            Stmt new_body = mutate(op->body);
             if (new_body.same_as(op->body)) {
                 stmt = op;
             } else {
@@ -559,7 +592,7 @@ protected:
         }
     }
 public:
-    LoopSplitting() {}
+    LoopSplitting() { main_nest_state = MAIN_NEST_INIT; }
 
 };
 

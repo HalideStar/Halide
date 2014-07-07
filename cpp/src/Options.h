@@ -48,6 +48,10 @@ public:
     // lift_let: If true, lift Let outside of For as much as possible.
     bool lift_let;
     
+    // loop_main_separate: If true (default is false), construct a main loop nest separate from the
+    // before and after loop nests.
+    bool loop_main_separate;
+    
     // interval_analysis_simplify: If true, simplify loop contents using interval analysis.
     bool interval_analysis_simplify;
     
