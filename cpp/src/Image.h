@@ -80,8 +80,8 @@ public:
     /** Construct an undefined image handle */
     Image() {}
 
-    /** Allocate an image with the given dimensions. */
-    Image(int x, int y = 0, int z = 0, int w = 0) : buffer(Buffer(type_of<T>(), x, y, z, w)) {
+    /** Allocate an image with the given dimensions and optionally strides. */
+    Image(int x, int y = 0, int z = 0, int w = 0, int sy = 0, int sz = 0, int sw = 0) : buffer(Buffer(type_of<T>(), x, y, z, w, NULL, sy, sz, sw)) {
         prepare_for_direct_pixel_access();
     }
 

@@ -23,7 +23,7 @@ struct BufferContents {
     std::string name;
 
     BufferContents(Type t, int x_size, int y_size, int z_size, int w_size,
-                   uint8_t* data = NULL) :
+                   uint8_t* data = NULL, int y_stride = 0, int z_stride = 0, int w_stride = 0) :
         type(t), allocation(NULL), name(unique_name('b')) {
         assert(t.width == 1 && "Can't create of a buffer of a vector type");
         buf.elem_size = t.bits / 8;        
@@ -45,10 +45,13 @@ struct BufferContents {
         buf.extent[1] = y_size;
         buf.extent[2] = z_size;
         buf.extent[3] = w_size;
+		if (y_stride == 0) y_stride = x_size;
+		if (z_stride == 0) z_stride = y_stride * y_size;
+		if (w_stride == 0) w_stride = z_stride * z_size;
         buf.stride[0] = 1;
-        buf.stride[1] = x_size;
-        buf.stride[2] = x_size*y_size;
-        buf.stride[3] = x_size*y_size*z_size;
+        buf.stride[1] = y_stride;
+        buf.stride[2] = z_stride;
+        buf.stride[3] = w_stride;
         buf.min[0] = 0;
         buf.min[1] = 0;
         buf.min[2] = 0;
@@ -79,8 +82,8 @@ public:
     Buffer() : contents(NULL) {}
 
     Buffer(Type t, int x_size = 0, int y_size = 0, int z_size = 0, int w_size = 0,
-           uint8_t* data = NULL) :
-        contents(new Internal::BufferContents(t, x_size, y_size, z_size, w_size, data)) {
+           uint8_t* data = NULL, int y_stride = 0, int z_stride = 0, int w_stride = 0) :
+        contents(new Internal::BufferContents(t, x_size, y_size, z_size, w_size, data, y_stride, z_stride, w_stride)) {
     }
     
     Buffer(Type t, const buffer_t *buf) : 
