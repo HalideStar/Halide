@@ -23,15 +23,19 @@ struct BufferContents {
     std::string name;
 
     BufferContents(Type t, int x_size, int y_size, int z_size, int w_size,
-                   uint8_t* data = NULL, int y_stride = 0, int z_stride = 0, int w_stride = 0) :
+                   uint8_t* data = NULL, int x_alloc = 0, int y_alloc = 0, int z_alloc = 0, int w_alloc = 0) :
         type(t), allocation(NULL), name(unique_name('b')) {
         assert(t.width == 1 && "Can't create of a buffer of a vector type");
         buf.elem_size = t.bits / 8;        
+		if (x_alloc == 0) x_alloc = x_size;
+        if (y_alloc == 0) y_alloc = y_size;
+        if (z_alloc == 0) z_alloc = z_size;
+        if (w_alloc == 0) w_alloc = w_size;
         size_t size = 1;
-        if (x_size) size *= x_size;
-        if (y_size) size *= y_size;
-        if (z_size) size *= z_size;
-        if (w_size) size *= w_size;
+        if (x_alloc) size *= x_alloc;
+        if (y_alloc) size *= y_alloc;
+        if (z_alloc) size *= z_alloc;
+        if (w_alloc) size *= w_alloc;
         if (!data) {
             allocation = (uint8_t *)calloc(buf.elem_size, size + 32/buf.elem_size);
             buf.host = allocation;
@@ -45,13 +49,10 @@ struct BufferContents {
         buf.extent[1] = y_size;
         buf.extent[2] = z_size;
         buf.extent[3] = w_size;
-		if (y_stride == 0) y_stride = x_size;
-		if (z_stride == 0) z_stride = y_stride * y_size;
-		if (w_stride == 0) w_stride = z_stride * z_size;
         buf.stride[0] = 1;
-        buf.stride[1] = y_stride;
-        buf.stride[2] = z_stride;
-        buf.stride[3] = w_stride;
+        buf.stride[1] = x_alloc;
+        buf.stride[2] = x_alloc * y_alloc;
+        buf.stride[3] = x_alloc * y_alloc * z_alloc;
         buf.min[0] = 0;
         buf.min[1] = 0;
         buf.min[2] = 0;
@@ -82,8 +83,8 @@ public:
     Buffer() : contents(NULL) {}
 
     Buffer(Type t, int x_size = 0, int y_size = 0, int z_size = 0, int w_size = 0,
-           uint8_t* data = NULL, int y_stride = 0, int z_stride = 0, int w_stride = 0) :
-        contents(new Internal::BufferContents(t, x_size, y_size, z_size, w_size, data, y_stride, z_stride, w_stride)) {
+           uint8_t* data = NULL, int x_alloc = 0, int y_alloc = 0, int z_alloc = 0, int w_alloc = 0) :
+        contents(new Internal::BufferContents(t, x_size, y_size, z_size, w_size, data, x_alloc, y_alloc, z_alloc, w_alloc)) {
     }
     
     Buffer(Type t, const buffer_t *buf) : 

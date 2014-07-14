@@ -81,7 +81,7 @@ public:
     Image() {}
 
     /** Allocate an image with the given dimensions and optionally strides. */
-    Image(int x, int y = 0, int z = 0, int w = 0, int sy = 0, int sz = 0, int sw = 0) : buffer(Buffer(type_of<T>(), x, y, z, w, NULL, sy, sz, sw)) {
+    Image(int x, int y = 0, int z = 0, int w = 0, int ax = 0, int ay = 0, int az = 0, int aw = 0) : buffer(Buffer(type_of<T>(), x, y, z, w, NULL, ax, ay, az, aw)) {
         prepare_for_direct_pixel_access();
     }
 
