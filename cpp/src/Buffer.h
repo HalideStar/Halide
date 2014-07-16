@@ -21,9 +21,12 @@ struct BufferContents {
     uint8_t *allocation;
     mutable RefCount ref_count;
     std::string name;
+    
+    uint8_t *access_base;
 
     BufferContents(Type t, int x_size, int y_size, int z_size, int w_size,
-                   uint8_t* data = NULL, int x_alloc = 0, int y_alloc = 0, int z_alloc = 0, int w_alloc = 0) :
+                   uint8_t* data = NULL, int x_alloc = 0, int y_alloc = 0, int z_alloc = 0, int w_alloc = 0,
+                   int x_min = 0, int y_min = 0, int z_min = 0, int w_min = 0) :
         type(t), allocation(NULL), name(unique_name('b')) {
         assert(t.width == 1 && "Can't create of a buffer of a vector type");
         buf.elem_size = t.bits / 8;        
@@ -43,6 +46,7 @@ struct BufferContents {
         } else {
             buf.host = data;
         }
+        access_base = buf.host;
         buf.host_dirty = false;
         buf.dev_dirty = false;
         buf.extent[0] = x_size;
@@ -53,10 +57,16 @@ struct BufferContents {
         buf.stride[1] = x_alloc;
         buf.stride[2] = x_alloc * y_alloc;
         buf.stride[3] = x_alloc * y_alloc * z_alloc;
-        buf.min[0] = 0;
-        buf.min[1] = 0;
-        buf.min[2] = 0;
-        buf.min[3] = 0;
+        // Non-zero minimum does not seem to work.
+        // Instead, just hack the address of the buffer.
+        // Note: This means that min must be a multiple of 32.
+        size_t offset = (x_min + (y_min * x_alloc) + (z_min * x_alloc * y_alloc) + (w_min * x_alloc * y_alloc * z_alloc)) * buf.elem_size;
+        assert ((offset & 0x1f) == 0 && "Offset for minimum must be a multiple of 32 bytes");
+        buf.host += offset;
+        buf.min[0] = x_min;
+        buf.min[1] = y_min;
+        buf.min[2] = z_min;
+        buf.min[3] = w_min;
     }
 
     BufferContents(Type t, const buffer_t *b) :
@@ -83,8 +93,10 @@ public:
     Buffer() : contents(NULL) {}
 
     Buffer(Type t, int x_size = 0, int y_size = 0, int z_size = 0, int w_size = 0,
-           uint8_t* data = NULL, int x_alloc = 0, int y_alloc = 0, int z_alloc = 0, int w_alloc = 0) :
-        contents(new Internal::BufferContents(t, x_size, y_size, z_size, w_size, data, x_alloc, y_alloc, z_alloc, w_alloc)) {
+           uint8_t* data = NULL, int x_alloc = 0, int y_alloc = 0, int z_alloc = 0, int w_alloc = 0,
+           int x_min = 0, int y_min = 0, int z_min = 0, int w_min = 0) :
+        contents(new Internal::BufferContents(t, x_size, y_size, z_size, w_size, data, x_alloc, y_alloc, z_alloc, w_alloc,
+                                              x_min, y_min, z_min, w_min)) {
     }
     
     Buffer(Type t, const buffer_t *buf) : 
@@ -93,7 +105,12 @@ public:
 
     void *host_ptr() const {
         assert(defined());
-        return (void *)contents.ptr->buf.host;
+        return (void *)contents.ptr->buf.host; // Offset for the minimum
+    }
+    
+    void *access_ptr() const {
+        assert(defined());
+        return (void *)contents.ptr->access_base; // Not offset for minimum
     }
     
     const buffer_t *raw_buffer() const {

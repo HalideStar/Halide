@@ -63,7 +63,7 @@ private:
     void prepare_for_direct_pixel_access() {
         // TODO: make sure buffer has been copied to host
         if (buffer.defined()) {
-            base = (T *)buffer.host_ptr();
+            base = (T *)buffer.access_ptr();
             stride_1 = buffer.stride(1);
             stride_2 = buffer.stride(2);
             stride_3 = buffer.stride(3);
@@ -81,7 +81,8 @@ public:
     Image() {}
 
     /** Allocate an image with the given dimensions and optionally strides. */
-    Image(int x, int y = 0, int z = 0, int w = 0, int ax = 0, int ay = 0, int az = 0, int aw = 0) : buffer(Buffer(type_of<T>(), x, y, z, w, NULL, ax, ay, az, aw)) {
+    Image(int x, int y = 0, int z = 0, int w = 0, int ax = 0, int ay = 0, int az = 0, int aw = 0,
+          int xm = 0, int ym = 0, int zm = 0, int wm = 0) : buffer(Buffer(type_of<T>(), x, y, z, w, NULL, ax, ay, az, aw, xm, ym, zm, wm)) {
         prepare_for_direct_pixel_access();
     }
 
