@@ -249,6 +249,7 @@ void IRVisitor::visit(const Allocate *op) {
 }
 
 void IRVisitor::visit(const Free *op) {
+	defaulted = true;
 }
 
 void IRVisitor::visit(const Realize *op) {

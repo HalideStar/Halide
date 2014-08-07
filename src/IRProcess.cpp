@@ -208,6 +208,9 @@ void IRProcess::visit(const Allocate *op) {
     process(op->body);
 }
 
+void IRVisitor::visit(const Free *op) {
+}
+
 void IRProcess::visit(const Realize *op) {
     for (size_t i = 0; i < op->bounds.size(); i++) {
         process(op->bounds[i].min);

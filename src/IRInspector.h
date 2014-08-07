@@ -57,6 +57,7 @@ public:
     virtual void visit(const Store *) {}
     virtual void visit(const Provide *) {}
     virtual void visit(const Allocate *) {}
+    virtual void visit(const Free *) {}
     virtual void visit(const Realize *) {}
     virtual void visit(const Block *) {}
     
