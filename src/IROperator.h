@@ -347,7 +347,7 @@ inline Expr clamp(Expr a, Expr min_val, Expr max_val) {
     if (global_options.clamp_as_node) {
         min_val = cast(a.type(), min_val);
         max_val = cast(a.type(), max_val);
-        return new Internal::Clamp(Internal::Clamp::Replicate, a, min_val, max_val);
+        return Internal::Clamp::make(Internal::Clamp::Replicate, a, min_val, max_val);
     } else {
         // This is the original Halide desugar of clamp()
         min_val = cast(a.type(), min_val);

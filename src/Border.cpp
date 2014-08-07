@@ -23,8 +23,10 @@ namespace Internal {
 template<>
 EXPORT Internal::RefCount &ref_count<Border::BorderBase>(const Border::BorderBase *f) {return f->ref_count;}
 
-template<>
-EXPORT void destroy<Border::BorderBase>(const Border::BorderBase *f) {delete f;}
+//LH: NEED TO RESOLVE PROBLEM HERE: This destroy method is considered invalid because the
+// destructor is not virtual.
+//template<>
+//EXPORT void destroy<Border::BorderBase>(const Border::BorderBase *f) {delete f;}
 }
 
 namespace Border {
@@ -194,7 +196,7 @@ Expr BorderConstant::valueExpr(int dim, Expr value, Expr expr, Expr min, Expr ma
 Expr BorderTile::indexExpr(int dim, Expr expr, Expr min, Expr max) {
     assert(tile.size() > 0 && "BorderTile requires at least one tile dimension");
     dim = dim % ((int) tile.size());
-    return new Internal::Clamp(Internal::Clamp::Tile, expr, min, max, tile[dim]); 
+    return Internal::Clamp::make(Internal::Clamp::Tile, expr, min, max, tile[dim]); 
 }
 
     // End namespace Border
@@ -255,8 +257,8 @@ void border_test() {
                      in2(max(min(Var::gen(0), 15), Int(32).min())), 
                      in2(min(Var::gen(0), 15)));
     success &= check(Border::wrap(in2), 
-                     in2(new Clamp(Clamp::Wrap, Var::gen(0), Int(32).min(), 15)), 
-                     in2(new Clamp(Clamp::Wrap, Var::gen(0), Int(32).min(), 15)));
+                     in2(Clamp::make(Clamp::Wrap, Var::gen(0), Int(32).min(), 15)), 
+                     in2(Clamp::make(Clamp::Wrap, Var::gen(0), Int(32).min(), 15)));
     success &= check(Border::constant(3)(in2), 
                      select(Var::gen(0) < Int(32).min(), 3, select(Var::gen(0) > 15,
                      3, in2(max(min(Var::gen(0), 15), Int(32).min())))), 

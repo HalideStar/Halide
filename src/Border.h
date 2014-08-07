@@ -141,7 +141,7 @@ BorderFunc border(BorderFunc h1, BorderFunc h2, BorderFunc h3, BorderFunc h4);
 /** A border function that provides no border. */
 class BorderNone : public BorderBase {
 public:
-    virtual Expr indexExpr(int dim, Expr expr, Expr min, Expr max) { return new Internal::Clamp(Internal::Clamp::None, expr); }
+    virtual Expr indexExpr(int dim, Expr expr, Expr min, Expr max) { return Internal::Clamp::make(Internal::Clamp::None, expr); }
 };
 
 /** A border function that replicates the boundary pixels. */
@@ -153,19 +153,19 @@ public:
 /** A border function that wraps the function around at the borders. */
 class BorderWrap : public BorderBase {
 public:
-    virtual Expr indexExpr(int dim, Expr expr, Expr min, Expr max) { return new Internal::Clamp(Internal::Clamp::Wrap, expr, min, max); }
+    virtual Expr indexExpr(int dim, Expr expr, Expr min, Expr max) { return Internal::Clamp::make(Internal::Clamp::Wrap, expr, min, max); }
 };
 
 /** A border function that reflects including the boundary. */
 class BorderReflect : public BorderBase {
 public:
-    virtual Expr indexExpr(int dim, Expr expr, Expr min, Expr max) { return new Internal::Clamp(Internal::Clamp::Reflect, expr, min, max); }
+    virtual Expr indexExpr(int dim, Expr expr, Expr min, Expr max) { return Internal::Clamp::make(Internal::Clamp::Reflect, expr, min, max); }
 };
 
 /** A border function that reflects excluding the boundary. */
 class BorderReflect101 : public BorderBase {
 public:
-    virtual Expr indexExpr(int dim, Expr expr, Expr min, Expr max) { return new Internal::Clamp(Internal::Clamp::Reflect101, expr, min, max); }
+    virtual Expr indexExpr(int dim, Expr expr, Expr min, Expr max) { return Internal::Clamp::make(Internal::Clamp::Reflect101, expr, min, max); }
 };
 
 /** A border function that replaces pixels outside the range with a constant expression. */
