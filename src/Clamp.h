@@ -36,23 +36,28 @@ struct Clamp : public ExprNode<Clamp> {
     // mutable so that this can be done as a side effect of bounds inference
     //mutable Expr min_a, max_a;
 	
-private:
-	void constructor();
-
 public:
-	Clamp(ClampType _t, Expr _a, Expr _min, Expr _max, Expr _p1): 
-		ExprNode<Clamp>(_a.type()), a(_a), min(_min), max(_max), p1(_p1), clamptype(_t) {
-		constructor();
-	}
-	Clamp(ClampType _t, Expr _a, Expr _min, Expr _max): 
-		ExprNode<Clamp>(_a.type()), a(_a), min(_min), max(_max), p1(Expr(0)), clamptype(_t) {
-		assert(clamptype != Tile && "Tile clamp without tile expression");
-		constructor();
-	}
-	Clamp(ClampType _t, Expr _a): 
-		ExprNode<Clamp>(_a.type()), a(_a), min(Expr(0)), max(Expr(0)), p1(Expr(0)), clamptype(_t) {
-		assert(clamptype == None && "Clamp (other than None) without limits");
-		constructor();
+	static Expr make(ClampType t, Expr a, Expr min = Expr(0), Expr max = Expr(0), Expr p1 = Expr(0)) {
+		assert(a.defined() && "Clamp of undefined");
+		assert(min.defined() && "Clamp of undefined");
+		assert(max.defined() && "Clamp of undefined");
+		assert(min.type() == a.type() && "Clamp of mismatched types");
+		assert(max.type() == a.type() && "Clamp of mismatched types");
+		// Even if the clamp type is not Tile, we require a defined tile
+		// expression - makes it easier to walk the tree.  The expression is ignored.
+		assert(p1.defined() && "Clamp of undefined");
+		if (t == Tile) {
+			assert(p1.type() == a.type() && "Clamp of mismatched types");
+		}
+		
+		Clamp *node = new Clamp;
+		node->type = a.type();
+		node->clamptype = t;
+		node->a = a;
+		node->min = min;
+		node->max = max;
+		node->p1 = p1;
+		return node;
 	}
 };
 

@@ -320,8 +320,8 @@ struct SignFill : public ExprNode<SignFill> {
     Expr value;
 
     static Expr make(Type t, Expr v) {
-        assert(value.defined() && "SignFill of undefined");
-        assert((value.type().is_int() || value.type().is_uint()) && "parameter of SignFill is not an integer type");
+        assert(v.defined() && "SignFill of undefined");
+        assert((v.type().is_int() || v.type().is_uint()) && "parameter of SignFill is not an integer type");
         
         SignFill *node = new SignFill;
         node->type = t;
@@ -1222,18 +1222,17 @@ struct StmtTargetVar : public StmtNode<StmtTargetVar> {
     Stmt body;
     Stmt source; // Not a child node - records the source statement
     
-    static Stmt make(std::string name, Expr body, Expr source) {
+    static Stmt make(std::string n, Stmt b, Stmt src) {
         StmtTargetVar *node = new StmtTargetVar;
-        node->type = body.type();
-        node->name = name;
-        node->body = body;
-        node->source = source;
+        node->name = n;
+        node->body = b;
+        node->source = src;
         return node;
     }
     
     /** Convenience constructor for mutating a node - rebuilding it with a new body.
      * The source is copied transparently */
-    static Stmt make(const StmtTargetVar *op, Expr body) {
+    static Stmt make(const StmtTargetVar *op, Stmt body) {
         return make(op->name, body, op->source);
     }
 };
