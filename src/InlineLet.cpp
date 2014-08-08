@@ -124,7 +124,7 @@ void InlineLet::visit(const For *op) {
     if (body.same_as(op->body) && min.same_as(op->min) && extent.same_as(op->extent)) {
         stmt = op;
     } else {
-        stmt = new For(op, min, extent, body);
+        stmt = For::make(op, min, extent, body);
     }        
 }
 

@@ -36,7 +36,7 @@ class LowerClamp : public IRMutator {
                 expr = op_a;
                 break;
             case Clamp::Replicate:
-                expr = new Max(new Min(op_a, op_max), op_min);
+                expr = Max::make(Min::make(op_a, op_max), op_min);
                 break;
             case Clamp::Wrap:
                 // Integers wrap by modulus max-min+1.  Floats wrap by fmod max-min
@@ -72,7 +72,7 @@ class LowerClamp : public IRMutator {
             case Clamp::Reflect101:
                 // Reflect101.  For float, this is the same as Reflect
                 if (op->type.is_float()) {
-                    expr = mutate(new Clamp(Clamp::Reflect, op_a, op_min, op_max));
+                    expr = mutate(Clamp::make(Clamp::Reflect, op_a, op_min, op_max));
                 } else {
                     // First Subtract op_min.
                     // r = op_max - op_min
@@ -145,10 +145,10 @@ void lower_clamp_test() {
     bool success = true;
     
     check(clamp(x,30,50), max(min(x,50),30));
-    check( new Clamp(Clamp::Wrap, x, 30,50), (x - 30) % (21) + 30);
+    check( Clamp::make(Clamp::Wrap, x, 30,50), (x - 30) % (21) + 30);
     
     // Test reflection by execution
-    reflect(x) = lower_clamp(new Clamp(Clamp::Reflect, x, 30,50));
+    reflect(x) = lower_clamp(Clamp::make(Clamp::Reflect, x, 30,50));
     out = reflect.realize(100);
     for (int i = 0; i < 100; i++) {
         // Do reflection the slow way.
@@ -166,7 +166,7 @@ void lower_clamp_test() {
     }
 
     // Test reflection by execution
-    reflect101(x) = lower_clamp(new Clamp(Clamp::Reflect101, x, 30,50));
+    reflect101(x) = lower_clamp(Clamp::make(Clamp::Reflect101, x, 30,50));
     out = reflect101.realize(100);
     for (int i = 0; i < 100; i++) {
         // Do reflection the slow way.
@@ -184,7 +184,7 @@ void lower_clamp_test() {
     }
     
     // Test tile by execution
-    tile(x) = lower_clamp(new Clamp(Clamp::Tile, x, 30,50,3));
+    tile(x) = lower_clamp(Clamp::make(Clamp::Tile, x, 30,50,3));
     out = tile.realize(100);
     for (int i = 0; i < 100; i++) {
         // Do tiling the slow way.

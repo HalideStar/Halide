@@ -45,7 +45,7 @@ class LoopPreSolver : public InlineLet {
             //    const For *forloop = stmt.as<For>() 
             // this does not retain an intrusive pointer to the underlying For
             // loop node once stmt is reused.  The outcome is that
-            //    stmt = new For(forloop, ...)
+            //    stmt = For::make(forloop, ...)
             // crashes because stmt is reinitialised and the For loop node is destroyed;
             // it turns out that the node is destroyed before the new node is constructed.
             // Assign stmt to result so that this does not happen.
@@ -55,9 +55,9 @@ class LoopPreSolver : public InlineLet {
             
             // Construct a new body that wraps the loop body as a target variable for solver.
             // The source node is the original op.
-            Stmt body = new StmtTargetVar(op->name, forloop->body, op);
+            Stmt body = StmtTargetVar::make(op->name, forloop->body, op);
             varlist.pop_back();
-            stmt = new For(forloop, forloop->min, forloop->extent, body);
+            stmt = For::make(forloop, forloop->min, forloop->extent, body);
         } else {
             // Treat the unrolled or vectorised loop as a constant - it will be
             // an interval when solved.
@@ -77,11 +77,11 @@ class LoopPreSolver : public InlineLet {
         Expr b = mutate(op->b);
         if (is_constant_expr(a) && ! is_constant_expr(b)) std::swap(a,b);
         if (!is_constant_expr(a) && is_constant_expr(b)) {
-            expr = new Min(new Solve(a, InfInterval(make_infinity(b.type(), -1), b)), b);
+            expr = Min::make(Solve::make(a, InfInterval(make_infinity(b.type(), -1), b)), b);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
-            expr = new Min(a, b);
+            expr = Min::make(a, b);
         }
     }
 
@@ -94,11 +94,11 @@ class LoopPreSolver : public InlineLet {
         Expr b = mutate(op->b);
         if (is_constant_expr(a) && ! is_constant_expr(b)) std::swap(a,b);
         if (!is_constant_expr(a) && is_constant_expr(b)) {
-            expr = new Max(new Solve(a, InfInterval(b, make_infinity(b.type(), +1))), b);
+            expr = Max::make(Solve::make(a, InfInterval(b, make_infinity(b.type(), +1))), b);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
-            expr = new Max(a, b);
+            expr = Max::make(a, b);
         }
     }
     
@@ -114,18 +114,18 @@ class LoopPreSolver : public InlineLet {
             if (b.type().is_int() || b.type().is_uint()) {
                 limit = simplify(limit + make_one(b.type()));
             }
-            expr = new LT(a, new Solve(b, InfInterval(limit, make_infinity(b.type(), +1))));
+            expr = LT::make(a, Solve::make(b, InfInterval(limit, make_infinity(b.type(), +1))));
         } else if (is_constant_expr(b)) {
             // a < kb: Solve for a on (-infinity, kb-1) or (-infinity,kb)
             Expr limit = b;
             if (a.type().is_int() || a.type().is_uint()) {
                 limit = simplify(limit - make_one(a.type()));
             }
-            expr = new LT(new Solve(a, InfInterval(make_infinity(a.type(), -1), limit)), b);
+            expr = LT::make(Solve::make(a, InfInterval(make_infinity(a.type(), -1), limit)), b);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
-            expr = new LT(a, b);
+            expr = LT::make(a, b);
         }
     }
     
@@ -147,18 +147,18 @@ class LoopPreSolver : public InlineLet {
             if (a.type().is_int() || a.type().is_uint()) {
                 limit = simplify(limit - make_one(a.type()));
             }
-            expr = new Mod(new Solve(a, InfInterval(make_zero(a.type()), limit)), b);
+            expr = Mod::make(Solve::make(a, InfInterval(make_zero(a.type()), limit)), b);
         } else if (is_negative_const(b)) {
             // a % kb: Solve for a on (kb+1,0) or (kb,0)
             Expr limit = b;
             if (a.type().is_int() || a.type().is_uint()) {
                 limit = simplify(limit + make_one(a.type()));
             }
-            expr = new Mod(new Solve(a, InfInterval(limit, make_zero(a.type()))), b);
+            expr = Mod::make(Solve::make(a, InfInterval(limit, make_zero(a.type()))), b);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
-            expr = new Mod(a, b);
+            expr = Mod::make(a, b);
         }
     }
     
@@ -171,12 +171,12 @@ class LoopPreSolver : public InlineLet {
         
         if (is_constant_expr(min) && is_constant_expr(max)) {
             // a on (min, max)
-            expr = new Clamp(op->clamptype, new Solve(a, InfInterval(min, max)), min, max, p1);
+            expr = Clamp::make(op->clamptype, Solve::make(a, InfInterval(min, max)), min, max, p1);
         } else if (a.same_as(op->a) && min.same_as(op->min) && 
                    max.same_as(op->max) && p1.same_as(op->p1)) {
             expr = op;
         } else {
-            expr = new Clamp(op->clamptype, a, min, max, p1);
+            expr = Clamp::make(op->clamptype, a, min, max, p1);
         }
     }
 };
@@ -333,7 +333,7 @@ protected:
     
     void append_stmt(Stmt &block, Stmt s) {
         if (! block.defined()) block = s;
-        else block = new Block(block, s);
+        else block = Block::make(block, s);
     }
     
     void visit(const For *op) {
@@ -431,7 +431,7 @@ protected:
                 string endName = op->name + ".end";
                 Expr start, startValue, before_min, before_extent;
                 if (part.min.defined() && infinity_count(part.min) == 0) {
-                    start = new Variable(op->min.type(), startName);
+                    start = Variable::make(op->min.type(), startName);
                     startValue = simplify(part.min);
                     before_min = op->min;
                     //before_extent = max(min(start - op->min, op->extent), 0);
@@ -439,7 +439,7 @@ protected:
                 }
                 Expr end, endValue, after_min, after_extent;
                 if (part.max.defined() && infinity_count(part.max) == 0) {
-                    end = new Variable(op->min.type(), endName);
+                    end = Variable::make(op->min.type(), endName);
                     endValue = simplify(part.max + 1); // end is after the end of the loop.
                     after_min = end;
                     //after_extent = max(op->min + op->extent - end, 0);
@@ -468,8 +468,8 @@ protected:
                     main_extent_let = main_extent;
                     main_min_name = op->name + ".mainmin";
                     main_extent_name = op->name + ".mainextent"; // Prefer not to use .extent to avoid confusion.
-                    main_min = new Variable(op->min.type(), main_min_name);
-                    main_extent = new Variable(op->min.type(), main_extent_name);
+                    main_min = Variable::make(op->min.type(), main_min_name);
+                    main_extent = Variable::make(op->min.type(), main_extent_name);
                 }
                 // Build the code.
                 Stmt block; // An undefined block of code.
@@ -478,23 +478,23 @@ protected:
                 PartitionInfo p = op->partition;
                 if (start.defined()) {
                     p.status = PartitionInfo::Before;
-                    append_stmt(block, new For(op->name, before_min, before_extent, op->for_type, p, op->body));
+                    append_stmt(block, For::make(op->name, before_min, before_extent, op->for_type, p, op->body));
                 }
                 p.status = PartitionInfo::Main;
-                append_stmt(block, new For(op->name, main_min, main_extent, op->for_type, p, new_body));
+                append_stmt(block, For::make(op->name, main_min, main_extent, op->for_type, p, new_body));
                 p.status = PartitionInfo::After;
                 if (end.defined()) {
-                    append_stmt(block, new For(op->name, after_min, after_extent, op->for_type, p, op->body));
+                    append_stmt(block, For::make(op->name, after_min, after_extent, op->for_type, p, op->body));
                 }
                 if (global_options.loop_partition_letbind) {
-                    block = new LetStmt(main_extent_name, main_extent_let, block);
-                    block = new LetStmt(main_min_name, main_min_let, block);
+                    block = LetStmt::make(main_extent_name, main_extent_let, block);
+                    block = LetStmt::make(main_min_name, main_min_let, block);
                 }
                 if (end.defined()) {
-                    block = new LetStmt(endName, endValue, block);
+                    block = LetStmt::make(endName, endValue, block);
                 }
                 if (start.defined()) {
-                    block = new LetStmt(startName, startValue, block);
+                    block = LetStmt::make(startName, startValue, block);
                 }
                 stmt = block;
                 if (equal(block, op)) { // Equality test required because new For loop is always constructed.
@@ -511,7 +511,7 @@ protected:
             if (new_body.same_as(op->body)) {
                 stmt = op;
             } else {
-                stmt = new For(op, op->min, op->extent, new_body);
+                stmt = For::make(op, op->min, op->extent, new_body);
             }
         }
     }
@@ -541,21 +541,21 @@ Stmt loop_partition(Stmt s) {
 namespace {
 Stmt code_1 () {
     Type i32 = Int(32);
-    Expr x = new Variable(Int(32), "x");
-    Expr y = new Variable(Int(32), "y");
-    Expr input = new Call(Int(16), "input", vec((x - 10) % 100 + 10));
-    Expr select = new Select(x > 3, new Select(x < 87, input, new Cast(Int(16), -17)),
-                             new Cast(Int(16), -17));
-    Stmt store = new Store("buf", select, x - 1);
+    Expr x = Variable::make(Int(32), "x");
+    Expr y = Variable::make(Int(32), "y");
+    Expr input = Call::make(Int(16), "input", vec((x - 10) % 100 + 10));
+    Expr select = Select::make(x > 3, Select::make(x < 87, input, Cast::make(Int(16), -17)),
+                             Cast::make(Int(16), -17));
+    Stmt store = Store::make("buf", select, x - 1);
     PartitionInfo partition(true); // Select auto partitioning.
-    Stmt for_loop = new For("x", 0, 100, For::Parallel, partition, store);
-    Expr call = new Call(i32, "buf", vec(max(min(x,100),0)));
-    Expr call2 = new Call(i32, "buf", vec(max(min(x-1,100),0)));
-    Expr call3 = new Call(i32, "buf", vec(Expr(new Clamp(Clamp::Reflect, x+1, 0, 100))));
-    Stmt store2 = new Store("out", call + call2 + call3 + 1, x);
+    Stmt for_loop = For::make("x", 0, 100, For::Parallel, partition, store);
+    Expr call = Call::make(i32, "buf", vec(max(min(x,100),0)));
+    Expr call2 = Call::make(i32, "buf", vec(max(min(x-1,100),0)));
+    Expr call3 = Call::make(i32, "buf", vec(Expr(Clamp::make(Clamp::Reflect, x+1, 0, 100))));
+    Stmt store2 = Store::make("out", call + call2 + call3 + 1, x);
     PartitionInfo partition2(InfInterval(1,99)); // Specify manual partitioning interval.
-    Stmt for_loop2 = new For("x", 0, 100, For::Serial, partition2, store2);
-    Stmt pipeline = new Pipeline("buf", for_loop, Stmt(), for_loop2);
+    Stmt for_loop2 = For::make("x", 0, 100, For::Serial, partition2, store2);
+    Stmt pipeline = Pipeline::make("buf", for_loop, Stmt(), for_loop2);
     
     return pipeline;
 }
