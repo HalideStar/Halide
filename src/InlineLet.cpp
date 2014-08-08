@@ -100,7 +100,7 @@ Body simplify_let(const T *op, Scope<Expr> &scope, IRMutator *mutator) {
     if (body.same_as(op->body) && value.same_as(op->value)) {
         return op;
     } else {
-        return new T(op->name, value, body);
+        return T::make(op->name, value, body);
     }        
 }
 

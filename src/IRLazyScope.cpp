@@ -209,24 +209,24 @@ namespace {
 void lazy_scope_test() {
     // Build a program tree.
     Type i32 = Int(32);
-    Expr x = new Variable(Int(32), "x");
-    Expr y = new Variable(Int(32), "y");
-    Expr a = new Variable(Int(32), "a");
+    Expr x = Variable::make(Int(32), "x");
+    Expr y = Variable::make(Int(32), "y");
+    Expr a = Variable::make(Int(32), "a");
 
-    Expr input = new Call(Int(16), "input", vec((x - 10) % 100 + 10));
-    Expr select = new Select(x > 3, new Select(x < 87, input, new Cast(Int(16), y-17)),
-                             new Cast(Int(16), -17));
-    Stmt store = new Store("buf", select, x - 1);
+    Expr input = Call::make(Int(16), "input", vec((x - 10) % 100 + 10));
+    Expr select = Select::make(x > 3, Select::make(x < 87, input, Cast::make(Int(16), y-17)),
+                             Cast::make(Int(16), -17));
+    Stmt store = Store::make("buf", select, x - 1);
     PartitionInfo partition(true);
-    Stmt for_loop = new For("x", 0, 100, For::Parallel, partition, store);
-    Stmt letstmt = new LetStmt("y", a * 2 + 5, for_loop); //a is undefined here
-    Expr call = new Call(i32, "buf", vec(max(min(x,100),0)));
-    Expr call2 = new Call(i32, "buf", vec(max(min(x-1,100),0)));
-    Expr call3 = new Call(i32, "buf", vec(Expr(new Clamp(Clamp::Reflect, x+1, 0, 100))));
-    Stmt store2 = new Store("out", call + call2 + call3 + 1 + y, x); // y is undefined here
+    Stmt for_loop = For::make("x", 0, 100, For::Parallel, partition, store);
+    Stmt letstmt = LetStmt::make("y", a * 2 + 5, for_loop); //a is undefined here
+    Expr call = Call::make(i32, "buf", vec(max(min(x,100),0)));
+    Expr call2 = Call::make(i32, "buf", vec(max(min(x-1,100),0)));
+    Expr call3 = Call::make(i32, "buf", vec(Expr(Clamp::make(Clamp::Reflect, x+1, 0, 100))));
+    Stmt store2 = Store::make("out", call + call2 + call3 + 1 + y, x); // y is undefined here
     PartitionInfo partition2(InfInterval(1,99));
-    Stmt for_loop2 = new For("x", 0, 100, For::Serial, partition2, store2);
-    Stmt pipeline = new Pipeline("buf", letstmt, Stmt(), for_loop2);
+    Stmt for_loop2 = For::make("x", 0, 100, For::Serial, partition2, store2);
+    Stmt pipeline = Pipeline::make("buf", letstmt, Stmt(), for_loop2);
     
     Walker walk;
     

@@ -138,7 +138,7 @@ InfInterval operator/(InfInterval u, InfInterval v) {
         bool min_v_is_positive = proved(v.min > Internal::make_zero(v.min.type()));
         bool max_v_is_negative = proved(v.max < Internal::make_zero(v.max.type()));
         if (! min_v_is_positive && ! max_v_is_negative) {
-            return InfInterval(Expr(new Internal::Infinity(-1)), Expr(new Internal::Infinity(1)));
+            return InfInterval(Internal::Infinity::make(-1), Internal::Infinity::make(1));
         } else {
             Expr a = u.min / v.min;
             Expr b = u.min / v.max;
