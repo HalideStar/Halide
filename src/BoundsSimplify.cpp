@@ -142,8 +142,8 @@ Expr bounds_simplify(Expr e) {
 namespace{
 void check(Stmt a, Stmt b) {
     // Use loop to set intervals on the variables.
-    Stmt fora = new For("x", Expr(0), Expr(11), For::Serial, a);
-    Stmt forb = new For("x", Expr(0), Expr(11), For::Serial, b);
+    Stmt fora = For::make("x", Expr(0), Expr(11), For::Serial, a);
+    Stmt forb = For::make("x", Expr(0), Expr(11), For::Serial, b);
     // Simplify a.
     Stmt simpler = bounds_simplify(fora);
     const For *result = simpler.as<For>();
@@ -158,8 +158,8 @@ void check(Stmt a, Stmt b) {
     
 void check(Expr a, Expr b) {
     // Use two For loops, one with an undefined upper bound (!) to set intervals on the variables.
-    Stmt storea = new Store("x", a, Expr(0));
-    Stmt storeb = new Store("x", b, Expr(0));
+    Stmt storea = Store::make("x", a, Expr(0));
+    Stmt storeb = Store::make("x", b, Expr(0));
     check(storea, storeb);
 }
 
@@ -173,33 +173,33 @@ void bounds_simplify_test() {
     vector<Expr> input_site_2_simplified = vec(min(x+1,10));
     vector<Expr> output_site = vec(x+1);
 
-    Stmt loop = new For("x", 3, 10 /* 3 to 12 inclusive */, For::Serial,  
-                        new Provide("output", 
-                                    new Add(
-                                        new Call(Int(32), "input", input_site_1),
-                                        new Call(Int(32), "input", input_site_2)),
+    Stmt loop = For::make("x", 3, 10 /* 3 to 12 inclusive */, For::Serial,  
+                        Provide::make("output", 
+                                    Add::make(
+                                        Call::make(Int(32), "input", input_site_1),
+                                        Call::make(Int(32), "input", input_site_2)),
                                     output_site));
-    Stmt result = new For("x", 3, 10, For::Serial,  
-                        new Provide("output", 
-                                    new Add(
-                                        new Call(Int(32), "input", input_site_1_simplified),
-                                        new Call(Int(32), "input", input_site_2_simplified)),
+    Stmt result = For::make("x", 3, 10, For::Serial,  
+                        Provide::make("output", 
+                                    Add::make(
+                                        Call::make(Int(32), "input", input_site_1_simplified),
+                                        Call::make(Int(32), "input", input_site_2_simplified)),
                                     output_site));
 
-                                    check(new Select(x < 11, x*2, x*3), x*2);
+                                    check(Select::make(x < 11, x*2, x*3), x*2);
 
-    check(new Min(x, 9), new Min(x, 9));
-    check(new Min(x, 10), x);
+    check(Min::make(x, 9), Min::make(x, 9));
+    check(Min::make(x, 10), x);
     check(clamp(x, 1, 5), clamp(x, 1, 5));
     check(clamp(x, -1, 15), x);
     check(clamp(x-1, -1, 9), x-1);
-    check(new Clamp(Clamp::Wrap, x, 0, 10), x);
-    check(new Clamp(Clamp::None, x), x);
-    check(abs(min(x,10)), new Call(Int(32), "abs_i32", vec(Expr(x))));
-    check(abs(new Call(Int(16), "input", input_site_1)),
-        abs(new Call(Int(16), "input", vec(Expr(x)))));
-    check(abs(cast(Int(16), new Call(UInt(8), "input", input_site_1))),
-        abs(cast(Int(16), new Call(UInt(8), "input", vec(Expr(x))))));
+    check(Clamp::make(Clamp::Wrap, x, 0, 10), x);
+    check(Clamp::make(Clamp::None, x), x);
+    check(abs(min(x,10)), Call::make(Int(32), "abs_i32", vec(Expr(x))));
+    check(abs(Call::make(Int(16), "input", input_site_1)),
+        abs(Call::make(Int(16), "input", vec(Expr(x)))));
+    check(abs(cast(Int(16), Call::make(UInt(8), "input", input_site_1))),
+        abs(cast(Int(16), Call::make(UInt(8), "input", vec(Expr(x))))));
     
     check(loop, result);
     

@@ -62,19 +62,19 @@ private:
             } else {
                 // Hack: Treat 32 bit unsigned int as unbounded.
                 // Previously, min was undef, but zero is sensible.
-                return InfInterval(t.min(), new Infinity(t, 1));
+                return InfInterval(t.min(), Infinity::make(t, 1));
             }
         } else if (t.is_int()) {
             if (t.bits <= 31) { // Previously, more than 16 bbits was unbounded, but in practice that meant 32
                 return InfInterval(t.min(), t.max());
             } else {
                 // Hack: Treat 32 bit signed integer as unbounded.
-                return InfInterval(new Infinity(t, -1), new Infinity(t, 1));
+                return InfInterval(Infinity::make(t, -1), Infinity::make(t, 1));
             }
             
         } else {
             // Floating point types are treated as unbounded for analysis
-            return InfInterval(new Infinity(t, -1), new Infinity(t, 1));
+            return InfInterval(Infinity::make(t, -1), Infinity::make(t, 1));
         }        
     }
 
@@ -92,7 +92,7 @@ protected:
     virtual void visit(const Cast *op) {
         // Assume no overflow
         InfInterval value = bounds(op->value);
-        interval = InfInterval(new Cast(op->type, value.min), new Cast(op->type, value.max));
+        interval = InfInterval(Cast::make(op->type, value.min), Cast::make(op->type, value.max));
     }
 
     virtual void visit(const Variable *op) {
@@ -125,7 +125,7 @@ protected:
                 //log(0) << "    interval of " << def_letstmt->value << " " << interval << "\n";
             } else {
                 assert(0 && "Unknown defining node for variable");
-                interval = InfInterval(new Infinity(-1), new Infinity(1));
+                interval = InfInterval(Infinity::make(-1), Infinity::make(1));
             }
             ret(found);
         } else {
@@ -313,12 +313,12 @@ protected:
         
         // Here we return a ramp representing the interval of values in each position of the
         // interpreted Ramp node.
-        interval = InfInterval(new Ramp(base.min, stride.min, op->width), new Ramp(base.max, stride.max, op->width));
+        interval = InfInterval(Ramp::make(base.min, stride.min, op->width), Ramp::make(base.max, stride.max, op->width));
     }
 
     virtual void visit(const Broadcast *op) {
         InfInterval value = bounds(op->value);
-        interval = InfInterval(new Broadcast(value.min, op->width), new Broadcast(value.max, op->width));
+        interval = InfInterval(Broadcast::make(value.min, op->width), Broadcast::make(value.max, op->width));
     }
 
     virtual void visit(const Solve *op) {

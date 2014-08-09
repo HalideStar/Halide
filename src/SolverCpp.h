@@ -293,10 +293,10 @@ protected:
         } else if (min_e && is_constant_expr(min_e->a)) {
             // Min, Max: push outside of Solve nodes.
             // solve(min(k,v)) on (a,b) --> min(k,solve(v)). 
-            expr = mutate(new Min(min_e->a, solve(min_e->b, v_apply(inverseMin, op->v, bounds.bounds(min_e->a)))));
+            expr = mutate(Min::make(min_e->a, solve(min_e->b, v_apply(inverseMin, op->v, bounds.bounds(min_e->a)))));
         } else if (min_e && is_constant_expr(min_e->b)) {
             // solve(min(v,k)) on (a,b) --> min(solve(v),k). 
-            expr = mutate(new Min(solve(min_e->a, v_apply(inverseMin, op->v, bounds.bounds(min_e->b))), min_e->b));
+            expr = mutate(Min::make(solve(min_e->a, v_apply(inverseMin, op->v, bounds.bounds(min_e->b))), min_e->b));
         } else if (max_e && is_constant_expr(max_e->a)) {
             // solve(max(k,v)) on (a,b) --> max(k,solve(v)). 
             expr = mutate(new Max(max_e->a, solve(max_e->b, v_apply(inverseMax, op->v, bounds.bounds(max_e->a)))));
