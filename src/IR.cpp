@@ -86,7 +86,6 @@ template<> EXPORT IRNodeType StmtNode<StmtTargetVar>::_type_info = {};
 template<> EXPORT IRNodeType ExprNode<Infinity>::_type_info = {};
 //template<> EXPORT IRNodeType ExprNode<ExprInterval>::_type_info = {};
 
-namespace Internal {
 /** Ensure that two operands are both defined and of the same type */
 void assert_defined_same_type(std::string opname, Expr a, Expr b) {
     if (! a.defined() || ! b.defined()) {
