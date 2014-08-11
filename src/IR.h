@@ -262,14 +262,13 @@ struct Cast : public ExprNode<Cast> {
 struct BitAnd : public ExprNode<BitAnd> {
     Expr a, b;
 
-    static Expr make(Type t, Expr a, Expr b) {
-        assert(a.defined() && "BitAnd of undefined");
-        assert(b.defined() && "BitAnd of undefined");
+    static Expr make(Expr a, Expr b) {
+        assert_defined_same_type("BitAnd", a, b);
         assert((a.type().is_int() || a.type().is_uint()) && "lhs of BitAnd is not an integer type");
         assert((b.type().is_int() || b.type().is_uint()) && "rhs of BitAnd is not an integer type");
         
         BitAnd *node = new BitAnd;
-        node->type = t;
+        node->type = a.type();
         node->a = a;
         node->b = b;
         return node;
@@ -281,14 +280,13 @@ struct BitAnd : public ExprNode<BitAnd> {
 struct BitOr : public ExprNode<BitOr> {
     Expr a, b;
 
-    static Expr make(Type t, Expr a, Expr b) {
-        assert(a.defined() && "BitOr of undefined");
-        assert(b.defined() && "BitOr of undefined");
+    static Expr make(Expr a, Expr b) {
+        assert_defined_same_type("BitOr", a, b);
         assert((a.type().is_int() || a.type().is_uint()) && "lhs of BitOr is not an integer type");
         assert((b.type().is_int() || b.type().is_uint()) && "rhs of BitOr is not an integer type");
         
         BitOr *node = new BitOr;
-        node->type = t;
+        node->type = a.type();
         node->a = a;
         node->b = b;
         return node;
@@ -300,14 +298,13 @@ struct BitOr : public ExprNode<BitOr> {
 struct BitXor : public ExprNode<BitXor> {
     Expr a, b;
 
-    static Expr make(Type t, Expr a, Expr b) {
-        assert(a.defined() && "BitXor of undefined");
-        assert(b.defined() && "BitXor of undefined");
+    static Expr make(Expr a, Expr b) {
+        assert_defined_same_type("BitXor", a, b);
         assert((a.type().is_int() || a.type().is_uint()) && "lhs of BitXor is not an integer type");
         assert((b.type().is_int() || b.type().is_uint()) && "rhs of BitXor is not an integer type");
         
         BitXor *node = new BitXor;
-        node->type = t;
+        node->type = a.type();
         node->a = a;
         node->b = b;
         return node;
@@ -319,12 +316,12 @@ struct BitXor : public ExprNode<BitXor> {
 struct SignFill : public ExprNode<SignFill> {
     Expr value;
 
-    static Expr make(Type t, Expr v) {
+    static Expr make(Expr v) {
         assert(v.defined() && "SignFill of undefined");
         assert((v.type().is_int() || v.type().is_uint()) && "parameter of SignFill is not an integer type");
         
         SignFill *node = new SignFill;
-        node->type = t;
+        node->type = v.type();
         node->value = v;
         return node;
     }
