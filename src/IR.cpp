@@ -17,7 +17,6 @@ IntImm make_immortal_int(int x) {
 
 }
 
-namespace Internal {
 IntImm IntImm::small_int_cache[] = {make_immortal_int(-8), 
                                     make_immortal_int(-7), 
                                     make_immortal_int(-6), 
@@ -87,12 +86,7 @@ template<> EXPORT IRNodeType StmtNode<StmtTargetVar>::_type_info = {};
 template<> EXPORT IRNodeType ExprNode<Infinity>::_type_info = {};
 //template<> EXPORT IRNodeType ExprNode<ExprInterval>::_type_info = {};
 
-template<>
-EXPORT RefCount &ref_count<IRNode>(const IRNode *n) {return n->ref_count;}
-
-template<>
-EXPORT void destroy<IRNode>(const IRNode *n) {delete n;}
-
+namespace Internal {
 /** Ensure that two operands are both defined and of the same type */
 void assert_defined_same_type(std::string opname, Expr a, Expr b) {
     if (! a.defined() || ! b.defined()) {
