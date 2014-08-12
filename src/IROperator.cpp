@@ -208,9 +208,9 @@ Expr make_const(Type t, int val) {
 
 Expr make_infinity(Type t, int count) { //LH
     //if (t.is_vector()) {
-    //    return new Broadcast(make_infinity(t.element_of(), count), t.width);
+    //    return Broadcast::make(make_infinity(t.element_of(), count), t.width);
     //}
-    return new Infinity(t, count); // Infinity is native to all types, including vectors.
+    return Infinity::make(t, count); // Infinity is native to all types, including vectors.
 }
         
 Expr make_bool(bool val, int w) {
