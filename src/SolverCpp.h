@@ -136,11 +136,11 @@ private:
 namespace {
 // Convenience methods for building solve nodes.
 Expr solve(Expr e, InfInterval i) {
-    return new Solve(e, i);
+    return Solve::make(e, i);
 }
 
 Expr solve(Expr e, std::vector<InfInterval> i) {
-    return new Solve(e, i);
+    return Solve::make(e, i);
 }
 
 // Apply unary operator to a vector of InfInterval by applying it to each InfInterval
@@ -299,10 +299,10 @@ protected:
             expr = mutate(Min::make(solve(min_e->a, v_apply(inverseMin, op->v, bounds.bounds(min_e->b))), min_e->b));
         } else if (max_e && is_constant_expr(max_e->a)) {
             // solve(max(k,v)) on (a,b) --> max(k,solve(v)). 
-            expr = mutate(new Max(max_e->a, solve(max_e->b, v_apply(inverseMax, op->v, bounds.bounds(max_e->a)))));
+            expr = mutate(Max::make(max_e->a, solve(max_e->b, v_apply(inverseMax, op->v, bounds.bounds(max_e->a)))));
         } else if (max_e && is_constant_expr(max_e->b)) {
             // solve(max(v,k)) on (a,b) --> max(solve(v),k). 
-            expr = mutate(new Max(solve(max_e->a, v_apply(inverseMax, op->v, bounds.bounds(max_e->b))), max_e->b));
+            expr = mutate(Max::make(solve(max_e->a, v_apply(inverseMax, op->v, bounds.bounds(max_e->b))), max_e->b));
         } else if (e.same_as(op->body)) {
             expr = op; // Nothing more to do.
         } else {
@@ -650,8 +650,8 @@ namespace {
 // This is the core class, simplifying expressions that include Target and Solve.
 void checkSolver(Expr a, Expr b) {
     Solver s;
-    a = new TargetVar("x", new TargetVar("y", a, Expr()), Expr());
-    b = new TargetVar("x", new TargetVar("y", b, Expr()), Expr());
+    a = TargetVar::make("x", TargetVar::make("y", a, Expr()), Expr());
+    b = TargetVar::make("x", TargetVar::make("y", b, Expr()), Expr());
     Expr r = s.simplify(a);
     if (!equal(b, r)) {
         std::cout << std::endl << "Solve failure: " << std::endl;
@@ -710,8 +710,8 @@ void solver_test() {
     checkSolver(solve((x * d + d) / d, InfInterval(1,17)), solve(x, InfInterval(0,16)) + 1);
     checkSolver(solve((x * d - d) / d, InfInterval(1,17)), solve(x, InfInterval(2,18)) + -1);
     
-    checkSolver(solve(x + 4, InfInterval(0,new Infinity(Int(32), +1))), solve(x, InfInterval(-4,new Infinity(Int(32), +1))) + 4);
-    checkSolver(solve(x + 4, InfInterval(new Infinity(Int(32), -1),10)), solve(x, InfInterval(new Infinity(Int(32), -1),6)) + 4);
+    checkSolver(solve(x + 4, InfInterval(0,Infinity::make(Int(32), +1))), solve(x, InfInterval(-4,Infinity::make(Int(32), +1))) + 4);
+    checkSolver(solve(x + 4, InfInterval(Infinity::make(Int(32), -1),10)), solve(x, InfInterval(Infinity::make(Int(32), -1),6)) + 4);
     
     // A few complex expressions
     checkSolver(solve(x + c + 2 * y + d, InfInterval(0,10)), solve(x + y * 2, InfInterval(0 - d - c, 10 - d - c)) + c + d);

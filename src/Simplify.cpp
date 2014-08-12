@@ -703,7 +703,7 @@ protected:
         log(4) << "Last  " << last_lt << "\n";
         // If both expressions produce the same result, then that is the result.
         if (equal(first_lt, last_lt)) {
-            expr = mutate(new Broadcast(first_lt, width));
+            expr = mutate(Broadcast::make(first_lt, width));
             return true; // Tell caller it worked.
         } else {
             if (op) expr = op; // Cannot simplify it. Possible that part of ramp is < and part is not.
@@ -857,7 +857,7 @@ protected:
                    const_int(clamp_lower_a->b, &k2) && const_int(clamp_lower_b->b, &k4) && k2 == k4 &&
                    const_int(clamp_upper_a->b, &k1) && const_int(clamp_upper_b->b, &k3) && k1 == k3) { //LH
             // min(clamp(e1, k2, k1), clamp(e2, k2, k1)) ==> clamp(min(e1, e2), k2, k1)
-            expr = mutate(new Max(new Min(new Min(clamp_upper_a->a, clamp_upper_b->a), k1), k2));
+            expr = mutate(Max::make(Min::make(Min::make(clamp_upper_a->a, clamp_upper_b->a), k1), k2));
 # if 0
         // Disable this rule because it prevents simplifying nested min(...( of clamped expressions.
         } else if (global_options.simplify_nested_clamp && 
@@ -865,7 +865,7 @@ protected:
 			// min(e + k1, k2) -> min(x, k2-k1) + k1   Provided there is no overflow
 			// Pushes additions down where they may combine with others.
 			// (Subtractions e - k are previously converted to e + -k).
-			expr = new Add(new Min(add_a->a, ib - ia), ia);
+			expr = Add::make(Min::make(add_a->a, ib - ia), ia);
 # endif
 		} else if (min_a && (equal(min_a->b, b) || equal(min_a->a, b))) {
             // min(min(x, y), y) -> min(x, y)
@@ -896,7 +896,7 @@ protected:
 			// k2 >= k3 --> k3 according to rule above.
 			// Otherwise: min(x, k1) limits upper bound to k1 then max(..., k2) limits lower bound to k2 (where k2 < k1)
 			// then min(..., k3) limits upper bound to k3 (where k2 < k3) so overall x is limited to (k2, min(k1,k3))
-            expr = new Min(new Max(clamp_upper_a->a, k2), std::min(k1, k3));   
+            expr = Min::make(Max::make(clamp_upper_a->a, k2), std::min(k1, k3));   
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
@@ -1000,7 +1000,7 @@ protected:
                    const_int(clamp_lower_a->b, &k2) && const_int(clamp_lower_b->b, &k4) && k2 == k4 &&
                    const_int(clamp_upper_a->b, &k1) && const_int(clamp_upper_b->b, &k3) && k1 == k3) { //LH
             // max(clamp(e1, k2, k1), clamp(e2, k2, k1)) ==> clamp(max(e1, e2), k2, k1)
-            expr = mutate(new Max(new Min(new Max(clamp_upper_a->a, clamp_upper_b->a), k1), k2));
+            expr = mutate(Max::make(Min::make(Max::make(clamp_upper_a->a, clamp_upper_b->a), k1), k2));
 # if 0
         // Disable this rule because it prevents simplifying chain of max(...( is clamp expressions
         } else if (global_options.simplify_nested_clamp && 
@@ -1008,7 +1008,7 @@ protected:
 			// max(e + k1, k2) -> max(x, k2-k1) + k1   Provided there is no overflow
 			// Pushes additions down where they may combine with others.
 			// (Subtractions e - k are previously converted to e + -k).
-			expr = new Add(new Max(add_a->a, ib - ia), ia);
+			expr = Add::make(Max::make(add_a->a, ib - ia), ia);
 # endif
         } else if (max_a && (equal(max_a->b, b) || equal(max_a->a, b))) {
             // max(max(x, y), y) -> max(x, y)
@@ -1039,7 +1039,7 @@ protected:
 			// k2 <= k3 --> k3 according to rule above.
 			// Otherwise: max(x, k1) limits lower bound to k1 then min(..., k2) limits upper bound to k2 (where k2 > k1)
 			// then max(..., k3) limits lower bound to k3 (where k2 > k3) so overall x is limited to (max(k1,k3), k2)
-            expr = new Max(new Min(max_a_min_a->a, ib2), std::max(ib, ib3));            
+            expr = Max::make(Min::make(max_a_min_a->a, ib2), std::max(ib, ib3));            
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
         } else {
@@ -1558,7 +1558,7 @@ protected:
             const LetStmt *letstmt = op->body.as<LetStmt>();
             if (letstmt && letstmt->name != op->name && ! expr_depends_on_var(letstmt->value, op->name) &&
                 ! expr_depends_on_var(op->min, letstmt->name) && ! expr_depends_on_var(op->extent, letstmt->name)) {
-                Stmt s = new LetStmt(letstmt->name, letstmt->value, new For(op, op->min, op->extent, letstmt->body));
+                Stmt s = LetStmt::make(letstmt->name, letstmt->value, For::make(op, op->min, op->extent, letstmt->body));
                 stmt = mutate(s);
                 return;
             }
@@ -1821,8 +1821,8 @@ void simplify_test() {
     check(Min::make(Min::make(x, y), y), Min::make(x, y));
     check(Min::make(x, Min::make(x, y)), Min::make(x, y));
     check(Min::make(y, Min::make(x, y)), Min::make(x, y));
-	check(new Min(new Max(new Min(x, 18), 7), 21), new Min(new Max(x, 7), 18));
-	check(new Min(new Max(x, 5), 3), Expr(3));
+	check(Min::make(Max::make(Min::make(x, 18), 7), 21), Min::make(Max::make(x, 7), 18));
+	check(Min::make(Max::make(x, 5), 3), Expr(3));
 
     check(Max::make(7, 3), 7);
     check(Max::make(4.25f, 1.25f), 4.25f);
@@ -1836,8 +1836,8 @@ void simplify_test() {
     check(Max::make(Max::make(x, y), y), Max::make(x, y));
     check(Max::make(x, Max::make(x, y)), Max::make(x, y));
     check(Max::make(y, Max::make(x, y)), Max::make(x, y));
-	check(new Max(new Min(new Max(x, 5), 15), 7), new Max(new Min(x, 15), 7));
-	check(new Max(new Min(x, 7), 9), Expr(9));
+	check(Max::make(Min::make(Max::make(x, 5), 15), 7), Max::make(Min::make(x, 15), 7));
+	check(Max::make(Min::make(x, 7), 9), Expr(9));
 
     Expr t = const_true(), f = const_false();
     check(x == x, t);
@@ -1865,15 +1865,15 @@ void simplify_test() {
     check(x+y < x, y < 0);
     
     //LH
-    check(new LT(new Ramp(0, 1, 8), new Broadcast(8, 8)), const_true(8));
-    check(new GT(new Ramp(0, -1, 8), new Broadcast(1, 8)), const_false(8));
-    check(new Min(new Ramp(0, 1, 8), new Ramp(2, 1, 8)), new Ramp(0, 1, 8));
-    check(new Min(new Ramp(0, 1, 8), new Broadcast(0, 8)), new Broadcast(0, 8));
-    check(new Max(new Ramp(0, 1, 8), new Ramp(2, 1, 8)), new Ramp(2, 1, 8));
-    check(new Max(new Ramp(0, 1, 8), new Broadcast(0, 8)), new Ramp(0, 1, 8));
-    check(new Max(new Ramp(0, 1, 8), new Ramp(2, 1, 8)), new Ramp(2, 1, 8));
-    check(new Max(new Ramp(0, 1, 8), new Broadcast(1, 8)), 
-            new Max(new Ramp(0, 1, 8), new Broadcast(1, 8)));
+    check(LT::make(Ramp::make(0, 1, 8), Broadcast::make(8, 8)), const_true(8));
+    check(GT::make(Ramp::make(0, -1, 8), Broadcast::make(1, 8)), const_false(8));
+    check(Min::make(Ramp::make(0, 1, 8), Ramp::make(2, 1, 8)), Ramp::make(0, 1, 8));
+    check(Min::make(Ramp::make(0, 1, 8), Broadcast::make(0, 8)), Broadcast::make(0, 8));
+    check(Max::make(Ramp::make(0, 1, 8), Ramp::make(2, 1, 8)), Ramp::make(2, 1, 8));
+    check(Max::make(Ramp::make(0, 1, 8), Broadcast::make(0, 8)), Ramp::make(0, 1, 8));
+    check(Max::make(Ramp::make(0, 1, 8), Ramp::make(2, 1, 8)), Ramp::make(2, 1, 8));
+    check(Max::make(Ramp::make(0, 1, 8), Broadcast::make(1, 8)), 
+            Max::make(Ramp::make(0, 1, 8), Broadcast::make(1, 8)));
             
  
     check(select(x < 3, 2, 2), 2);
@@ -1935,9 +1935,9 @@ void simplify_test() {
     // Check that dead lets get stripped
     check(Let::make("x", 3*y*y*y, 4), 4);
           
-    check_proved(Expr(new Min(new Max(x, 1), 10)) <= 10);
-    check_proved(Expr(new Min(new Max(x, 1), 10)) >= 1);
-    check_proved(Expr(new Min(x, 1953)) + -2 + -1 <= x + -1);
+    check_proved(Expr(Min::make(Max::make(x, 1), 10)) <= 10);
+    check_proved(Expr(Min::make(Max::make(x, 1), 10)) >= 1);
+    check_proved(Expr(Min::make(x, 1953)) + -2 + -1 <= x + -1);
 
     std::cout << "Simplify test passed" << std::endl;
 }
