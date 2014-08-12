@@ -16,7 +16,7 @@ Expr Parameter::extent(int x) const {
     assert(is_buffer() && "Extent can only be obtained for a buffer (image) parameter");
     std::ostringstream s;
     s << name() << ".extent." << x;
-    return new Internal::Variable(Int(32), s.str(), *this);
+    return Internal::Variable::make(Int(32), s.str(), *this);
 }
 
 //LH
@@ -26,7 +26,7 @@ Expr Parameter::min(int x) const {
     assert(is_buffer() && "Min can only be obtained for a buffer (image) parameter");
     std::ostringstream s;
     s << name() << ".min." << x;
-    return new Internal::Variable(Int(32), s.str(), *this);
+    return Internal::Variable::make(Int(32), s.str(), *this);
 }
 
 }
