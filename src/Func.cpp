@@ -81,7 +81,7 @@ void Func::constructor(Buffer b) {
     for (int i = 0; i < b.dimensions(); i++) {
         args.push_back(Var::implicit(i));
     }
-    (*this)() = new Internal::Call(b, args);
+    (*this)() = Internal::Call::make(b, args);
 }
 
 Func::Func(Buffer b) {    
@@ -1076,16 +1076,11 @@ void FuncRefExpr::operator/=(Expr e) {
 }
 
 FuncRefExpr::operator Expr() const {
-<<<<<<< HEAD:cpp/src/Func.cpp
     if (! func.value().defined()) {
         std::cout << "Error: Can't call function with undefined value: " << func.name() << "\n";
         assert(0 && "Abort");
     }
-    return new Call(func, args);
-=======
-    assert(func.value().defined() && "Can't call function with undefined value");
     return Call::make(func, args);
->>>>>>> 902b4ed6647053f02079cb255f95990eb3716c6d:src/Func.cpp
 }
 
 Buffer Func::realize(int x_size, int y_size, int z_size, int w_size) {
