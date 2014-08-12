@@ -5,6 +5,20 @@
 namespace Halide {
 namespace Internal {
 
+std::string halide_option(std::string name) {
+#ifdef _WIN32
+    char opt[1025];
+    size_t read = 0;
+    getenv_s(&read, opt, name.c_str());
+    if (read) {
+#else   
+    if (char *opt = getenv(name.c_str())) {
+#endif
+        return std::string(opt);
+    }
+    return std::string("");
+}
+
 # define HALIDE_NO_LOGGING_LEVEL -1
 int log::debug_level = HALIDE_NO_LOGGING_LEVEL;
 bool log::initialized = false;

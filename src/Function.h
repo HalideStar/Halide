@@ -111,7 +111,7 @@ public:
     
     //LH
     /** Get the corresponding interval of all the domains, for a particular index */
-    const std::vector<VarInterval> domain_intervals(int index) const;
+    const std::vector<DomInterval> domain_intervals(int index) const;
 
     /** Get a mutable handle to the schedule for the reduction
      * stage */

@@ -1,5 +1,5 @@
 #include "Solver.h"
-#include "InfInterval.h"
+#include "DomInterval.h"
 #include "BoundsAnalysis.h"
 
 namespace Halide { 
@@ -34,7 +34,7 @@ using std::string;
 
 class HasVariable : public IRVisitor {
 private:
-    const std::vector<std::string> &varlist;
+    const std::vector<std::string>& varlist;
 
 public:
     bool result;
@@ -135,44 +135,44 @@ private:
 
 namespace {
 // Convenience methods for building solve nodes.
-Expr solve(Expr e, InfInterval i) {
+Expr solve(Expr e, DomInterval i) {
     return Solve::make(e, i);
 }
 
-Expr solve(Expr e, std::vector<InfInterval> i) {
+Expr solve(Expr e, std::vector<DomInterval> i) {
     return Solve::make(e, i);
 }
 
-// Apply unary operator to a vector of InfInterval by applying it to each InfInterval
-inline std::vector<InfInterval> v_apply(InfInterval (*f)(InfInterval), std::vector<InfInterval> v) {
-    std::vector<InfInterval> result;
+// Apply unary operator to a vector of DomInterval by applying it to each DomInterval
+inline std::vector<DomInterval> v_apply(DomInterval (*f)(DomInterval), std::vector<DomInterval> v) {
+    std::vector<DomInterval> result;
     for (size_t i = 0; i < v.size(); i++) {
         result.push_back((*f)(v[i]));
     }
     return result;
 }
 
-// Apply binary operator to a vector of InfInterval by applying it to each InfInterval
-inline std::vector<InfInterval> v_apply(InfInterval (*f)(InfInterval, Expr), std::vector<InfInterval> v, Expr b) {
-    std::vector<InfInterval> result;
+// Apply binary operator to a vector of DomInterval by applying it to each DomInterval
+inline std::vector<DomInterval> v_apply(DomInterval (*f)(DomInterval, Expr), std::vector<DomInterval> v, Expr b) {
+    std::vector<DomInterval> result;
     for (size_t i = 0; i < v.size(); i++) {
         result.push_back((*f)(v[i], b));
     }
     return result;
 }
 
-// Apply binary operator to a vector of InfInterval by applying it to each InfInterval
-inline std::vector<InfInterval> v_apply(InfInterval (*f)(InfInterval, InfInterval), std::vector<InfInterval> v, InfInterval w) {
-    std::vector<InfInterval> result;
+// Apply binary operator to a vector of DomInterval by applying it to each DomInterval
+inline std::vector<DomInterval> v_apply(DomInterval (*f)(DomInterval, DomInterval), std::vector<DomInterval> v, DomInterval w) {
+    std::vector<DomInterval> result;
     for (size_t i = 0; i < v.size(); i++) {
         result.push_back((*f)(v[i], w));
     }
     return result;
 }
 
-// Apply binary operator to a vector of InfInterval by applying it to each InfInterval
-inline std::vector<InfInterval> v_apply(InfInterval (*f)(InfInterval, InfInterval), std::vector<InfInterval> u, std::vector<InfInterval> v) {
-    std::vector<InfInterval> result;
+// Apply binary operator to a vector of DomInterval by applying it to each DomInterval
+inline std::vector<DomInterval> v_apply(DomInterval (*f)(DomInterval, DomInterval), std::vector<DomInterval> u, std::vector<DomInterval> v) {
+    std::vector<DomInterval> result;
     assert(u.size() == v.size() && "Vectors of intervals of different sizes");
     for (size_t i = 0; i < v.size(); i++) {
         result.push_back((*f)(u[i], v[i]));
@@ -180,97 +180,149 @@ inline std::vector<InfInterval> v_apply(InfInterval (*f)(InfInterval, InfInterva
     return result;
 }
 
-InfInterval inverseMin(InfInterval v, Expr k) {
+// Apply binary operator to a vector of DomInterval by applying it to each DomInterval, with additional int parameter
+inline std::vector<DomInterval> v_apply(DomInterval (*f)(DomInterval, DomInterval, int), std::vector<DomInterval> v, DomInterval w, int k) {
+    std::vector<DomInterval> result;
+    for (size_t i = 0; i < v.size(); i++) {
+        result.push_back((*f)(v[i], w, k));
+    }
+    return result;
+}
+
+DomInterval inverseMin(DomInterval v, Expr k) {
     // inverse of min on an interval against constant expression k.
     // If v.max >= k then the Min ensures that the upper bound is in
     // the target interval, so the new max is +infinity; otherwise
     // the new max is v.max.
-    return InfInterval(v.min, simplify(select(v.max >= k, make_infinity(v.max.type(), +1), v.max)));
+    return DomInterval(v.min, simplify(select(v.max >= k, make_infinity(v.max.type(), +1), v.max)), v.exact);
 }
 
-InfInterval inverseMin(InfInterval v, InfInterval k) {
+DomInterval inverseMin(DomInterval v, DomInterval k) {
     // inverse of min on an interval against constant expression k.
     // If v.max >= k.max then the Min ensures that the upper bound is in
     // the target interval, so the new max is +infinity; otherwise
     // the new max is v.max.
-    return InfInterval(v.min, simplify(select(v.max >= k.max, make_infinity(v.max.type(), +1), v.max)));
+    return DomInterval(v.min, simplify(select(v.max >= k.max, make_infinity(v.max.type(), +1), v.max)), v.exact && k.exact);
 }
 
-InfInterval inverseMax(InfInterval v, Expr k) {
+DomInterval inverseMax(DomInterval v, Expr k) {
     // inverse of max on an interval against constant expression k.
     // If v.min <= k then the Max ensures that the lower bound is in
     // the target interval, so the new min is -infinity; otherwise
     // the new min is v.min.
-    return InfInterval(simplify(select(v.min <= k, make_infinity(v.min.type(), -1), v.min)), v.max);
+    return DomInterval(simplify(select(v.min <= k, make_infinity(v.min.type(), -1), v.min)), v.max, v.exact);
 }
 
-InfInterval inverseMax(InfInterval v, InfInterval k) {
+DomInterval inverseMax(DomInterval v, DomInterval k) {
     // inverse of max on an interval against constant expression k.
     // If v.min <= k.min then the Max ensures that the lower bound is in
     // the target interval, so the new min is -infinity; otherwise
     // the new min is v.min.
     // The new max is v.max.
-    return InfInterval(simplify(select(v.min <= k.min, make_infinity(v.min.type(), -1), v.min)), v.max);
+    return DomInterval(simplify(select(v.min <= k.min, make_infinity(v.min.type(), -1), v.min)), v.max, v.exact && k.exact);
 }
 
-InfInterval inverseAdd(InfInterval v, InfInterval k) {
-    // Compute an interval such that adding the interval k always results
-    // in an interval no bigger than v.
-    return InfInterval(simplify(v.min - k.min), simplify(v.max - k.max));
-}
-
-InfInterval inverseSub(InfInterval v, InfInterval k) {
-    // Compute an interval such that adding the interval k always results
-    // in an interval no bigger than v.
-    return InfInterval(simplify(v.min + k.min), simplify(v.max + k.max));
+DomInterval inverseRamp(DomInterval v, DomInterval s, int width) {
+    // Compute an interval such that a ramp with base in the result interval
+    // and designated stride interval always results in an interval no bigger than v.
+    // v will in fact be a vector interval but the result is not a vector interval.
+    assert(v.min.type().width == width && v.max.type().width == width && "inverseRamp applied to non-vector interval");
+    // Because v is a vector interval, it is likely to appear as a ramp or broadcast.
+    // stride is not a vector interval.
+    const Ramp *ramp_vmin = v.min.as<Ramp>();
+    const Broadcast *broadcast_vmin = v.min.as<Broadcast>();
+    const Ramp *ramp_vmax = v.max.as<Ramp>();
+    const Broadcast *broadcast_vmax = v.max.as<Broadcast>();
+    // Suppose that (Ramp(a,p),Ramp(b,q)) is the interval of v.
+    // Given stride interval s == (c,d) we want to determine
+    // the interval for base == (m,n).
+    // Now, the interval of a ramp is given as follows in BoundsAnalysis.h:
+    // Ramp(a,p) = Ramp(m,c)  Ramp(b,q) = Ramp(n,d)  
+    // This follows from the meaning of stride and base.
+    // It generates a "low" ramp and a "high" ramp.
+    
+    // basemin and basemax correspond to a and b in the above.
+    // stridemin and stridemax correspond to p and q.
+    Expr basemin, basemax, stridemin, stridemax;
+    if (ramp_vmin) { basemin = ramp_vmin->base; stridemin = ramp_vmin->stride; }
+    else if (broadcast_vmin) { basemin = broadcast_vmin->value; stridemin = make_zero(basemin.type()); }
+    else if (infinity_count(v.min) != 0) { 
+        basemin = make_infinity(v.min.type().element_of(), infinity_count(v.min)); 
+        stridemin = make_infinity(v.min.type().element_of(), infinity_count(v.min)); 
+    }
+    if (ramp_vmax) { basemax = ramp_vmax->base; stridemax = ramp_vmax->stride; }
+    else if (broadcast_vmax) { basemax = broadcast_vmax->value; stridemax = make_zero(basemax.type()); }
+    else if (infinity_count(v.max) != 0) { 
+        basemax = make_infinity(v.max.type().element_of(), infinity_count(v.max)); 
+        stridemax = make_infinity(v.max.type().element_of(), infinity_count(v.max)); 
+    }
+    
+    // From the above, we can see one immediate solution.
+    // If p == c and  q == d then a = m and b = n.
+    if (equal(stridemin, s.min) && equal(stridemax, s.max)) {
+        return DomInterval(basemin, basemax, v.exact && s.exact);
+    }
+    
+    // The general solution requires that Ramp(a,p) <= Ramp(m,c) for all indices in the vector
+    // and that Ramp(b,q) >= Ramp(n,d) for all indices.
+    // Ramp(a,p) <= Ramp(m,c) means a <= m and a + p * (w-1) <= m + c * (w-1).
+    // Solving for m we get: m >= a and m >= a + p * (w-1) - c * (w-1)
+    // i.e. m = max(a, a + (p - c) * (w-1));
+    return DomInterval(simplify(max(basemin, basemin + (stridemin - s.min) * (width-1))),
+                       simplify(min(basemax, basemax + (stridemax - s.max) * (width-1))), v.exact && s.exact);
 }
 
 // end anonymous namespace
 }
 
-
 class Solver : public Simplify {
+    
+    HasTarget has_target;
+    
+public:
+
+    // debug tracing
+    int loglevel;
+
+    /** Each derived specific solver must use its own cache because
+     * IRCacheMutator requires a separate cache for each different mutator. */
+    Solver(IRCacheMutator::Cache& solver_cache) : Simplify(solver_cache), loglevel(3) {}
+
+protected:
+    /** Use bounds.bounds() to perform bounds analysis as part of the solver. */
+    BoundsAnalysis bounds;
 
     // using parent::visit indicates that
     // methods of the base class with different parameters
     // but the same name are not hidden, they are overloaded.
     using Simplify::visit;
     
-    HasTarget has_target;
-    
-    BoundsAnalysis bounds;
-    
     bool is_constant_expr(Expr e) { return has_target.is_constant_expr(e); }
     
-    // use our own cache for IRCacheMutator.
-    // Each different mutator must have its own cache.
-    // Simplify uses a shared cache, so we need to override that.
-    IRCacheMutator::Cache solver_cache;
+    bool single_valued(Expr k) {
+        DomInterval b = bounds.bounds(k);
+        return equal(b.min, b.max);
+    }
     
-public:
-
-    Solver() : Simplify(solver_cache) {}
-
-protected:
     virtual void visit(const Solve *op) {
-        log(3) << depth << " Solve simplify " << Expr(op) << "\n";
+        log(loglevel) << depth << " Solve simplify " << Expr(op) << "\n";
         Expr e = mutate(op->body);
         
-        log(3) << depth << " Solve using " << e << "\n";
+        log(loglevel) << depth << " Solve using " << e << "\n";
         //const Solve *solve_e = e.as<Solve>();
         const Add *add_e = e.as<Add>();
         const Sub *sub_e = e.as<Sub>();
         const Mul *mul_e = e.as<Mul>();
         const Div *div_e = e.as<Div>();
-        const Min *min_e = e.as<Min>();
-        const Max *max_e = e.as<Max>();
+        const Mod *mod_e = e.as<Mod>();
+        const Ramp *ramp_e = e.as<Ramp>();
         
-        //if (solve_e) {
-            // solve(solve(e)) --> solve(e) on intersection of intervals.
+        /* if (solve_e) {
+            solve(solve(e)) --> solve(e) on intersection of intervals.
             // This is one approach to combining solutions, and makes it easier
             // to match them and pick them out.
-            //expr = mutate(solve(solve_e->e, v_apply(intersection, op->v, solve_e->v)));
-        //} else 
+            expr = mutate(solve(solve_e->e, v_apply(intersection, op->v, solve_e->v)));
+        } else */ 
         if (add_e && is_constant_expr(add_e->b)) {
             //expr = mutate(solve(add_e->a, v_apply(operator-, op->v, add_e->b)) + add_e->b);
             expr = mutate(solve(add_e->a, v_apply(inverseAdd, op->v, bounds.bounds(add_e->b))) + add_e->b);
@@ -280,16 +332,20 @@ protected:
         } else if (sub_e && is_constant_expr(sub_e->a)) {
             // solve(k - v) --> -solve(v - k) with interval negated
             expr = mutate(-solve(sub_e->b - sub_e->a, v_apply(operator-, op->v)));
-        } else if (mul_e && is_constant_expr(mul_e->b)) {
+        } else if (mul_e && is_constant_expr(mul_e->b) && single_valued(mul_e->b)) {
             // solve(v * k) on (a,b) --> solve(v) * k with interval (ceil(a/k), floor(b/k))
             // i.e. For integer types, find all the integers that could be multiplied back up
             // and still be in the range (a,b).  Decimate does this.
+            // DOES NOT HANDLE AN INTERVAL FOR THE CONSTANT EXPRESSION
             expr = mutate(solve(mul_e->a, v_apply(decimate, op->v, mul_e->b)) * mul_e->b);
-        } else if (div_e && is_constant_expr(div_e->b)) {
+        } else if (div_e && is_constant_expr(div_e->b) && single_valued(div_e->b)) {
             // solve(v / k) on (a,b) --> solve(v) / k with interval a * k, b * k + (k +/- 1)
             // For integer types, find all the expanded intervals - all the integers that would
             // divide back down to the range (a,b).  Zoom does this.
+            // DOES NOT HANDLE AN INTERVAL FOR THE CONSTANT EXPRESSION
             expr = mutate(solve(div_e->a, v_apply(zoom, op->v, div_e->b)) / div_e->b);
+# if 0
+		// Code deleted in version_140707
         } else if (min_e && is_constant_expr(min_e->a)) {
             // Min, Max: push outside of Solve nodes.
             // solve(min(k,v)) on (a,b) --> min(k,solve(v)). 
@@ -303,12 +359,36 @@ protected:
         } else if (max_e && is_constant_expr(max_e->b)) {
             // solve(max(v,k)) on (a,b) --> max(solve(v),k). 
             expr = mutate(Max::make(solve(max_e->a, v_apply(inverseMax, op->v, bounds.bounds(max_e->b))), max_e->b));
+# endif
+        } else if (mod_e && is_constant_expr(mod_e->b)) {
+            // solve(e % k) on (a,b) --> solve(e) % k with interval as follows.
+            // Define the modulus interval as the interval of (-infinity,infinity)%k; 
+            // i.e. for integer k>0 it is (0,k-1).
+            // If (a,b) is no smaller than the modulus interval then
+            // the interval of e is -infinity,infinity.  Otherwise,
+            // constraining e%k to (a,b) means constraining e to 
+            // the intersection of (a,b) and the modulus
+            // interval.  Of course, there are other ranges of e that
+            // could be taken as canonical, but there is no way to know which
+            // one to prefer.
+            expr = mutate(solve(mod_e->a, v_apply(inverseMod, op->v, mod_e->b)) % mod_e->b);
+        } else if (ramp_e && is_constant_expr(ramp_e->stride)) {
+            // solve(ramp(v,k,w)) on (a,b)
+            //std::cout << "Solve " << e << "\n";
+            //std::cout << "ramp_e->base " << ramp_e->base << "\n";
+            //std::cout << "ramp_e->stride " << ramp_e->stride << "\n";
+            //std::cout << "op->v " << op->v << "\n";
+            //std::cout << "bounds(ramp_e->stride) " << bounds.bounds(ramp_e->stride) << "\n";
+            expr = mutate(Ramp::make(solve(ramp_e->base, 
+                                         v_apply(inverseRamp, op->v, bounds.bounds(ramp_e->stride), ramp_e->width)),
+                                   ramp_e->stride, ramp_e->width));
+            //std::cout << "Solution " << expr << "\n";
         } else if (e.same_as(op->body)) {
             expr = op; // Nothing more to do.
         } else {
             expr = solve(e, op->v);
         }
-        log(3) << depth << " Solve simplified to " << expr << "\n";
+        log(loglevel) << depth << " Solve simplified to " << expr << "\n";
     }
     
     
@@ -318,7 +398,7 @@ protected:
     //virtual void visit(const Variable *op) {
     
 virtual void visit(const Add *op) {
-        log(3) << depth << " XAdd simplify " << Expr(op) << "\n";
+        log(loglevel) << depth << " XAdd simplify " << Expr(op) << "\n";
         Expr a = mutate(op->a), b = mutate(op->b);
         
         const Add *add_a = a.as<Add>();
@@ -371,11 +451,11 @@ virtual void visit(const Add *op) {
             // are reversed by Simplify::visit(Add)
             Simplify::visit(op);
         }
-        log(3) << depth << " XAdd simplified to " << expr << "\n";
+        log(loglevel) << depth << " XAdd simplified to " << expr << "\n";
     }
 
     virtual void visit(const Sub *op) {
-        log(3) << depth << " XSub simplify " << Expr(op) << "\n";
+        log(loglevel) << depth << " XSub simplify " << Expr(op) << "\n";
         Expr a = mutate(op->a), b = mutate(op->b);
         
         // Override default behavior.
@@ -418,11 +498,11 @@ virtual void visit(const Add *op) {
             // are reversed by Simplify::visit(Add)
             Simplify::visit(op);
         }
-        log(3) << depth << " XSub simplified to " << expr << "\n";
+        log(loglevel) << depth << " XSub simplified to " << expr << "\n";
     }
 
     virtual void visit(const Mul *op) {
-        log(3) << depth << " XMul simplify " << Expr(op) << "\n";
+        log(loglevel) << depth << " XMul simplify " << Expr(op) << "\n";
         Expr a = mutate(op->a), b = mutate(op->b);
 
         const Mul *mul_a = a.as<Mul>();
@@ -475,11 +555,11 @@ virtual void visit(const Add *op) {
             // Simplify everything else in the normal way.
             Simplify::visit(op);
         }
-        log(3) << depth << " XMul simplified to " << expr << "\n";
+        log(loglevel) << depth << " XMul simplified to " << expr << "\n";
     }
 
     virtual void visit(const Div *op) {
-        log(3) << depth << " XDiv simplify " << Expr(op) << "\n";
+        log(loglevel) << depth << " XDiv simplify " << Expr(op) << "\n";
         Expr a = mutate(op->a), b = mutate(op->b);
         
         const Mul *mul_a = a.as<Mul>();
@@ -520,11 +600,13 @@ virtual void visit(const Add *op) {
         } else {
             Simplify::visit(op);
         }
-        log(3) << depth << " XDiv simplified to " << expr << "\n";
+        log(loglevel) << depth << " XDiv simplified to " << expr << "\n";
     }
 
-    
     //virtual void visit(const Mod *op) {
+    // The types of rules we could add here (where k1,... are constant expressions)
+    // (e * k1 + k2) % k1 --> k2
+
     //virtual void visit(const Min *op) {
     //virtual void visit(const Max *op) {
     //virtual void visit(const EQ *op) {
@@ -559,12 +641,235 @@ virtual void visit(const Add *op) {
     // void visit(const Block *op) {        
 };
 
-Stmt solver(Stmt s) {
-    return Solver().simplify(s);
+/** LoopSolver is a derived class that solves Index Set Splitting interval inequalities.
+ * It includes some specific capabilities in addition to the base Solver. */
+class LoopSolver : public Solver {
+    // use our own cache for IRCacheMutator.
+    // Each different mutator must have its own cache.
+    // Simplify uses a shared cache, so we need to override that.
+    IRCacheMutator::Cache solver_cache;
+    
+public:
+    LoopSolver() : Solver(solver_cache) {}
+
+protected:
+    using Solver::visit;
+    
+    virtual void visit(const Solve *op) {
+        log(loglevel) << depth << " LoopSolver Solve simplify " << Expr(op) << "\n";
+        Expr e = mutate(op->body);
+        
+        log(loglevel) << depth << " LoopSolver Solve using " << e << "\n";
+
+        const Min *min_e = e.as<Min>();
+        const Max *max_e = e.as<Max>();
+        // Not included (yet)
+        // Clamp, Mod
+        // What difference would it make to include them?
+        // Then we could solve loop split points with nested calls as Mod(...Clamp(...)...),
+        // Clamp(...Min(...)...) etc.
+        // As it is, only Min and Max are allowed to be nested, and that is primarily because
+        // clamp() is implemented as nested min with max.
+        
+        if (min_e && is_constant_expr(min_e->a)) {
+            // Min, Max: push outside of Solve nodes.
+            // solve(min(k,v)) on (a,b) --> min(k,solve(v)). 
+            expr = mutate(new Min(solve(min_e->b, v_apply(inverseMin, op->v, bounds.bounds(min_e->a))), min_e->a));
+        } else if (min_e && is_constant_expr(min_e->b)) {
+            // solve(min(v,k)) on (a,b) --> min(solve(v),k). 
+            expr = mutate(new Min(solve(min_e->a, v_apply(inverseMin, op->v, bounds.bounds(min_e->b))), min_e->b));
+        } else if (max_e && is_constant_expr(max_e->a)) {
+            // solve(max(k,v)) on (a,b) --> max(k,solve(v)). 
+            expr = mutate(new Max(solve(max_e->b, v_apply(inverseMax, op->v, bounds.bounds(max_e->a))), max_e->a));
+        } else if (max_e && is_constant_expr(max_e->b)) {
+            // solve(max(v,k)) on (a,b) --> max(solve(v),k). 
+            expr = mutate(new Max(solve(max_e->a, v_apply(inverseMax, op->v, bounds.bounds(max_e->b))), max_e->b));
+        } else {
+            Solver::visit(op);
+        }
+        log(loglevel) << depth << " LoopSolver Solve simplified to " << expr << "\n";
+    }
+};
+
+Stmt loop_solver(Stmt s) {
+    return LoopSolver().simplify(s);
 }
 
-Expr solver(Expr e) {
-    return Solver().simplify(e);
+Expr loop_solver(Expr e) {
+    return LoopSolver().simplify(e);
+}
+
+/** DomainsSolver is a derived class that solves Domain Inference interval inequalities.
+ * In addition to the basic Solver, it provides for interpretation of various border
+ * handling idioms and infers the Valid and Computable domains appropriately. */
+class DomainSolver : public Solver {
+    // use our own cache for IRCacheMutator.
+    // Each different mutator must have its own cache.
+    // Simplify uses a shared cache, so we need to override that.
+    IRCacheMutator::Cache solver_cache;
+    
+public:
+    DomainSolver() : Solver(solver_cache) {}
+
+protected:
+    // using parent::visit indicates that
+    // methods of the base class with different parameters
+    // but the same name are not hidden, they are overloaded.
+    using Solver::visit;
+
+    /** Domain inference on border handlers.
+     * Consider a call f(clamp(x)) where clamp is some clamp-like border handling index expression.
+     * The question is: Given the domains of f, what are the domains of x?
+     * 
+     * Effective border handler.  A border handler is considered EFFECTIVE if the clamp limits
+     * are contained in the valid domain of f.  This means that the border handler prevents access
+     * to pixels outside the valid domain of f.
+     * Computable domain: If the border handler is effective, then the computable domain applicable to
+     *    x is infinite.  If the border handler is not effective, then the computable domain is restricted
+     *    to the VALID domain of f intersected with the clamp interval because the semantics of applying
+     *    a border handler is that no access (not even a padded access) can exceed the valid domain
+     *    of the underlying image/function.
+     * Valid domain: If the border handler is effective, then the valid domain is the clamp interval
+     *    because data outside that interval is border handled.  If the border handler is not effective,
+     *    then the valid domain is the intersection of valid domain of f with clamp interval.
+     * Partially effective border handler: One clamp limit is within the valid domain of f, the other is not.
+     *    General border handlers cannot be partially effective. Halide's clamp operator, i.e. Min and Max,
+     *    can be partially effective because when the clamp is applied, the value is moved to the clamp
+     *    limit.  In this case, if a clamp limit is within the valid domain of f, then that 
+     *    limit is partially effective in its own right: everything above/below that limit is
+     *    clamped to a value inside the valid domain of f.  The corresponding limit of x is infinite.
+     *    An operation like mod (or Border::wrap) cannot be partially effective because a value of x
+     *    just outside one limit is wrapped to the other limit; for the wrapped value to be in range,
+     *    both limits must be in range.
+     *
+     * Parameters
+     * v: The domain intervals of the enclosing clamp expression.
+     * t: The Halide type of the operand of the clamp expression - used to create infinities.
+     * op_min, op_max: The minimum and maximum limit expressions.  In the case that
+     *    the operator has only one limit expression, the other MUST be undefined to indicate
+     *    that it is not even trying to impose a limit.
+     * partially_effective: True if the clamp operation can be partially effective.
+     * return value: The domain intervals applicable to the enclosing expression.
+     */
+    std::vector<DomInterval> solve_clamp_limits(std::vector<DomInterval> v, Type t, Expr op_min, Expr op_max, bool partially_effective) {
+        // Start with a copy of the input domain intervals
+        std::vector<DomInterval> result(v);
+        bool min_def = op_min.defined();
+        bool max_def = op_max.defined();
+        // Expressions representing whether the limits are effective or not.
+        Expr e_effective_min, e_effective_max;
+        if (min_def) e_effective_min = op_min >= v[Domain::Valid].min;
+        if (max_def) e_effective_max = op_max <= v[Domain::Valid].max;
+        if (! partially_effective && min_def && max_def) {
+            // Clamp-like operator that cannot be partially effective.
+            // Must be effective at both ends, or neither is considered effective
+            e_effective_min = e_effective_max = (e_effective_min && e_effective_max);
+        }
+        // If the border handler is effective at a particular end then the
+        // computable domain at that end becomes infinity and the valid domain limit
+        // becomes the clamp limit.
+        // If the border handler is not effective at the end, then both the computable and
+        // the valid domains are limited to the tighter of the clamp limit or the
+        // incoming valid domain.
+        // In fact, whether or not the border handler is effective, the valid domain
+        // is limited to the tighter of the clamp limit and the incoming valid domain
+        // because when it is effective it is the clamp limit that is tighter.
+        // However, if op_min or op_max is undefined (i.e. no limit being applied)
+        // then the corresponding bounds of the domain intervals are unchanged.
+        if (min_def) {
+            result[Domain::Computable].min = simplify(select(e_effective_min, make_infinity(t, -1),
+                                                             max(op_min, v[Domain::Valid].min)));
+            result[Domain::Valid].min = simplify(max(op_min, v[Domain::Valid].min));
+        }
+        if (max_def) {
+            result[Domain::Computable].max = simplify(select(e_effective_max, make_infinity(t, +1),
+                                                             min(op_max, v[Domain::Valid].max)));
+            result[Domain::Valid].max = simplify(min(op_max, v[Domain::Valid].max));
+        }
+        return result;
+    }
+
+
+    virtual void visit(const Solve *op) {
+        log(loglevel) << depth << " DomainSolver Solve simplify " << Expr(op) << "\n";
+        Expr e = mutate(op->body);
+        
+        log(loglevel) << depth << " DomainSolver Solve using " << e << "\n";
+        const Add *add_e = e.as<Add>();
+        const Min *min_e = e.as<Min>();
+        const Max *max_e = e.as<Max>();
+        const Clamp *clamp_e = e.as<Clamp>();
+        
+        /** Min, Max, Clamp are treated as border handlers.  Should Mod also be treated as such? */
+        /** Add is handled here to detect kernel semantics which involves an add expression between
+         * a constant expression and an implicit variable. */
+        if (add_e && is_constant_expr(add_e->b)) {
+            // Special case.  Kernel expressions must be of the form iv.0 + k where k is an integer constant
+            const Variable *var_a = add_e->a.as<Variable>();
+            log(loglevel) << "Checking " << e << " for kernel semantics\n";
+            if (var_a && starts_with(var_a->name, "iv.") && is_const(add_e->b) && add_e->b.type() == Int(32)) {
+                // This is a kernel expression.  Adopt kernel semantics, which basically means to ignore the
+                // constant that is added when determining the Valid domain.
+                log(loglevel) << "Kernel semantics apply\n";
+                // Have to update Computable and Valid domains differently.
+                // Computable domain is updated in the same way as normal - considering the offset.
+                // Valid domain is updated by copying the incoming valid domain and intersecting it with
+                // the Computable domain; i.e. the offset is not considered except as it restricts computability.
+                std::vector<DomInterval> u = v_apply(inverseAdd, op->v, bounds.bounds(add_e->b));
+                u[Domain::Valid] = intersection(op->v[Domain::Valid], u[Domain::Computable]);
+                expr = mutate(solve(add_e->a, u) + add_e->b);
+            } else {
+                log(loglevel) << "Kernel semantics do not apply\n";
+                expr = mutate(solve(add_e->a, v_apply(inverseAdd, op->v, bounds.bounds(add_e->b))) + add_e->b);
+            }
+        } else if (min_e && is_constant_expr(min_e->a)) {
+            // Min, Max: push outside of Solve nodes.
+            // solve(min(k,v)) on (a,b) --> min(k,solve(v)). 
+            expr = mutate(new Min(solve(min_e->b, solve_clamp_limits(op->v, op->type, Expr(), min_e->a, true)), min_e->a));
+        } else if (min_e && is_constant_expr(min_e->b)) {
+            // solve(min(v,k)) on (a,b) --> min(solve(v),k). 
+            expr = mutate(new Min(solve(min_e->a, solve_clamp_limits(op->v, op->type, Expr(), min_e->b, true)), min_e->b));
+        } else if (max_e && is_constant_expr(max_e->a)) {
+            // solve(max(k,v)) on (a,b) --> max(k,solve(v)). 
+            expr = mutate(new Max(solve(max_e->b, solve_clamp_limits(op->v, op->type, max_e->a, Expr(), true)), max_e->a));
+        } else if (max_e && is_constant_expr(max_e->b)) {
+            // solve(max(v,k)) on (a,b) --> max(solve(v),k). 
+            expr = mutate(new Max(solve(max_e->a, solve_clamp_limits(op->v, op->type, max_e->b, Expr(), true)), max_e->b));
+        } else if (clamp_e) {
+            // clamp.
+            if (clamp_e->clamptype == Clamp::None) {
+                // Clamp::None is used to force the Computable domain to be the same as the Valid domain - i.e.
+                // to prevent further computation from exploiting the current border handler.
+                // This particular border handler does NOT use the clamp limits!
+                std::vector<DomInterval> result = op->v;
+                result[Domain::Computable] = op->v[Domain::Valid];
+                expr = mutate(new Clamp(Clamp::None, solve(clamp_e->a, result)));
+            } else {
+                // Require clamp limits to be constant expressions - i.e. not dependent on other index variables.
+                if (! is_constant_expr(clamp_e->min) || ! is_constant_expr(clamp_e->max)) {
+                    std::cerr << "Clamp limits (border handling) must not depend on free variables\n";
+                    std::cerr << "    " << e << "\n";
+                    assert(0 && "Clamp limits must not depend on free variables\n");
+                }
+                // Identify partial border handlers.
+                // Replicate can be partially effective.
+                // Tile could possibly be partially effective, although the tile dimensions may come into play.
+                bool partial = clamp_e->clamptype == Clamp::Replicate; 
+                expr = mutate(new Clamp(clamp_e->clamptype, 
+                                        solve(clamp_e->a, solve_clamp_limits(op->v, op->type, clamp_e->min, clamp_e->max, partial)), 
+                                        clamp_e->min, clamp_e->max, clamp_e->p1));
+            }
+        } else {
+            // There is no specific rule for solving this inequality.
+            // Try the general-purpose solver instead.
+            Solver::visit(op);
+        }
+        log(loglevel) << depth << " DomainSolverSolve simplified to " << expr << "\n";
+    }
+};
+
+Expr domain_solver(Expr e) {
+    return DomainSolver().simplify(e);
 }
 
 
@@ -577,12 +882,13 @@ public:
     std::string var;
     Expr expr_source;
     Stmt stmt_source;
+    bool exact;
     
     // Extract all solutions, each with their own variable and source information
-    ExtractSolutions() : var("") {}
+    ExtractSolutions() : var("") { exact = true; }
     // Extract solutions only for a particular variable and source node
     ExtractSolutions(std::string _var, Expr expr_s, Stmt stmt_s) : 
-        var(_var), expr_source(expr_s), stmt_source(stmt_s) {}
+        var(_var), expr_source(expr_s), stmt_source(stmt_s) { exact = true; }
 
 protected:
 
@@ -614,34 +920,52 @@ protected:
 # else
             // Check whether the variable is the one we are seeking.
             if (variable->name == var) {
-                // The name matches.  Now ensure that the source matches.
+                // The name matches.  Now ensure that the source matches if specified.
                 int found = find_target(variable->name); // Find the defining context.
-                const DefiningNode *node = call(found); // Call to the defining context.
-                const TargetVar *tvar = node->node().as<TargetVar>();
-                const StmtTargetVar *svar = node->node().as<StmtTargetVar>();
-                if (tvar) {
-                    // This is defined by a TargetVar.
-                    solutions.push_back(Solution(variable->name, tvar->source, Stmt(), op->v));
-                } else if (svar) {
-                    solutions.push_back(Solution(variable->name, Expr(), svar->source, op->v));
+                if (found != Context::Invalid) {
+                    const DefiningNode *node = call(found); // Call to the defining context.
+                    const TargetVar *tvar = node->node().as<TargetVar>();
+                    const StmtTargetVar *svar = node->node().as<StmtTargetVar>();
+                    if (tvar && (! expr_source.defined() || expr_source.same_as(tvar->source))) {
+                        solutions.push_back(Solution(variable->name, tvar->source, Stmt(), op->v));
+                    } else if (svar && (! stmt_source.defined() || stmt_source.same_as(svar->source))) {
+                        solutions.push_back(Solution(variable->name, Expr(), svar->source, op->v));
+                    }
+                    ret(found); // Return from call to defining context.
+                } else {
+                    // Not found as a target variable - can still return result but not with a source node
+                    // and then only if there is no source node matching requirement.
+                    if (! expr_source.defined() && ! stmt_source.defined()) {
+                        solutions.push_back(Solution(variable->name, Expr(), Stmt(), op->v));
+                    }
                 }
-                ret(found);
             }
 #endif
+        } else {
+            // Expression is not a simple variable, nor a nested Solve node.
+            // In the case that we are collecting an exact flag, then scan expressions to see whether the requested
+            // variable is present in them.
+            std::vector<std::string> varlist;
+            varlist.push_back(var);
+            HasVariable hasit(varlist);
+            body.accept(&hasit);
+            if (hasit.result) exact = false; // Found a mention of the requested variable, so solution list is inexact
         }
     }
 };
 
 // Extract solutions where the variable name matches var and the source node is source.
-std::vector<Solution> extract_solutions(std::string var, Stmt source, Stmt solved) {
+std::vector<Solution> extract_solutions(std::string var, Stmt source, Stmt solved, bool *exact) {
     ExtractSolutions extract(var, Expr(), source);
     extract.process(solved);
+    if (exact) *exact = extract.exact;
     return extract.solutions;
 }
 
-std::vector<Solution> extract_solutions(std::string var, Expr source, Expr solved) {
+std::vector<Solution> extract_solutions(std::string var, Expr source, Expr solved, bool *exact) {
     ExtractSolutions extract(var, source, Stmt());
     extract.process(solved);
+    if (exact) *exact = extract.exact;
     return extract.solutions;
 }
 
@@ -649,7 +973,7 @@ namespace {
 // Method to check the operation of the Solver class.
 // This is the core class, simplifying expressions that include Target and Solve.
 void checkSolver(Expr a, Expr b) {
-    Solver s;
+    LoopSolver s;
     a = TargetVar::make("x", TargetVar::make("y", a, Expr()), Expr());
     b = TargetVar::make("x", TargetVar::make("y", b, Expr()), Expr());
     Expr r = s.simplify(a);
@@ -661,64 +985,96 @@ void checkSolver(Expr a, Expr b) {
         assert(false);
     }
 }
+
+void logSolver(Expr a, Expr b) {
+    LoopSolver s;
+    s.loglevel = 0;
+    a = new TargetVar("x", new TargetVar("y", a, Expr()), Expr());
+    b = new TargetVar("x", new TargetVar("y", b, Expr()), Expr());
+    Expr r = s.simplify(a);
+    if (!equal(b, r)) {
+        std::cout << std::endl << "Solve failure: " << std::endl;
+        std::cout << "Input: " << a << std::endl;
+        std::cout << "Output: " << r << std::endl;
+        std::cout << "Expected output: " << b << std::endl;
+        assert(false);
+    }
+}
+
+void checkInverseRamp(DomInterval comb, DomInterval stride, int width, DomInterval base) {
+    DomInterval test = inverseRamp(comb, stride, width);
+    if (! equal(test.min, base.min) || ! equal(test.max, base.max)) {
+        std::cerr << "inverseRamp failed\n";
+        std::cerr << "  combined: " << comb << "\n";
+        std::cerr << "  stride:   " << stride << "\n";
+        std::cerr << "  expected: " << base << "\n";
+        std::cerr << "  computed: " << test << "\n";
+        assert(false);
+    }
+}
 }
 
 void solver_test() {
-    Var x("x"), y("y"), c("c"), d("d");
+    Var x("x"), y("y"), c("c"), d("d"), k("k");
     
-    checkSolver(solve(x, InfInterval(0,10)), solve(x, InfInterval(0,10)));
-    checkSolver(solve(x + 4, InfInterval(0,10)), solve(x, InfInterval(-4,6)) + 4);
-    checkSolver(solve(4 + x, InfInterval(0,10)), solve(x, InfInterval(-4,6)) + 4);
-    checkSolver(solve(x + 4 + d, InfInterval(0,10)), solve(x, InfInterval(-4-d, 6-d)) + d + 4);
-    checkSolver(solve(x - d, InfInterval(0,10)), solve(x, InfInterval(d, d+10)) - d);
-    checkSolver(solve(x - (4 - d), InfInterval(0,10)), solve(x, InfInterval(4-d, 14-d)) + d + -4);
-    checkSolver(solve(x - 4 - d, InfInterval(0,10)), solve(x, InfInterval(d+4, d+14)) - d + -4);
+    checkInverseRamp(DomInterval(Ramp::make(0,1,8), Ramp::make(1,1,8),true), DomInterval(1,1,true), 8, DomInterval(0,1,true));
+    checkInverseRamp(DomInterval(Ramp::make(0,1,8), Ramp::make(3,2,8),true), DomInterval(1,2,true), 8, DomInterval(0,3,true));
+    checkInverseRamp(DomInterval(Broadcast::make(3,8), Broadcast::make(10,8),true), DomInterval(0,0,true), 8, DomInterval(3,10,true));
+    checkInverseRamp(DomInterval(Broadcast::make(3,8), Broadcast::make(10,8),true), DomInterval(1,1,true), 8, DomInterval(3,3,true));
+    
+    checkSolver(solve(x, DomInterval(0,10,true)), solve(x, DomInterval(0,10,true)));
+    checkSolver(solve(x + 4, DomInterval(0,10,true)), solve(x, DomInterval(-4,6,true)) + 4);
+    checkSolver(solve(4 + x, DomInterval(0,10,true)), solve(x, DomInterval(-4,6,true)) + 4);
+    checkSolver(solve(x + 4 + d, DomInterval(0,10,true)), solve(x, DomInterval(-4-d, 6-d,true)) + d + 4);
+    checkSolver(solve(x - d, DomInterval(0,10,true)), solve(x, DomInterval(d, d+10,true)) - d);
+    checkSolver(solve(x - (4 - d), DomInterval(0,10,true)), solve(x, DomInterval(4-d, 14-d,true)) + d + -4);
+    checkSolver(solve(x - 4 - d, DomInterval(0,10,true)), solve(x, DomInterval(d+4, d+14,true)) - d + -4);
     // Solve 4-x on the interval (0,10).
     // 0 <= 4-x <= 10.
     // -4 <= -x <= 6.  solve(-x) + 4
     // 4 >= x >= -6.   -solve(x) + 4  i.e.  4 - solve(x)
-    checkSolver(solve(4 - x, InfInterval(0,10)), 4 - solve(x, InfInterval(-6,4)));
-    checkSolver(solve(4 - d - x, InfInterval(0,10)), 4 - (solve(x, InfInterval(-6 - d, 4 - d)) + d));
-    checkSolver(solve(4 - d - x, InfInterval(0,10)) + 1, 5 - (solve(x, InfInterval(-6 - d, 4 - d)) + d));
+    checkSolver(solve(4 - x, DomInterval(0,10,true)), 4 - solve(x, DomInterval(-6,4,true)));
+    checkSolver(solve(4 - d - x, DomInterval(0,10,true)), 4 - (solve(x, DomInterval(-6 - d, 4 - d,true)) + d));
+    checkSolver(solve(4 - d - x, DomInterval(0,10,true)) + 1, 5 - (solve(x, DomInterval(-6 - d, 4 - d,true)) + d));
     // Solve c - (x + d) on (0,10).
     // 0 <= c - (x + d) <= 10.
     // -c <= -(x+d) <= 10-c.
     // c >= x+d >= c-10.
     // c-d >= d >= c-d-10.
-    checkSolver(solve(c - (x + d), InfInterval(0,10)), c - (solve(x, InfInterval(c-d+-10, c-d)) + d));
+    checkSolver(solve(c - (x + d), DomInterval(0,10,true)), c - (solve(x, DomInterval(c-d+-10, c-d,true)) + d));
     
-    checkSolver(solve(x * 2, InfInterval(0,10)), solve(x, InfInterval(0,5)) * 2);
-    checkSolver(solve(x * 3, InfInterval(1,17)), solve(x, InfInterval(1,5)) * 3);
-    checkSolver(solve(x * -3, InfInterval(1,17)), solve(x, InfInterval(-5,-1)) * -3);
-    checkSolver(solve((x + 3) * 2, InfInterval(0,10)), solve(x, InfInterval(-3, 2)) * 2 + 6);
+    checkSolver(solve(x * 2, DomInterval(0,10,true)), solve(x, DomInterval(0,5,true)) * 2);
+    checkSolver(solve(x * 3, DomInterval(1,17,true)), solve(x, DomInterval(1,5,true)) * 3);
+    checkSolver(solve(x * -3, DomInterval(1,17,true)), solve(x, DomInterval(-5,-1,true)) * -3);
+    checkSolver(solve((x + 3) * 2, DomInterval(0,10,true)), solve(x, DomInterval(-3, 2,true)) * 2 + 6);
     // Solve 0 <= (x + 4) * 3 <= 10
     // 0 <= (x + 4) <= 3
     // -4 <= x <= -1
-    checkSolver(solve((x + 4) * 3, InfInterval(0,10)), solve(x, InfInterval(-4, -1)) * 3 + 12);
+    checkSolver(solve((x + 4) * 3, DomInterval(0,10,true)), solve(x, DomInterval(-4, -1,true)) * 3 + 12);
     // Solve 0 <= (x + c) * -3 <= 10
     // 0 >= (x + c) >= -3
     // -c >= x >= -3 - c
-    checkSolver(solve((x + c) * -3, InfInterval(0,10)), (solve(x, InfInterval(-3 - c, 0 - c)) + c) * -3);
+    checkSolver(solve((x + c) * -3, DomInterval(0,10,true)), (solve(x, DomInterval(-3 - c, 0 - c,true)) + c) * -3);
     
-    checkSolver(solve(x / 3, InfInterval(0,10)), solve(x, InfInterval(0, 32)) / 3);
-    checkSolver(solve(x / -3, InfInterval(0,10)), solve(x, InfInterval(-30,2)) / -3);
+    checkSolver(solve(x / 3, DomInterval(0,10,true)), solve(x, DomInterval(0, 32,true)) / 3);
+    checkSolver(solve(x / -3, DomInterval(0,10,true)), solve(x, DomInterval(-32,0,true)) / -3);
     // Solve 1 <= (x + c) / 3 <= 17
     // 3 <= (x + c) <= 53
     // 3 - c <= x <= 53 - c
-    checkSolver(solve((x + c) / 3, InfInterval(1,17)), (solve(x, InfInterval(3 - c, 53 - c)) + c) / 3);
-    checkSolver(solve((x * d) / d, InfInterval(1,17)), solve(x, InfInterval(1,17)));
-    checkSolver(solve((x * d + d) / d, InfInterval(1,17)), solve(x, InfInterval(0,16)) + 1);
-    checkSolver(solve((x * d - d) / d, InfInterval(1,17)), solve(x, InfInterval(2,18)) + -1);
+    checkSolver(solve((x + c) / 3, DomInterval(1,17,true)), (solve(x, DomInterval(3 - c, 53 - c,true)) + c) / 3);
+    checkSolver(solve((x * d) / d, DomInterval(1,17,true)), solve(x, DomInterval(1,17,true)));
+    checkSolver(solve((x * d + d) / d, DomInterval(1,17,true)), solve(x, DomInterval(0,16,true)) + 1);
+    checkSolver(solve((x * d - d) / d, DomInterval(1,17,true)), solve(x, DomInterval(2,18,true)) + -1);
     
-    checkSolver(solve(x + 4, InfInterval(0,Infinity::make(Int(32), +1))), solve(x, InfInterval(-4,Infinity::make(Int(32), +1))) + 4);
-    checkSolver(solve(x + 4, InfInterval(Infinity::make(Int(32), -1),10)), solve(x, InfInterval(Infinity::make(Int(32), -1),6)) + 4);
+    checkSolver(solve(x + 4, DomInterval(0,Infinity::make(Int(32), +1),true)), solve(x, DomInterval(-4,Infinity::make(Int(32), +1),true)) + 4);
+    checkSolver(solve(x + 4, DomInterval(Infinity::make(Int(32), -1),10,true)), solve(x, DomInterval(Infinity::make(Int(32), -1),6,true)) + 4);
     
     // A few complex expressions
-    checkSolver(solve(x + c + 2 * y + d, InfInterval(0,10)), solve(x + y * 2, InfInterval(0 - d - c, 10 - d - c)) + c + d);
+    checkSolver(solve(x + c + 2 * y + d, DomInterval(0,10,true)), solve(x + y * 2, DomInterval(0 - d - c, 10 - d - c,true)) + c + d);
     // Solve 0 <= x + 10 + x + 15 <= 10
     // -25 <= x * 2 <= -15
     // -12 <= x <= -8
-    checkSolver(solve(x + 10 + x + 15, InfInterval(0,10)), solve(x, InfInterval(-12, -8)) * 2 + 25);
+    checkSolver(solve(x + 10 + x + 15, DomInterval(0,10,true)), solve(x, DomInterval(-12, -8,true)) * 2 + 25);
     
     checkSolver(x * x, x * x);
     checkSolver(x * d, x * d);
@@ -727,6 +1083,8 @@ void solver_test() {
     checkSolver((x + c) + y, (x + y) + c);
     checkSolver((min(x, 1) + c) + min(y, 1), (min(x, 1) + min(y, 1)) + c);
     checkSolver((min(x, 1) + c) + min(d, 1), min(d, 1) + (min(x, 1) + c)); // Simplify reorders expression
+    
+    //logSolver(solve(2 * x + k + (x + 5), DomInterval(0, 100,true)), solve(x, DomInterval((-6-k)/3+1,(95-k)/3,true))*3 + k + 5);
     
     std::cout << "Solve test passed" << std::endl;
 }

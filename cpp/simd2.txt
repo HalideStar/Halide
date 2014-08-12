@@ -1,0 +1,18 @@
+cd tmp ; DYLD_LIBRARY_PATH=../bin LD_LIBRARY_PATH=../bin ../bin/test_simd_op_check
+Lowering Clamp
+Clamp lowered:
+let test_packssdw_0.v0.v0.extent = ((test_packssdw_0.v0.extent + 7)/8)
+let test_packssdw_0.v0.v0.min = 0
+let test_packssdw_0.v0.v3.extent = 8
+let test_packssdw_0.v0.v3.min = 0
+for (test_packssdw_0.v1, test_packssdw_0.v1.min, test_packssdw_0.v1.extent) {
+  for (test_packssdw_0.v0.v0, 0, test_packssdw_0.v0.v0.extent) {
+    vectorized (test_packssdw_0.v0.v3, 0, 8) {
+      let test_packssdw_0.v0 = (((test_packssdw_0.v0.v0*8) + test_packssdw_0.v0.v3) + test_packssdw_0.v0.min)
+      test_packssdw_0(test_packssdw_0.v0, test_packssdw_0.v1) = i16(max(min(in_i32(test_packssdw_0.v0), 32767), -32768))
+    }
+  }
+}
+
+Successfully generated: packssdw 
+

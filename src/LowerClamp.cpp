@@ -12,6 +12,10 @@
 #include <set>
 #include <sstream>
 
+#if LOWER_CLAMP_LATE
+error lower clamp late is active
+#endif
+
 using std::string;
 using std::vector;
 

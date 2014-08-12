@@ -287,23 +287,34 @@ public:
 
 
     //LH
-    /** Partition a loop by specifying bounds for the main loop.
-     * Cancels automatic partitioning if previously specified. 
+    /** Index-set split a loop by specifying bounds for the main loop.
+     * Overrides automatic loop splitting (for the specified variable) if previously specified. 
      * Because of automatic type conversion, you can pass any type of IntRange
      * object such as Interval or Range. */
-    EXPORT ScheduleHandle &partition(Var var, InfInterval bounds);
-    /** Partition a loop automatically, or not, under control of boolean. 
-     * Cancels manual partition if already specified. */
-    EXPORT ScheduleHandle &partition(Var var, bool do_partition = true);
-    /** Partition all loops in this function, or not, under control of boolean. 
-     * Not effective if the function is inlined into another function.
-     * Does not override partitioning of individual variables. */
-    EXPORT ScheduleHandle &partition(bool do_partition = true);
-    /** Partition all loops in this function and in all called functions
-     * but without overriding any individual partition specification for
-     * individual functions.  This applies .partition(do_partition) to all underlying
-     * functions that currently have auto_partition undefined. */
-    EXPORT ScheduleHandle &partition_all(bool do_partition = true);
+    EXPORT ScheduleHandle &loop_split(Var var, DomInterval bounds);
+    /** Index-set split a loop automatically, or not, under control of boolean. 
+     * Overrides manual loop splitting if already specified. */
+    EXPORT ScheduleHandle &loop_split(Var var, bool auto_split = true);
+    /** Index-set split all loops in this function, or not, under control of boolean
+     * Has no effect if the function is inlined into another function.
+     * Does not override loop_split applied to individual variables. */
+    EXPORT ScheduleHandle &loop_split(bool auto_split = true);
+    /** Index-set split all loops in this function and in all called functions
+     * but without overriding any individual loop_split specification for
+     * individual functions.  This will apply .loop_split(do_split) to all underlying
+     * functions that have auto_loop_split undefined at compile time. */
+    EXPORT ScheduleHandle &loop_split_all(bool auto_split = true);
+    /** Apply index-set splitting recursively to border loops (before and after)
+     * in addition to the main loop. Semantics is that any loop splitting applied
+     * to this function will also split the before and after loops, but
+     * it is still necessary to enable loop splitting for this option to be
+     * effective */
+    EXPORT ScheduleHandle &loop_split_borders(bool split_borders = true);
+    /** Apply index-set splitting recursively to border loops (before and after)
+     * in addition to the main loop. This setting is recursively applied
+     * to underlying functions at compile time. It is only effective where
+     * loop splitting is performed. */
+    EXPORT ScheduleHandle &loop_split_borders_all(bool split_borders = true);
 };
 
 /** A halide function. This class represents one stage in a Halide
@@ -423,7 +434,7 @@ public:
     //EXPORT void realize();
 
     /** Compile this function to lowered Halide code but no further. */
-    EXPORT void compile_to_stmt();
+    EXPORT Internal::Stmt compile_to_stmt();
     
     /** Statically compile this function to llvm bitcode, with the
      * given filename (which should probably end in .bc), type
@@ -654,11 +665,13 @@ public:
     // @}
 
     //LH
-    /** Scheduling of loop partitioning. */
-    EXPORT Func &partition(Var var, Interval mainloop);
-    EXPORT Func &partition(Var var, bool do_partition = true);
-    EXPORT Func &partition(bool do_partition = true);
-    EXPORT Func &partition_all(bool do_partition = true);
+    /** Scheduling of loop splitting. */
+    EXPORT Func &loop_split(Var var, DomInterval mainloop);
+    EXPORT Func &loop_split(Var var, bool auto_split = true);
+    EXPORT Func &loop_split(bool auto_split = true);
+    EXPORT Func &loop_split_all(bool auto_split = true);
+    EXPORT Func &loop_split_borders(bool split_borders = true);
+    EXPORT Func &loop_split_borders_all(bool split_borders = true);
 
     /** Scheduling calls that control how the storage for the function
      * is laid out. Right now you can only reorder the dimensions. */
@@ -1013,18 +1026,13 @@ public:
 	Func &computable(Func f) { return domain(Domain::Computable, f); }
 
     //LH
-    /** Return an infinite domain for the current function. */
-    // Note: Does not return a reference since that would require creating an object
-    // in the Func.  This will be used infrequently, so simply copy the temporary object into
-    // the destination.
-    Domain infinite();
-    
-    //LH
-    /** Methods to indicate that the current function is a kernel of other functions. */
-    EXPORT Func &kernel_of(Func f1);
-    EXPORT Func &kernel_of(Func f1, Func f2);
-    EXPORT Func &kernel_of(Func f1, Func f2, Func f3);
-    EXPORT Func &kernel_of(Func f1, Func f2, Func f3, Func f4);
+    /** Methods to indicate that the current function is a local operation. */
+    EXPORT Func &local(Func f1);
+    EXPORT Func &local(Func f1, Func f2);
+    EXPORT Func &local(Func f1, Func f2, Func f3);
+    EXPORT Func &local(Func f1, Func f2, Func f3, Func f4);
+    EXPORT Func &local(Func f1, Func f2, Func f3, Func f4, Func f5);
+    EXPORT Func &local(Func f1, Func f2, Func f3, Func f4, Func f5, Func f6);
     
     //LH
     /** Get the type of this Func node */

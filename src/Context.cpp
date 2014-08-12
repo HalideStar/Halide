@@ -23,14 +23,14 @@ ContextManager::ContextManager() : my_current_context(1) {
 
 void ContextManager::set_parent(int _context, int _parent) {
     while((int) (parent_vector.size()) <= _context) {
-        parent_vector.push_back(0); // Default parent is 0, a non-context.
+        parent_vector.push_back(Context::Invalid); // Default parent is 0, a non-context.
     }
     parent_vector[_context] = _parent;
     return;
 }
 
 int ContextManager::parent(int _context) const {
-    if (_context <= 0 || _context >= (int) parent_vector.size()) {
+    if (_context <= Context::Invalid || _context >= (int) parent_vector.size()) {
         std::cerr << "Error: No parent for context " << _context << "\n";
         assert(0 && "No parent for context");
     }
@@ -39,12 +39,12 @@ int ContextManager::parent(int _context) const {
 
 void ContextManager::clear() {
     current_definition = DefiningNode();
-    my_current_context = 1;
+    my_current_context = Context::Root;
     child_context.clear();
     defining_map.clear();
     parent_vector.clear();
-    set_parent(1, 0);
-    defining_map.set(1, current_definition);
+    set_parent(Context::Root, Context::Invalid);
+    defining_map.set(Context::Root, current_definition);
     user_count = 0;
     variable_map.clear();
     target_map.clear();
@@ -67,10 +67,10 @@ void ContextManager::remove_user() {
 
 int ContextManager::lookup(ContextInternal::BindingMap &map, std::string name, int search_context) {
     int context = search_context;
-    while (context != 0) {
+    while (context != Context::Invalid) {
         int result = map.lookup(context, name);
-        if (result >= 0) {
-            // A result value of 0 means unbound.  It can be cached in the map for efficiency.
+        if (result >= Context::Invalid) {
+            // A result value of COntext::Invalid means unbound.  It can be cached in the map for efficiency.
             if (context != search_context) {
                 // The result was found in another context.  Add it to the search context.
                 map.bind(search_context, name, result);
@@ -79,10 +79,10 @@ int ContextManager::lookup(ContextInternal::BindingMap &map, std::string name, i
         }
         context = parent(context);
     }
-    // The variable was not bound. result is 0.
+    // The variable was not bound. result is Context::Invalid.
     // Add the unbound result to the map in the search context.
-    map.bind(search_context, name, 0); 
-    return 0;
+    map.bind(search_context, name, Context::Invalid); 
+    return Context::Invalid;
 }
 
 bool ContextManager::is_target(std::string name, int search_context) {
@@ -91,7 +91,7 @@ bool ContextManager::is_target(std::string name, int search_context) {
     // Firstly, is the variable a target in the search context?
     // If not, then it is not a target.
     int found = lookup(target_map, name, search_context);
-    if (! found) return false;
+    if (found == Context::Invalid) return false;
     // It is a target in the search context, but it could have been redefined.
     int current = lookup(target_map, name, current_context());
     // If the current context has a different target mapping then it has been redefined.
@@ -137,7 +137,7 @@ void ContextManager::push(Stmt stmt) {
 void ContextManager::pop(IRHandle node) {
     // Look for the parent of the current context.
     int _parent = parent(current_context());
-    assert(_parent != 0 && "Undefined parent of current context");
+    assert(_parent != Context::Invalid && "Undefined parent of current context");
 
 # if TRACE_CONTEXT
     std::cout << "pop " << current_context() << " --> " << _parent << " by " << node.ptr << "\n";
@@ -171,7 +171,7 @@ bool ContextManager::enter(IRHandle node) {
         std::cerr << "Error: Child context is the same as current context " << _child << "\n";
         assert(0 && "Child context the same as current context");
     }
-    if (_child != 0) {
+    if (_child != Context::Invalid) {
 # if TRACE_CONTEXT
         std::cout << "enter " << current_context() << " --> " << _child << " by " << node.ptr << "\n";
 # endif
@@ -226,7 +226,7 @@ int ChildContext::lookup(int current_context, const IRHandle &node) {
     NodeKey key(current_context, node); // Key to search for previous push result.
     typename ChildContext::iterator found = find(key); // Needs typename keyword?
     if (found == this->end()) {
-        return 0;
+        return Context::Invalid;
     } else {
         // Found in the map.  Use the map result.
         return found->second;

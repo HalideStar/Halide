@@ -13,6 +13,10 @@
 namespace Halide {
 namespace Internal {
 
+/** halide_option returns a string from the environment with the given name.
+ * It adapts to windows and linux installations. */
+std::string halide_option(std::string name);
+
 /** For optional debugging during codegen, use the log class as
  * follows: 
  * 

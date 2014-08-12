@@ -13,13 +13,13 @@
 namespace Halide {
 namespace Internal {
 
-/** Perform loop partition optimizations on a halide
+/** Perform index-set loop split optimizations on a halide
  * statement. 
  */
-Stmt loop_partition(Stmt s);
+Stmt loop_split(Stmt s);
 
-void loop_partition_test();
-
+void loop_split_test();
+bool is_effective_loop_split(Stmt s);
 }
 }
 

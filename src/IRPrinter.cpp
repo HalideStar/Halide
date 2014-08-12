@@ -37,7 +37,7 @@ ostream &operator<<(ostream &stream, const vector<Halide::Interval> &v) {
     return stream;
 }
 
-ostream &operator<<(ostream &stream, const vector<Halide::InfInterval> &v) {
+ostream &operator<<(ostream &stream, const vector<Halide::DomInterval> &v) {
     for (size_t i = 0; i < v.size(); i++) {
         stream << v[i];
         if (i+1 < v.size()) {
@@ -101,12 +101,22 @@ ostream &operator<<(ostream &stream, Domain d) {
 }
 
 ostream &operator<<(ostream &stream, Interval v) {
+    stream << "interval";
+    if (! v.exact) stream << "~"; // Approximate, not exact interval.
+    stream << "(" << v.min << ", " << v.max << ")";
+    return stream;
+}
+
+ostream &operator<<(ostream &stream, DomInterval v) {
+    if (! v.exact) stream << "~"; // Approximate, not exact interval.
     stream << "[" << v.min << ", " << v.max << "]";
     return stream;
 }
 
-ostream &operator<<(ostream &stream, InfInterval v) {
-    stream << "[" << v.min << ", " << v.max << "]";
+ostream &operator<<(ostream &stream, Range v) {
+    stream << "range";
+    if (! v.exact) stream << "~"; // Approximate, not exact range.
+    stream << "(" << v.min << ", " << v.extent << ")";
     return stream;
 }
 
@@ -176,42 +186,42 @@ ostream &operator<<(ostream &out, const For::ForType &type) {
     return out;
 }
 
-ostream &operator<<(ostream &out, const PartitionInfo &info) {
+ostream &operator<<(ostream &out, const LoopSplitInfo &info) {
     bool gap = false;
     switch (info.status) {
-    case PartitionInfo::Before:
+    case LoopSplitInfo::Before:
         out << "before";
         gap = true;
         break;
-    case PartitionInfo::Main:
+    case LoopSplitInfo::Main:
         out << "main";
         gap = true;
         break;
-    case PartitionInfo::After:
+    case LoopSplitInfo::After:
         out << "after";
         gap = true;
         break;
-    case PartitionInfo::Ordinary:
+    case LoopSplitInfo::Ordinary:
         break;
     default:
         out << "<unknown status=" << info.status << ">";
         break;
     }
-    if (info.status == PartitionInfo::Ordinary || info.status == PartitionInfo::Main) {
+    if (info.status == LoopSplitInfo::Ordinary || info.status == LoopSplitInfo::Main) {
         if (info.defined()) {
-            if (info.auto_partition != PartitionInfo::Undefined) {
+            if (info.auto_split != LoopSplitInfo::Undefined) {
                 if (gap) out << " ";
-                switch (info.auto_partition) {
-                case PartitionInfo::Yes:
+                switch (info.auto_split) {
+                case LoopSplitInfo::Yes:
                     out << "auto";
                     break;
-                case PartitionInfo::No:
+                case LoopSplitInfo::No:
                     out << "no_auto";
                     break;
-                case PartitionInfo::Undefined:
+                case LoopSplitInfo::Undefined:
                     break;
                 default:
-                    out << "<unknown auto_partition=" << info.auto_partition << ">";
+                    out << "<unknown auto_split=" << info.auto_split << ">";
                     break;
                 }
                 gap = true;
@@ -577,8 +587,8 @@ void IRPrinter::visit(const For *op) {
     print(op->min);
     stream << ", ";
     print(op->extent);
-    if (op->partition.defined() || op->partition.status != PartitionInfo::Ordinary) {
-        stream << ", " << op->partition;
+    if (op->loop_split.defined() || op->loop_split.status != LoopSplitInfo::Ordinary) {
+        stream << ", " << op->loop_split;
     }
     stream << ") {" << endl;
         
@@ -678,6 +688,7 @@ void IRPrinter::visit(const StmtTargetVar *op) {
 void IRPrinter::visit(const Infinity *op) {
     if (op->count < 0) stream << "-";
     stream << "infinity";
+    if (op->type.width > 1) stream << "_x" << op->type.width;
     if (op->count > 1) stream << "(" << op->count << ")";
     else if (op->count < -1) stream << "(" << -op->count << ")";
 }

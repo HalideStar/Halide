@@ -1,0 +1,60 @@
+In this example, x.x clamps are eliminated but not y.y clamps.
+The parallel for loop has not been index set split.
+
+
+BoundsSimplify: Max min((clamp_1_s_p4_u8.x.x*8 + clamp_1_s_p4_u8.x.v3 + clamp_1_s_p4_u8.min.0), 1280), 1
+------------------------------------------------------------------------------------------------------------
+
+BoundsSimplify: Min (((clamp_1_s_p4_u8.x.x*8) + clamp_1_s_p4_u8.x.v3) + clamp_1_s_p4_u8.min.0), 1280
+    interval a [(((max(((0 - clamp_1_s_p4_u8.min.0)/8), -1)*8) + clamp_1_s_p4_u8.min.0) + 8), (((min((((1271 - clamp_1_s_p4_u8.min.0)/8) + 1), ((clamp_1_s_p4_u8.extent.0 + 7)/8))*8) + clamp_1_s_p4_u8.min.0) + -1)]  b [1280, 1280]
+    result is expr a
+>>> Min is eliminated successfully.
+    
+BoundsSimplify: Max min((((clamp_1_s_p4_u8.y.y*4) + clamp_1_s_p4_u8.y.yi) + clamp_1_s_p4_u8.min.1), 1280), 1
+2: Failed to prove or disprove:
+    (clamp_1_s_p4_u8.min.1 < 1)
+    (clamp_1_s_p4_u8.min.1 < 1)
+1: Failed to prove or disprove:
+    (min(clamp_1_s_p4_u8.min.1, 1280) >= 1)
+    (1 <= min(clamp_1_s_p4_u8.min.1, 1280))
+2: Failed to prove or disprove:
+    (2 >= ((((clamp_1_s_p4_u8.extent.1 + 3)/4)*4) + clamp_1_s_p4_u8.min.1))
+    (((((clamp_1_s_p4_u8.extent.1 + 3)/4)*4) + clamp_1_s_p4_u8.min.1) <= 2)
+1: Failed to prove or disprove:
+    (1 >= (min(((((clamp_1_s_p4_u8.extent.1 + 3)/4)*4) + clamp_1_s_p4_u8.min.1), 1281) + -1))
+    (min(((((clamp_1_s_p4_u8.extent.1 + 3)/4)*4) + clamp_1_s_p4_u8.min.1), 1281) <= 2)
+BoundsSimplify: Min (((clamp_1_s_p4_u8.y.y*4) + clamp_1_s_p4_u8.y.yi) + clamp_1_s_p4_u8.min.1), 1280
+    interval a [clamp_1_s_p4_u8.min.1, (((((clamp_1_s_p4_u8.extent.1 + 3)/4)*4) + clamp_1_s_p4_u8.min.1) + -1)]  b [1280, 1280]
+1: Failed to prove or disprove:
+    ((((((clamp_1_s_p4_u8.extent.1 + 3)/4)*4) + clamp_1_s_p4_u8.min.1) + -1) <= 1280)
+    (((((clamp_1_s_p4_u8.extent.1 + 3)/4)*4) + clamp_1_s_p4_u8.min.1) <= 1281)
+1: Failed to prove or disprove:
+    (1280 <= clamp_1_s_p4_u8.min.1)
+    (1280 <= clamp_1_s_p4_u8.min.1)
+    could not resolve
+BoundsSimplify: Max min((((clamp_1_s_p4_u8.x.x*8) + clamp_1_s_p4_u8.x.v3) + clamp_1_s_p4_u8.min.0), 1278), -1
+BoundsSimplify: Min (((clamp_1_s_p4_u8.x.x*8) + clamp_1_s_p4_u8.x.v3) + clamp_1_s_p4_u8.min.0), 1278
+    interval a [(((max(((0 - clamp_1_s_p4_u8.min.0)/8), -1)*8) + clamp_1_s_p4_u8.min.0) + 8), (((min((((1271 - clamp_1_s_p4_u8.min.0)/8) + 1), ((clamp_1_s_p4_u8.extent.0 + 7)/8))*8) + clamp_1_s_p4_u8.min.0) + -1)]  b [1278, 1278]
+    result is expr a
+BoundsSimplify: Max min((((clamp_1_s_p4_u8.y.y*4) + clamp_1_s_p4_u8.y.yi) + clamp_1_s_p4_u8.min.1), 1278), -1
+2: Failed to prove or disprove:
+    (clamp_1_s_p4_u8.min.1 < -1)
+    (clamp_1_s_p4_u8.min.1 < -1)
+1: Failed to prove or disprove:
+    (min(clamp_1_s_p4_u8.min.1, 1278) >= -1)
+    (-1 <= min(clamp_1_s_p4_u8.min.1, 1278))
+2: Failed to prove or disprove:
+    (0 >= ((((clamp_1_s_p4_u8.extent.1 + 3)/4)*4) + clamp_1_s_p4_u8.min.1))
+    (((((clamp_1_s_p4_u8.extent.1 + 3)/4)*4) + clamp_1_s_p4_u8.min.1) <= 0)
+1: Failed to prove or disprove:
+    (-1 >= (min(((((clamp_1_s_p4_u8.extent.1 + 3)/4)*4) + clamp_1_s_p4_u8.min.1), 1279) + -1))
+    (min(((((clamp_1_s_p4_u8.extent.1 + 3)/4)*4) + clamp_1_s_p4_u8.min.1), 1279) <= 0)
+BoundsSimplify: Min (((clamp_1_s_p4_u8.y.y*4) + clamp_1_s_p4_u8.y.yi) + clamp_1_s_p4_u8.min.1), 1278
+    interval a [clamp_1_s_p4_u8.min.1, (((((clamp_1_s_p4_u8.extent.1 + 3)/4)*4) + clamp_1_s_p4_u8.min.1) + -1)]  b [1278, 1278]
+1: Failed to prove or disprove:
+    ((((((clamp_1_s_p4_u8.extent.1 + 3)/4)*4) + clamp_1_s_p4_u8.min.1) + -1) <= 1278)
+    (((((clamp_1_s_p4_u8.extent.1 + 3)/4)*4) + clamp_1_s_p4_u8.min.1) <= 1279)
+1: Failed to prove or disprove:
+    (1278 <= clamp_1_s_p4_u8.min.1)
+    (1278 <= clamp_1_s_p4_u8.min.1)
+    could not resolve

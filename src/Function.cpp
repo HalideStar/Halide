@@ -101,7 +101,7 @@ void Function::define(const vector<string> &args, Expr value) {
     contents.ptr->args = args;
         
     for (size_t i = 0; i < args.size(); i++) {
-        Schedule::Dim d = {args[i], For::Serial, PartitionInfo()}; //LH
+        Schedule::Dim d = {args[i], For::Serial, LoopSplitInfo()}; //LH
         contents.ptr->schedule.dims.push_back(d);
         contents.ptr->schedule.storage_dims.push_back(args[i]);
     }        
@@ -180,21 +180,21 @@ void Function::define_reduction(const vector<Expr> &args, Expr value) {
 
     // First add the pure args in order
     for (size_t i = 0; i < pure_args.size(); i++) {
-        Schedule::Dim d = {pure_args[i], For::Serial, PartitionInfo()}; //LH
+        Schedule::Dim d = {pure_args[i], For::Serial, LoopSplitInfo()}; //LH
         contents.ptr->reduction_schedule.dims.push_back(d);
     }
 
     // Then add the reduction domain outside of that
     for (size_t i = 0; i < check.reduction_domain.domain().size(); i++) {
-        Schedule::Dim d = {check.reduction_domain.domain()[i].var, For::Serial, PartitionInfo()}; //LH
+        Schedule::Dim d = {check.reduction_domain.domain()[i].var, For::Serial, LoopSplitInfo()}; //LH
         contents.ptr->reduction_schedule.dims.push_back(d);
     }
 }
 
 //LH
 // Get the corresponding interval of all the domains
-const std::vector<VarInterval> Function::domain_intervals(int index) const {
-    std::vector<VarInterval> intervals;
+const std::vector<DomInterval> Function::domain_intervals(int index) const {
+    std::vector<DomInterval> intervals;
     assert(contents.ptr->domains.size() >= Domain::MaxDomains && "Insufficient Domains defined in Function");
     for (int j = 0; j < Domain::MaxDomains; j++) {
         intervals.push_back(contents.ptr->domains[j].intervals[index]);

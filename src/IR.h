@@ -817,44 +817,50 @@ struct Pipeline : public StmtNode<Pipeline> {
 namespace Halide {
 namespace Internal {
 
-/** Information for loop partitioning from the .partition schedule.
+/** Information for loop splitting from the .loop_split schedule.
  * It is stored in the Dim portion of the Schedule, and later into the For loops. */
-    struct PartitionInfo {
+    struct LoopSplitInfo {
         /** One option is for the user to partition the main loop manually.
-         * Specify an InfInterval for the loop.  The bounds can be expressions.
+         * Specify an DomInterval for the loop.  The bounds can be expressions.
          * If not used, the expressions will be undefined. */
-        Halide::InfInterval interval;
+        Halide::DomInterval interval;
         /** Boolean options translate to tristate variables internally because they can
          * be undefined. */
         enum TriState { Undefined, No, Yes };
-        /** Record the auto_partition option for this variable. */
-        TriState auto_partition;
+        /** Record the auto_split option for this variable. */
+        TriState auto_split;
       
         /** Record the status of For loops, mainly for debugging and optimisation. */
         enum LoopStatus { Ordinary, Before, Main, After };
         LoopStatus status;
         
-        PartitionInfo(bool do_partition) {
-            auto_partition = do_partition ? Yes : No;
+        LoopSplitInfo(bool do_split) {
+            auto_split = do_split ? Yes : No;
             status = Ordinary;
         }
-        PartitionInfo(InfInterval _interval) { 
+        LoopSplitInfo(DomInterval _interval) { 
             interval = _interval; 
-            auto_partition = Undefined; 
+            auto_split = Undefined; 
             status = Ordinary;
         }
-        PartitionInfo(TriState _auto_partition) { 
-            assert(_auto_partition == Undefined || _auto_partition == Yes || _auto_partition == No);
-            auto_partition = _auto_partition; 
+        LoopSplitInfo(TriState _auto_split) { 
+            assert(_auto_split == Undefined || _auto_split == Yes || _auto_split == No);
+            auto_split = _auto_split; 
             status = Ordinary;
         }
-        PartitionInfo() { 
-            auto_partition = Undefined; 
+        LoopSplitInfo() { 
+            auto_split = Undefined; 
             status = Ordinary;
         }
         
+        /* defined() returns true if loop split information is defined.  i.e. if
+         * auto_split is Yes or No, or if a loop split interval is defined. */
         const bool defined() const;
+        /* interval_defined() returns true if a loop split interval is defined. */
         const bool interval_defined() const;
+        /* may_be_split() returns true if the loop split information indicates to perform
+         * loop splitting.  i.e. auto_split is Yes or Undefined, or a split interval is defined. */
+        const bool may_be_split() const;
     };
         
 /** A for loop. Execute the 'body' statement for all values of the
@@ -874,11 +880,11 @@ struct For : public StmtNode<For> {
     Expr min, extent;
     typedef enum {Serial, Parallel, Vectorized, Unrolled} ForType;
     ForType for_type;
-    PartitionInfo partition;
+    LoopSplitInfo loop_split;
     Stmt body;
 
-    /** Make a For loop with partition schedule information included. */
-    static Stmt make(std::string name, Expr min, Expr extent, ForType for_type, const PartitionInfo &p, Stmt body) {
+    /** Make a For loop with loop splitting schedule information included. */
+    static Stmt make(std::string name, Expr min, Expr extent, ForType for_type, const LoopSplitInfo &p, Stmt body) {
         assert(min.defined() && "For of undefined");
         assert(extent.defined() && "For of undefined");
         assert(min.type().is_scalar() && "For with vector min");
@@ -890,22 +896,22 @@ struct For : public StmtNode<For> {
         node->min = min;
         node->extent = extent;
         node->for_type = for_type;
-        node->partition = p;
+        node->loop_split = p;
         node->body = body;
         return node;
     }
     
     /** Convenience builder that inherits information from an existing For structure.
-     * name, for_type and partition are inherited. Use this in mutators unless you need to
+     * name, for_type and loop split are inherited. Use this in mutators unless you need to
      * modify the excluded parameters.  */
     static Stmt make(const For *oldloop, Expr min, Expr extent, Stmt body) {
         assert(oldloop && "Null pointer passed to For");
-        return make(oldloop->name, min, extent, oldloop->for_type, oldloop->partition, body);
+        return make(oldloop->name, min, extent, oldloop->for_type, oldloop->loop_split, body);
     }
     
-    /** Convenience builder for sample code only - partition information is not included */
+    /** Convenience builder for sample code only - loop split information is not included */
     static Stmt make(std::string name, Expr min, Expr extent, ForType for_type, Stmt body) {
-        return make(name, min, extent, for_type, PartitionInfo(), body);
+        return make(name, min, extent, for_type, LoopSplitInfo(), body);
     }
     
 };
@@ -1129,6 +1135,11 @@ struct Call : public ExprNode<Call> {
     static Expr make(Parameter param, const std::vector<Expr> &args) {
         return make(param.type(), param.name(), args, Image, Function(), Buffer(), param);
     }
+    
+    /** Convenience constructor for replacing the args list of an existing call */
+    static Expr make(const Call *call, const std::vector<Expr> &a) {
+	    return make(call->type, call->name, a, call->call_type, call->func, call->image, call->param);
+	}
 };
 
 /** A named variable. Might be a loop variable, function argument,
@@ -1173,22 +1184,22 @@ struct Variable : public ExprNode<Variable> {
  */
 struct Solve : public ExprNode<Solve> {
     Expr body;
-    std::vector<InfInterval> v;
+    std::vector<DomInterval> v;
     
-    /** Solve over a vector of InfInterval. */
-    static Expr make(Expr body, std::vector<InfInterval> v) {
+    /** Solve over a vector of DomInterval. */
+    static Expr make(Expr body, std::vector<DomInterval> v) {
         Solve *node = new Solve;
         node->type = body.type();
         node->body = body;
         node->v = v;
         return node;
     }
-    /** Solve over one InfInterval */
-    static Expr make(Expr body, InfInterval i) {
+    /** Solve over one DomInterval */
+    static Expr make(Expr body, DomInterval i) {
         return make(body, vec(i));
     }
-    /** Solve over two InfInterval together */
-    static Expr make(Expr body, InfInterval i, InfInterval j) {
+    /** Solve over two DomInterval together */
+    static Expr make(Expr body, DomInterval i, DomInterval j) {
         return make(body, vec(i, j));
     }
 };

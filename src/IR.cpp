@@ -111,16 +111,21 @@ void assert_same_type(std::string opname, Expr a, Expr b) {
 // a partition interval has been specified.  Since the interval is an Ival,
 // it should not contain undefined() expressions, but Infinity means undefined
 // in this case.
-const bool PartitionInfo::defined() const { 
-    return auto_partition != Undefined || 
+const bool LoopSplitInfo::defined() const { 
+    return auto_split != Undefined || 
            (interval.min.defined() && interval.max.defined() && 
             ! interval.min.as<Infinity>() && ! interval.max.as<Infinity>()); 
 }
 
-const bool PartitionInfo::interval_defined() const { 
+const bool LoopSplitInfo::interval_defined() const { 
     return (interval.min.defined() && interval.max.defined() && 
             ! interval.min.as<Infinity>() && ! interval.max.as<Infinity>()); 
 }
+
+const bool LoopSplitInfo::may_be_split() const { 
+    return auto_split != No || interval_defined(); 
+}
+
 
 
 }

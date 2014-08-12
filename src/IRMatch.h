@@ -16,10 +16,21 @@ namespace Internal {
  * as wildcards, and their matching equivalent in the second
  * expression is placed in the vector give as the third argument.
  *
+ * The type of the expression matched against the wildcard must ordinarily match the
+ * type of the wildcard variable.  To allow more general matching,
+ * the wildcard variable name may be of the following forms:
+ *
+ * "**"  Matches any type
+ * "*i"  Matches any Int.
+ * "*u"  Matches any UInt.
+ * "*iu" Matches any Int or UInt.
+ * "*f"  Matches any Float.
+ * "*k"  Matches any constant (as defined by is_const).
+ *
  * For example:
  \code
  Expr x = new Variable(Int(32), "*");
- match(x + x, 3 + (2*k), result) 
+ expr_match(x + x, 3 + (2*k), result) 
  \endcode
  * should return true, and set result[0] to 3 and
  * result[1] to 2*k.
@@ -28,6 +39,8 @@ namespace Internal {
 bool expr_match(Expr pattern, Expr expr, std::vector<Expr> &result);
 void expr_match_test();
 
+inline Expr Match(Type t, std::string name) { return Expr(new Variable(t, name)); }
+inline Expr Match(std::string name) { return Expr(new Variable(Int(32), name)); }
 }
 }
 

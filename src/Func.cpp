@@ -11,12 +11,14 @@
 #include "Image.h"
 #include "Param.h"
 #include "Log.h"
+#include "Simplify.h"
 #include <iostream>
 #include <fstream>
 
 //LH
 #include "DomainInference.h"
 #include "Interval.h"
+#include "CodeLogger.h"
 
 namespace Halide {
 
@@ -225,7 +227,17 @@ FuncRefKernel::operator FuncRefExpr() const {
     vector<Expr> imp_args;
     for (int i = 0; i < (int) func.args().size(); i++) {
         if (i < (int) args.size()) {
-            imp_args.push_back(Var::implicit(i) + args[i]);
+            // Ensure that the kernel argument expression is just an integer constant
+            // after folding.  Programmer can write Expr(1) + Expr(3) if they really want to...
+            Expr e = simplify(args[i]);
+            if (! is_const(e)) {
+                std::cerr << "Kernel expression [" << args[i] << "] is not allowed. Kernel expressions must be constant expressions\n";
+                assert(0 && "Invalid kernel expression");
+            }
+            if (e.type() != Int(32)) {
+                e = cast(Int(32), e); // Force to Int(32) so that we dont end up with a floating point index expression
+            }
+            imp_args.push_back(Var::implicit(i) + e);
         } else {
             imp_args.push_back(Var::implicit(i));
         }
@@ -314,8 +326,8 @@ ScheduleHandle &ScheduleHandle::split(Var old, Var outer, Var inner, Expr factor
                 dims[j-1] = dims[j-2];
             }
             dims[i+1].var = outer_name;
-            dims[i].partition = PartitionInfo(); // Do not partition the inner loop
-            dims[i+1].partition.interval = unzoom(dims[i+1].partition.interval, factor);
+            dims[i].loop_split = LoopSplitInfo(false); // Do not partition the inner loop
+            dims[i+1].loop_split.interval = unzoom(dims[i+1].loop_split.interval, factor);
             
             //std::cout << "outer: " << dims[i].partition << "\n";
             //std::cout << "inner: " << dims[i+1].partition << "\n";
@@ -447,13 +459,13 @@ ScheduleHandle &ScheduleHandle::cuda_threads(Var tx) {
     return *this;
 }
 namespace {
-void record_partition(Internal::Schedule &schedule, Var var, PartitionInfo info) {
+void record_partition(Internal::Schedule &schedule, Var var, LoopSplitInfo info) {
     bool found = false;
     vector<Schedule::Dim> &dims = schedule.dims;
     for (size_t i = 0; (!found) && i < dims.size(); i++) {
         if (var_name_match(dims[i].var, var.name())) {
             found = true;
-            dims[i].partition = info;
+            dims[i].loop_split = info;
         }
     }
     
@@ -470,23 +482,33 @@ void record_partition(Internal::Schedule &schedule, Var var, PartitionInfo info)
 }
 }
 
-ScheduleHandle &ScheduleHandle::partition(Var var, bool auto_partition) {
-    record_partition(schedule, var, PartitionInfo(auto_partition));
+ScheduleHandle &ScheduleHandle::loop_split(Var var, bool auto_split) {
+    record_partition(schedule, var, LoopSplitInfo(auto_split));
     return *this;
 }
 
-ScheduleHandle &ScheduleHandle::partition(Var var, InfInterval interval) {
-    record_partition(schedule, var, PartitionInfo(interval));
+ScheduleHandle &ScheduleHandle::loop_split(Var var, DomInterval interval) {
+    record_partition(schedule, var, LoopSplitInfo(interval));
     return *this;
 }
 
-ScheduleHandle &ScheduleHandle::partition(bool auto_partition) {
-    schedule.auto_partition = auto_partition ? PartitionInfo::Yes : PartitionInfo::No;
+ScheduleHandle &ScheduleHandle::loop_split(bool auto_split) {
+    schedule.loop_split_settings.auto_split = auto_split ? LoopSplitInfo::Yes : LoopSplitInfo::No;
     return *this;
 }
 
-ScheduleHandle &ScheduleHandle::partition_all(bool auto_partition_all) {
-    schedule.auto_partition_all = auto_partition_all ? PartitionInfo::Yes : PartitionInfo::No;
+ScheduleHandle &ScheduleHandle::loop_split_all(bool auto_split) {
+    schedule.loop_split_settings.auto_split_all = auto_split ? LoopSplitInfo::Yes : LoopSplitInfo::No;
+    return *this;
+}
+
+ScheduleHandle &ScheduleHandle::loop_split_borders(bool split_borders) {
+    schedule.loop_split_settings.split_borders = split_borders ? LoopSplitInfo::Yes : LoopSplitInfo::No;
+    return *this;
+}
+
+ScheduleHandle &ScheduleHandle::loop_split_borders_all(bool split_borders) {
+    schedule.loop_split_settings.split_borders_all = split_borders ? LoopSplitInfo::Yes : LoopSplitInfo::No;
     return *this;
 }
 
@@ -721,27 +743,43 @@ Func &Func::cuda_tile(Var x, Var y, Var z, int x_size, int y_size, int z_size) {
     return *this;
 }
 
-Func &Func::partition(Var x, Interval partition) {
-    ScheduleHandle(func.schedule()).partition(x, partition);
+
+// LH
+Func &Func::loop_split(Var x, DomInterval split) {
+    ScheduleHandle(func.schedule()).loop_split(x, split);
     return *this;
 }
 
-Func &Func::partition(Var x, bool auto_partition) {
-    ScheduleHandle(func.schedule()).partition(x, auto_partition);
+Func &Func::loop_split(Var x, bool auto_split) {
+    ScheduleHandle(func.schedule()).loop_split(x, auto_split);
     return *this;
 }
 
-Func &Func::partition(bool auto_partition) {
-    ScheduleHandle(func.schedule()).partition(auto_partition);
-    update().partition(auto_partition);
+Func &Func::loop_split(bool auto_split) {
+    ScheduleHandle(func.schedule()).loop_split(auto_split);
+    update().loop_split(auto_split);
     return *this;
 }
 
-Func &Func::partition_all(bool auto_partition) {
-    ScheduleHandle(func.schedule()).partition_all(auto_partition);
-    update().partition_all(auto_partition);
+Func &Func::loop_split_all(bool auto_split) {
+    ScheduleHandle(func.schedule()).loop_split_all(auto_split);
+    update().loop_split_all(auto_split);
     return *this;
 }
+
+Func &Func::loop_split_borders(bool split_borders) {
+    ScheduleHandle(func.schedule()).loop_split_borders(split_borders);
+    update().loop_split_borders(split_borders);
+    return *this;
+}
+
+Func &Func::loop_split_borders_all(bool split_borders) {
+    ScheduleHandle(func.schedule()).loop_split_borders_all(split_borders);
+    update().loop_split_borders(split_borders);
+    return *this;
+}
+
+
 
 Func &Func::reorder_storage(Var x, Var y) {
     vector<string> &dims = func.schedule().storage_dims;
@@ -864,29 +902,6 @@ Func &Func::domain(Domain::DomainType dt, Func f) {
 	return *this;
 }
 
-//LH
-/** Return an infinite domain for the current function */
-Domain Func::infinite() {
-    if (func.args().size() == 0)
-        return Domain();
-    if (func.args().size() == 1)
-        return Domain(func.args()[0], false, Expr(), Expr());
-    if (func.args().size() == 2)
-        return Domain(func.args()[0], false, Expr(), Expr(),
-                      func.args()[1], false, Expr(), Expr());
-    if (func.args().size() == 3)
-        return Domain(func.args()[0], false, Expr(), Expr(),
-                      func.args()[1], false, Expr(), Expr(),
-                      func.args()[2], false, Expr(), Expr());
-    if (func.args().size() == 4)
-        return Domain(func.args()[0], false, Expr(), Expr(),
-                      func.args()[1], false, Expr(), Expr(),
-                      func.args()[2], false, Expr(), Expr(),
-                      func.args()[3], false, Expr(), Expr());
-    assert(0 && "Cannot construct infinite domain for function");
-    return Domain(); // Unknown situation.
-}
-
 //void Func::operator=(Func f) {
 //    std::cout << "Simple defining " << name() << "\n";
     //assert(0);
@@ -894,23 +909,34 @@ Domain Func::infinite() {
 //}
 
 //LH
-/** Methods to indicate that the current function is a kernel of other functions. */
-Func &Func::kernel_of(Func f1) {
-    Internal::log(0) << name() << ".kernel_of(" << f1.name() << ")\n";
+/** Methods to indicate that the current function is a local operator of other functions. */
+Func &Func::local(Func f1) {
+    Internal::log(0) << name() << ".local(" << f1.name() << ")\n";
     set_valid() = computable().intersection(f1.valid());
     return *this;
 }
-Func &Func::kernel_of(Func f1, Func f2) {
-    Internal::log(0) << name() << ".kernel_of(" << f1.name() << ", " << f2.name() << ")\n";
+Func &Func::local(Func f1, Func f2) {
+    Internal::log(0) << name() << ".local(" << f1.name() << ", " << f2.name() << ")\n";
     set_valid() = computable().intersection(f1.valid()).intersection(f2.valid());
     return *this;
 }
-Func &Func::kernel_of(Func f1, Func f2, Func f3) {
+Func &Func::local(Func f1, Func f2, Func f3) {
     set_valid() = computable().intersection(f1.valid()).intersection(f2.valid()).intersection(f3.valid());
     return *this;
 }
-Func &Func::kernel_of(Func f1, Func f2, Func f3, Func f4) {
-    set_valid() = computable().intersection(f1.valid()).intersection(f2.valid()).intersection(f3.valid()).intersection(f4.valid());
+Func &Func::local(Func f1, Func f2, Func f3, Func f4) {
+    set_valid() = computable().intersection(f1.valid()).intersection(f2.valid()).intersection(f3.valid())
+                              .intersection(f4.valid());
+    return *this;
+}
+Func &Func::local(Func f1, Func f2, Func f3, Func f4, Func f5) {
+    set_valid() = computable().intersection(f1.valid()).intersection(f2.valid()).intersection(f3.valid())
+                              .intersection(f4.valid()).intersection(f5.valid());
+    return *this;
+}
+Func &Func::local(Func f1, Func f2, Func f3, Func f4, Func f5, Func f6) {
+    set_valid() = computable().intersection(f1.valid()).intersection(f2.valid()).intersection(f3.valid())
+                              .intersection(f4.valid()).intersection(f5.valid()).intersection(f6.valid());
     return *this;
 }
 
@@ -951,6 +977,16 @@ void FuncRefVar::operator=(Expr e) {
     // Find implicit args in the expr and add them to the args list before calling define
     vector<string> a = args;
     add_implicit_vars(a, e);
+    
+    code_logger.reset();
+    code_logger.name(func.name());
+    code_logger.section(100, "definition");
+    code_logger.log() << func.name() << "(";
+    if (a.size() > 0) code_logger.log() << a[0];
+    for (size_t i = 1; i < a.size(); i++) code_logger.log() << ", " << a[i];
+    code_logger.log() << ") = \n";
+    code_logger.log(e);
+
     func.define(a, e);
 }
     
@@ -1027,6 +1063,12 @@ void FuncRefExpr::operator=(Expr e) {
     
     vector<Expr> a = args;
     add_implicit_vars(a, e);
+
+    code_logger.reset();
+    code_logger.name(func.name());
+    code_logger.section(150, "reduction");
+    code_logger.log() << func.name() << "(" << a << ") = \n";
+    code_logger.log(e);
 
     func.define_reduction(args, e);
 }
@@ -1213,9 +1255,11 @@ Buffer Func::realize() {
 }
 #endif
 
-void Func::compile_to_stmt() {
+Internal::Stmt Func::compile_to_stmt() {
+    assert(value().defined() && "Can't compile undefined function");    
+
     if (!lowered.defined()) lowered = Halide::Internal::lower(func);
-    return;
+    return lowered;
 }
 
 

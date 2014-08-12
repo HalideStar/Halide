@@ -41,15 +41,16 @@ int main(int argc, const char **argv) {
     deinterleave_vector_test();
     modulus_remainder_test();
     
+    intrange_test();
     interval_test();
-    infinterval_test();
+    dominterval_test();
     domain_inference_test();
     lower_clamp_test();
     border_test();
     solver_test();
     lazy_scope_test();
     bounds_simplify_test();
-    loop_partition_test();
+    loop_split_test();
     
     std::cout << "Compiler Statistics:\n";
     std::cout << global_statistics;

@@ -42,19 +42,19 @@ private:
         if (dims == 0)
             dom = Domain(); // An empty domain that has not been initialised.
         else if (dims == 1)
-            dom = Domain("x", false, buffer.min(0), buffer.min(0) + buffer.extent(0) - 1);
+            dom = Domain(DomInterval(buffer.min(0), buffer.min(0) + buffer.extent(0) - 1, true));
         else if (dims == 2)
-            dom = Domain("x", false, buffer.min(0), buffer.min(0) + buffer.extent(0) - 1,
-                         "y", false, buffer.min(1), buffer.min(1) + buffer.extent(1) - 1);
+            dom = Domain(DomInterval(buffer.min(0), buffer.min(0) + buffer.extent(0) - 1, true),
+                         DomInterval(buffer.min(1), buffer.min(1) + buffer.extent(1) - 1, true));
         else if (dims == 3)
-            dom = Domain("x", false, buffer.min(0), buffer.min(0) + buffer.extent(0) - 1,
-                         "y", false, buffer.min(1), buffer.min(1) + buffer.extent(1) - 1,
-                         "z", false, buffer.min(2), buffer.min(2) + buffer.extent(2) - 1);
+            dom = Domain(DomInterval(buffer.min(0), buffer.min(0) + buffer.extent(0) - 1, true),
+                         DomInterval(buffer.min(1), buffer.min(1) + buffer.extent(1) - 1, true),
+                         DomInterval(buffer.min(2), buffer.min(2) + buffer.extent(2) - 1, true));
         else if (dims == 4)
-            dom = Domain("x", false, buffer.min(0), buffer.min(0) + buffer.extent(0) - 1,
-                         "y", false, buffer.min(1), buffer.min(1) + buffer.extent(1) - 1,
-                         "z", false, buffer.min(2), buffer.min(2) + buffer.extent(2) - 1,
-                         "w", false, buffer.min(3), buffer.min(3) + buffer.extent(3) - 1);
+            dom = Domain(DomInterval(buffer.min(0), buffer.min(0) + buffer.extent(0) - 1, true),
+                         DomInterval(buffer.min(1), buffer.min(1) + buffer.extent(1) - 1, true),
+                         DomInterval(buffer.min(2), buffer.min(2) + buffer.extent(2) - 1, true),
+                         DomInterval(buffer.min(3), buffer.min(3) + buffer.extent(3) - 1, true));
     }
 
     /** Prepare the buffer to be used as an image. Makes sure that the
@@ -73,7 +73,7 @@ private:
         buffer.set_host_dirty(true);
 
         if (buffer.defined()) {
-            base = (T *)buffer.host_ptr();
+            base = (T *)buffer.access_ptr();
             stride_1 = buffer.stride(1);
             stride_2 = buffer.stride(2);
             stride_3 = buffer.stride(3);
@@ -90,8 +90,9 @@ public:
     /** Construct an undefined image handle */
     Image() : base(NULL), stride_1(0), stride_2(0), stride_3(0), dims(0) {}
 
-    /** Allocate an image with the given dimensions. */
-    Image(int x, int y = 0, int z = 0, int w = 0) : buffer(Buffer(type_of<T>(), x, y, z, w)) {
+    /** Allocate an image with the given dimensions and optionally strides. */
+    Image(int x, int y = 0, int z = 0, int w = 0, int ax = 0, int ay = 0, int az = 0, int aw = 0,
+          int xm = 0, int ym = 0, int zm = 0, int wm = 0) : buffer(Buffer(type_of<T>(), x, y, z, w, NULL, ax, ay, az, aw, xm, ym, zm, wm)) {
         prepare_for_direct_pixel_access();
     }
 

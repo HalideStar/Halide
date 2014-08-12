@@ -32,7 +32,10 @@ public:
     // expr: The index expression.
     // min, max: The limits for the border handling of that dimension.
     // value: The value of the function expression, typically returned when inside the border.
-    virtual Expr indexExpr(int dim, Expr expr, Expr min, Expr max) = 0;
+    // The default indexExpr is intended for use by border handlers that need only define valueExpr.
+    //   The default definition prevents out-of-bounds accesses.  It can be whatever turns out to
+    //   be fastest: clamp, wrap or other.
+    virtual Expr indexExpr(int dim, Expr expr, Expr min, Expr max) { return clamp(expr, min, max); } // Default is suitable for value border handlers
     virtual Expr valueExpr(int dim, Expr value, Expr expr, Expr min, Expr max) { return value; } // Default: no impact
     
     // dim() returns a border function specific to a particular dimension.  It uses BorderIndex.
@@ -92,13 +95,6 @@ public:
     // relative to the base dimension specified in the constructor call.
     virtual Expr indexExpr(int _dim, Expr expr, Expr min, Expr max);
     virtual Expr valueExpr(int _dim, Expr value, Expr expr, Expr min, Expr max);
-};
-
-/** Base class for borderfuncs that manipulate only the value, not the index. */
-class BorderValueBase : public BorderBase {
-public:
-    // The index must be clamped to avoid out-of-bounds access.
-    virtual Expr indexExpr(int dim, Expr expr, Expr min, Expr max);
 };
 
 /** A border function that uses individual border functions for individual dimensions.
@@ -169,8 +165,8 @@ public:
 };
 
 /** A border function that replaces pixels outside the range with a constant expression. */
-class BorderConstant : public BorderValueBase {
-    Expr constant; // Can be any Halide data type, really
+class BorderConstant : public BorderBase {
+    Expr constant; // Can be any Halide data type or expression
 public:
     //BorderConstant() { constant = Expr(); } // There is no default constant: require it to be set.
     BorderConstant(Expr k) : constant(k) {}

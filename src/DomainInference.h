@@ -1,31 +1,10 @@
+// Include this file via IR.h
+#include "IR.h"
+
 #ifndef HALIDE_DOMAININFERENCE_H
 #define HALIDE_DOMAININFERENCE_H
 
 namespace Halide {
-namespace Internal {
-struct VarInterval
-{
-    // min and max are the range of the interval.
-    // poison evaluates to true when the range is meaningless and, in fact, poisoned.
-    // varname is the name of the variable described by the interval.
-    Expr imin, imax, poison;
-    std::string varname;
-    
-    VarInterval(std::string v, Expr poisoned, Expr emin, Expr emax) : 
-        imin(emin), imax(emax), poison(poisoned), varname(v) { }
-        
-    VarInterval() : imin(Expr()), imax(Expr()), poison(Expr()), varname("") {}
-
-    
-    void update(VarInterval result);
-};
-
-/** Emit a VarInterval on an output stream (such as std::cout) in a
- * human-readable form */
-std::ostream &operator<<(std::ostream &stream, VarInterval);
-
-}
-
 # define NextDomainType(dt) ((int) dt)++)
 
 struct Domain {
@@ -33,63 +12,48 @@ struct Domain {
     // MaxDomains is always last in the list - it is the dimension required for an array.
     // Valid must be the first entry and must have value 0 because it is used as a loop initialiser.
     // None of the others may have defined values because we loop over the enum.
-    typedef enum {Valid = 0, Computable, Efficient, MaxDomains} DomainType;
+    typedef enum {Valid = 0, Computable, MaxDomains} DomainType;
 
-    std::vector<Halide::Internal::VarInterval> intervals;
+    std::vector<Halide::DomInterval> intervals;
 
 private:
     bool domain_locked;
 public:
 
-    bool is_locked() { return domain_locked; }
-    void lock() { domain_locked = true; }
+    EXPORT bool is_locked() { return domain_locked; }
+    EXPORT void lock() { domain_locked = true; }
     
     Domain();
-    Domain(std::string xv, Expr xpoisoned, Expr xmin, Expr xmax);
-    Domain(std::string xv, Expr xpoisoned, Expr xmin, Expr xmax, 
-           std::string yv, Expr ypoisoned, Expr ymin, Expr ymax);
-    Domain(std::string xv, Expr xpoisoned, Expr xmin, Expr xmax, 
-           std::string yv, Expr ypoisoned, Expr ymin, Expr ymax, 
-           std::string zv, Expr zpoisoned, Expr zmin, Expr zmax);
-    Domain(std::string xv, Expr xpoisoned, Expr xmin, Expr xmax, 
-           std::string yv, Expr ypoisoned, Expr ymin, Expr ymax, 
-           std::string zv, Expr zpoisoned, Expr zmin, Expr zmax,
-           std::string wv, Expr wpoisoned, Expr wmin, Expr wmax);
-           
-    // Equivalent constructors using C++ bool type for poisoned.
-    // This approach is adopted as a hack because header file loops
-    // make it impossible to include IROperator.h in Image.h
-    Domain(std::string xv, bool xpoisoned, Expr xmin, Expr xmax);
-    Domain(std::string xv, bool xpoisoned, Expr xmin, Expr xmax, 
-           std::string yv, bool ypoisoned, Expr ymin, Expr ymax);
-    Domain(std::string xv, bool xpoisoned, Expr xmin, Expr xmax, 
-           std::string yv, bool ypoisoned, Expr ymin, Expr ymax, 
-           std::string zv, bool zpoisoned, Expr zmin, Expr zmax);
-    Domain(std::string xv, bool xpoisoned, Expr xmin, Expr xmax, 
-           std::string yv, bool ypoisoned, Expr ymin, Expr ymax, 
-           std::string zv, bool zpoisoned, Expr zmin, Expr zmax,
-           std::string wv, bool wpoisoned, Expr wmin, Expr wmax);
-           
     Domain(Expr xmin, Expr xmax);
     Domain(Expr xmin, Expr xmax, Expr ymin, Expr ymax);
     Domain(Expr xmin, Expr xmax, Expr ymin, Expr ymax, Expr zmin, Expr zmax);
     Domain(Expr xmin, Expr xmax, Expr ymin, Expr ymax, Expr zmin, Expr zmax, Expr wmin, Expr wmax);
+    
+    Domain(DomInterval xint);
+    Domain(DomInterval xint, DomInterval yint);
+    Domain(DomInterval xint, DomInterval yint, DomInterval zint);
+    Domain(DomInterval xint, DomInterval yint, DomInterval zint,
+           DomInterval wint);
+           
+    Domain(std::vector<DomInterval> _intervals) : intervals(_intervals), domain_locked(false) {}
            
     Domain intersection(const Domain other) const;
     
-    // Accessors to read information out of the domain using index number.
-    const Expr min(int index) const;
-    const Expr max(int index) const;
-    const Expr exact(int index) const;
-    const Expr extent(int index) const;
+    /** Constructor for an infinite domain of specified dimensionality */
+    EXPORT static Domain infinite(int dimensions);
+    
+    // Accessors to read information out of the domain using dimension index number.
+    EXPORT const Expr min(int index) const;
+    EXPORT const Expr max(int index) const;
+    EXPORT const bool exact(int index) const;
+    EXPORT const Expr extent(int index) const;
     
     // Accessors to read the domain as native C data.
-    const int imin(int index) const;
-    const int imax(int index) const;
-    const int iextent(int index) const;
-    const bool bexact(int index) const;
+    EXPORT const int imin(int index) const;
+    EXPORT const int imax(int index) const;
+    EXPORT const int iextent(int index) const;
     
-    const int dimensions() const { return intervals.size(); }
+    EXPORT const int dimensions() const { return intervals.size(); }
 };
 
 namespace Internal {

@@ -68,16 +68,11 @@ static bool check_domain (std::string name, std::string dname, Domain d, Domain 
         std::cout << name <<": " << dname << ": Domain sizes differ\n";
     }
     for (size_t i = 0; i < d.intervals.size() && i < expect.intervals.size(); i++) {
-        if (! equal(d.intervals[i].imin, expect.intervals[i].imin)) {
-            std::cout << name << ": " << dname << "[" << i << "]: Expected imin: " << expect.intervals[i].imin << "  Got: " << d.intervals[i].imin << "\n";
-            success = false;
-        }
-        if (! equal(d.intervals[i].imax, expect.intervals[i].imax)) {
-            std::cout << name << ": " << dname << "[" << i << "]: Expected imax: " << expect.intervals[i].imax << "  Got: " << d.intervals[i].imax << "\n";
-            success = false;
-        }
-        if (! equal(d.intervals[i].poison, expect.intervals[i].poison)) {
-            std::cout << name << ": " << dname << "[" << i << "]: Expected poison: " << expect.intervals[i].poison << "  Got: " << d.intervals[i].poison << "\n";
+        if (! equal(d.intervals[i].min, expect.intervals[i].min) ||
+            ! equal(d.intervals[i].max, expect.intervals[i].max) ||
+            d.intervals[i].exact != expect.intervals[i].exact) {
+            std::cout << name << ": " << dname << "[" << i << "]: Expected: " 
+                      << expect.intervals[i] << "  Got: " << d.intervals[i] << "\n";
             success = false;
         }
     }
@@ -124,10 +119,9 @@ void border_test() {
     init(x,y) = x + y * MUL;
     
     // Manually set all the domains of init.
-    Domain initd("x", false, LOX, HIX, "y", false, LOY, HIY);
+    Domain initd(LOX, HIX, LOY, HIY);
     init.set_valid() = initd;
     init.set_computable() = initd;
-    init.set_domain(Domain::Efficient) = initd;
     
     // First suite of tests: Check the implementation of the different border functions
     // when they are invoked using Border::border.
@@ -152,6 +146,8 @@ void border_test() {
     check("Border::constant(0)()", Border::constant(0)(init), expect_constant0);
     check("Border::tile(2,3)()", Border::tile(2,3)(init), expect_tile23); 
     
+    std::cout << "Border handling implementation tests passed.\n";
+    
     // Test with a realized image as the input.
     Func input("input");;
     input(x,y) = (x + LOX) + (y + LOY) * MUL;
@@ -162,23 +158,23 @@ void border_test() {
     g(x,y) = in(x-LOX,y-LOY); // This is a shift: in is valid on 0,5 0,6  g is valid on 4,9  4,10
     // Test the border handlers and check the computed domains.
     check("Border::replicate()", Border::replicate(g), expect_replicate, 
-        Domain("x", false, LOX, HIX, "y", false, LOY, HIY), 
-        Domain("x", false, Expr(), Expr(), "y", false, Expr(), Expr()));
+        Domain(LOX, HIX, LOY, HIY), 
+        Domain(Expr(), Expr(), Expr(), Expr()));
     check("Border::wrap()", Border::wrap(g), expect_wrap, 
-        Domain("x", false, LOX, HIX, "y", false, LOY, HIY), 
-        Domain("x", false, Expr(), Expr(), "y", false, Expr(), Expr()));
+        Domain(LOX, HIX, LOY, HIY), 
+        Domain(Expr(), Expr(), Expr(), Expr()));
     check("Border::reflect()", Border::reflect(g), expect_reflect, 
-        Domain("x", false, LOX, HIX, "y", false, LOY, HIY), 
-        Domain("x", false, Expr(), Expr(), "y", false, Expr(), Expr()));
+        Domain(LOX, HIX, LOY, HIY), 
+        Domain(Expr(), Expr(), Expr(), Expr()));
     check("Border::reflect101()", Border::reflect101(g), expect_reflect101, 
-        Domain("x", false, LOX, HIX, "y", false, LOY, HIY), 
-        Domain("x", false, Expr(), Expr(), "y", false, Expr(), Expr()));
+        Domain(LOX, HIX, LOY, HIY), 
+        Domain(Expr(), Expr(), Expr(), Expr()));
     check("Border::constant(0)()", Border::constant(0)(g), expect_constant0, 
-        Domain("x", false, LOX, HIX, "y", false, LOY, HIY), 
-        Domain("x", false, Expr(), Expr(), "y", false, Expr(), Expr()));
+        Domain(LOX, HIX, LOY, HIY), 
+        Domain(Expr(), Expr(), Expr(), Expr()));
     check("Border::tile(2,3)()", Border::tile(2,3)(g), expect_tile23, 
-        Domain("x", false, LOX, HIX, "y", false, LOY, HIY), 
-        Domain("x", false, Expr(), Expr(), "y", false, Expr(), Expr())); 
+        Domain(LOX, HIX, LOY, HIY), 
+        Domain(Expr(), Expr(), Expr(), Expr())); 
         
     // Test kernel notation
     
@@ -188,14 +184,14 @@ void border_test() {
     
     // Kernel function computed from function with borders.
     check("kernel", (border[-1][0] + border[1][0]) / 2, expect_kernel_replicate,
-        Domain("x", false, LOX, HIX, "y", false, LOY, HIY),
-        Domain("x", false, Expr(), Expr(), "y", false, Expr(), Expr()));
+        Domain(LOX, HIX, LOY, HIY),
+        Domain(Expr(), Expr(), Expr(), Expr()));
         
     // Build a kernel function where there is no border handling, so valid domain is restricted by
     // the computable domain.
     check("kernel2", (g[-1][0] + g[1][0]) / 2, 0,
-        Domain("x", false, LOX+1, HIX-1, "y", false, LOY, HIY),
-        Domain("x", false, LOX+1, HIX-1, "y", false, LOY, HIY));
+        Domain(LOX+1, HIX-1, LOY, HIY),
+        Domain(LOX+1, HIX-1, LOY, HIY));
     
     // An example using kernel mode computation with border handling then border none on top of
     // that.  The second layer restricts the computable domain and hence the valid domain.
@@ -203,8 +199,8 @@ void border_test() {
     kernel = (border[-1][-1] + border[1][1]) / 2;
     none = Border::none(kernel);
     check("kernel+none", (none[-2][-1] + none[1][1]) / 2, 0,
-        Domain("x", false, LOX+2, HIX-1, "y", false, LOY+1, HIY-1),
-        Domain("x", false, LOX+2, HIX-1, "y", false, LOY+1, HIY-1));
+        Domain(LOX+2, HIX-1, LOY+1, HIY-1),
+        Domain(LOX+2, HIX-1, LOY+1, HIY-1));
 }
 
 

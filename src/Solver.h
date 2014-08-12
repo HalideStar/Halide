@@ -7,7 +7,7 @@
  */
 
 #include "IR.h"
-#include "InfInterval.h"
+#include "DomInterval.h"
 
 namespace Halide { 
 namespace Internal {
@@ -24,8 +24,9 @@ namespace Internal {
  * If you want additional functionality in the solver, derive a class from it
  * and add your new functionality.
  */
-EXPORT Stmt solver(Stmt s);
-EXPORT Expr solver(Expr e);
+EXPORT Stmt loop_solver(Stmt s);
+EXPORT Expr loop_solver(Expr e);
+EXPORT Expr domain_solver(Expr e);
 
 EXPORT bool is_constant_expr(std::vector<std::string> varlist, Expr e);
 
@@ -40,20 +41,21 @@ public:
     
     // expr_source, stmt_source: The source node that was recorded in the TargetVar or StmtTargetVar
     // the identifies the variable in var, above.  One of these will be undefined.
+    // Both may be undefined if the target variable is not identified by a TargetVar or StmtTargetVar.
     Expr expr_source;
     Stmt stmt_source;
     
     // Intervals that define the individual solutions.
-    std::vector<InfInterval> intervals;
+    std::vector<DomInterval> intervals;
     
     Solution() {}
-    Solution(std::string _var, Expr expr_s, Stmt stmt_s, std::vector<InfInterval> _intervals) : 
+    Solution(std::string _var, Expr expr_s, Stmt stmt_s, std::vector<DomInterval> _intervals) : 
         var(_var), expr_source(expr_s), stmt_source(stmt_s), intervals(_intervals) {}
 };
     
-std::vector<Solution> extract_solutions(std::string var, Stmt source, Stmt solved);
+std::vector<Solution> extract_solutions(std::string var, Stmt source, Stmt solved, bool *exact = NULL);
 
-std::vector<Solution> extract_solutions(std::string var, Expr source, Expr solved);
+std::vector<Solution> extract_solutions(std::string var, Expr source, Expr solved, bool *exact = NULL);
 }
 }
 
