@@ -196,26 +196,26 @@ private:
 
 		// Bounds of result are no greater than bounds of hi
         if (min_a.defined() && min_hi.defined()) {
-            min = new Min(min_a, min_hi);
+            min = Min::make(min_a, min_hi);
         } else {
             min = Expr();
         }
 
         if (max_a.defined() && max_hi.defined()) {
-            max = new Min(max_a, max_hi);
+            max = Min::make(max_a, max_hi);
         } else {
             max = max_a.defined() ? max_a : max_hi;
         }
 
 		// Bounds of result are no smaller than bounds of lo
         if (min.defined() && min_lo.defined()) {
-            min = new Max(min, min_lo);
+            min = Max::make(min, min_lo);
         } else {
             min = min.defined() ? min : min_lo;
         }
 
         if (max.defined() && max_lo.defined()) {
-            max = new Max(max, max_lo);
+            max = Max::make(max, max_lo);
         } else {
             max = Expr();
         }
