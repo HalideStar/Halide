@@ -23,7 +23,7 @@ namespace Internal {
 template<>
 EXPORT Internal::RefCount &ref_count<Border::BorderBase>(const Border::BorderBase *f) {return f->ref_count;}
 
-//LH: NEED TO RESOLVE PROBLEM HERE: This destroy method is considered invalid because the
+//LHHACK: NEED TO RESOLVE PROBLEM HERE: This destroy method is considered invalid because the
 // destructor is not virtual.
 //template<>
 //EXPORT void destroy<Border::BorderBase>(const Border::BorderBase *f) {delete f;}

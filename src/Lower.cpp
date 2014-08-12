@@ -24,6 +24,8 @@
 #include "DebugToFile.h"
 #include "EarlyFree.h"
 #include "UniquifyVariableNames.h"
+// LHHACK: remove_dead_lets called in loop partition
+#include "RemoveDeadLets.h"
 
 #include "LowerClamp.h"
 #include "LoopPartition.h"
@@ -786,13 +788,16 @@ Stmt do_loop_partition(Stmt s, int section) {
     if (global_options.loop_partition) {
 		log(1) << "Simplifying...\n";
 		s = simplify(s);
-		s = remove_dead_lets(s);
+		s = remove_dead_lets(s); // LHHACK: Not sure whether this is still required.
 		code_logger.log(s, "deadlets");
 
 		log(1) << "Performing loop partition optimization...\n";
 		s = loop_partition(s);
 		log(2) << "Loop partition:\n" << s << '\n';
 		code_logger.log(s, "partition");
+		log(1) << "Uniquifying variable names...\n";
+		s = uniquify_variable_names(s);
+		log(2) << "Uniquified variable names: \n" << s << "\n\n";
 	}
 	
     code_logger.section(section + 10);
