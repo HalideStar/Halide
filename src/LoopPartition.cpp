@@ -11,6 +11,8 @@
 #include "Simplify.h"
 #include "Options.h"
 #include "CodeLogger.h"
+#include "UniquifyVariableNames.h"
+#include "BoundsSimplify.h"
 
 namespace Halide {
 namespace Internal {
@@ -627,6 +629,51 @@ std::string correct_partitioned =
 "  out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
 "}\n";
 
+std::string correct_post_simplify =
+"produce buf {\n"
+"  parallel (x, 0, 10, before) {\n"
+"    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
+"  }\n"
+"  parallel (x, 10, 77, main auto [-infinity, infinity]) {\n"
+"    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
+"  }\n"
+"  parallel (x, 87, 13, after) {\n"
+"    buf[(x + -1)] = select((3 < x), select((x < 87), input((((x + -10) % 100) + 10)), i16(-17)), i16(-17))\n"
+"  }\n"
+"}\n"
+"for (x, 0, 1, before) {\n"
+"  out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"}\n"
+"for (x, 1, 99, main [1, 99]) {\n"
+"  out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"}\n"
+"for (x, 100, 0, after) {\n"
+"  out[x] = (((buf(max(min(x, 100), 0)) + buf(max(min((x + -1), 100), 0))) + buf(Clamp::reflect((x + 1),0,100,0))) + 1)\n"
+"}\n";
+
+std::string correct_bsimp =
+"produce buf {\n"
+"  parallel (x, 0, 10, before) {\n"
+"    buf[(x + -1)] = select((3 < x), input((((x + -10) % 100) + 10)), i16(-17))\n"
+"  }\n"
+"  parallel (x, 10, 77, main auto [-infinity, infinity]) {\n"
+"    buf[(x + -1)] = input(((x + -10) + 10))\n"
+"  }\n"
+"  parallel (x, 87, 13, after) {\n"
+"    buf[(x + -1)] = i16(-17)\n"
+"  }\n"
+"}\n"
+"for (x, 0, 1, before) {\n"
+"  out[x] = (((buf(x) + buf(0)) + buf((x + 1))) + 1)\n"
+"}\n"
+"for (x, 1, 99, main [1, 99]) {\n"
+"  out[x] = (((buf(x) + buf((x + -1))) + buf((x + 1))) + 1)\n"
+"}\n"
+"for (x, 100, 0, after) {\n"
+"  out[x] = (((buf(x) + buf((x + -1))) + buf((x))) + 1)\n"
+"}\n";
+
+
 void code_compare (std::string long_desc, std::string head, Stmt code, std::string correct) {
     std::ostringstream output;
     output << code;
@@ -691,6 +738,15 @@ void test_loop_partition_1() {
     Stmt part = loop_part.mutate(simp);
     code_compare ("loop partitioning", "Partitioned:", part, correct_partitioned);
     //std::cout << "Partitioned:\n" << part << "\n";
+
+	Stmt uniq = uniquify_variable_names(part);
+    code_compare ("loop partitioning", "Uniquified:", uniq, correct_partitioned);
+	
+	Stmt postsimp = simplify(uniq);
+    code_compare ("loop partitioning", "Post Simplified:", postsimp, correct_post_simplify);
+	Stmt bsimp = bounds_simplify(postsimp);
+    code_compare ("loop partitioning", "Bounds Simplified:", bsimp, correct_bsimp);
+
     
     global_options = the_options;
 }

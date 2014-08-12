@@ -140,27 +140,28 @@ Expr bounds_simplify(Expr e) {
 
 
 namespace{
-void check(Stmt a, Stmt b) {
+void check(Stmt a, Stmt b, int lo = 0, int hi = 10) {
     // Use loop to set intervals on the variables.
-    Stmt fora = For::make("x", Expr(0), Expr(11), For::Serial, a);
-    Stmt forb = For::make("x", Expr(0), Expr(11), For::Serial, b);
+    Stmt fora = For::make("x", Expr(lo), Expr(hi - lo + 1), For::Serial, a);
+    //Stmt forb = For::make("x", Expr(lo), Expr(hi - lo + 1), For::Serial, b);
     // Simplify a.
     Stmt simpler = bounds_simplify(fora);
     const For *result = simpler.as<For>();
     if (!equal(result->body, b)) {
         std::cout << std::endl << "Simplify bounds failure: " << std::endl;
         std::cout << "Input: " << a << std::endl;
+		std::cout << "  where x is in the interval [" << lo << ", " << hi << "]" << std::endl;
         std::cout << "Output: " << result->body << std::endl;
         std::cout << "Expected output: " << b << std::endl;
         assert(false);
     }
 }
     
-void check(Expr a, Expr b) {
-    // Use two For loops, one with an undefined upper bound (!) to set intervals on the variables.
-    Stmt storea = Store::make("x", a, Expr(0));
-    Stmt storeb = Store::make("x", b, Expr(0));
-    check(storea, storeb);
+void check(Expr a, Expr b, int lo = 0, int hi = 10) {
+    // Use two For loops to set intervals on the variables.
+    Stmt storea = Store::make("buf", a, Expr(0));
+    Stmt storeb = Store::make("buf", b, Expr(0));
+    check(storea, storeb, lo, hi);
 }
 
 }
@@ -188,6 +189,7 @@ void bounds_simplify_test() {
 
                                     check(Select::make(x < 11, x*2, x*3), x*2);
 
+	// check sets x to be a For loop variable on the range 0 to 10 inclusive
     check(Min::make(x, 9), Min::make(x, 9));
     check(Min::make(x, 10), x);
     check(clamp(x, 1, 5), clamp(x, 1, 5));
@@ -195,6 +197,7 @@ void bounds_simplify_test() {
     check(clamp(x-1, -1, 9), x-1);
     check(Clamp::make(Clamp::Wrap, x, 0, 10), x);
     check(Clamp::make(Clamp::None, x), x);
+	//check(Clamp::make(Clamp::Reflect, x+1, 0, 10), x, 10, 10); // Cannot optimise this until it is lowered
     check(abs(min(x,10)), Call::make(Int(32), "abs_i32", vec(Expr(x))));
     check(abs(Call::make(Int(16), "input", input_site_1)),
         abs(Call::make(Int(16), "input", vec(Expr(x)))));

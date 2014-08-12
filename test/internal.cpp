@@ -47,9 +47,9 @@ int main(int argc, const char **argv) {
     lower_clamp_test();
     border_test();
     solver_test();
-    loop_partition_test();
     lazy_scope_test();
     bounds_simplify_test();
+    loop_partition_test();
     
     std::cout << "Compiler Statistics:\n";
     std::cout << global_statistics;
