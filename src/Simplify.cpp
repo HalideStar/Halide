@@ -886,7 +886,7 @@ protected:
             if (op) {
                 // Cannot simplify it. Possible that part of ramp satisfies LT and part does not.
                 if (a.same_as(op->a) && b.same_as(op->b)) expr = op;
-                else expr = new LT(a, b);
+                else expr = LT::make(a, b);
             }
         }
         return false;
@@ -1042,7 +1042,7 @@ protected:
             // min(e + k1, k2) -->  min(e, k2 -k1) + k1
             // Overflow invalidates this rule.
             // vectorize.partition
-            expr = mutate(new Add(Min::make(add_a->a, ib - ia), ia));
+            expr = mutate(Add::make(Min::make(add_a->a, ib - ia), ia));
         } else if (global_options.simplify_lift_constant_min_max && 
             add_a && add_b && const_int(add_a->b, &ia) && const_int(add_b->b, &ib)) { //LH
             // min(e1 + k1, e2 + k2) -->  min(e1 + (k1 - k2), e2) + k2
@@ -1050,9 +1050,9 @@ protected:
             // vectorize.partition
             if (ia == ib) {
                 // Special case: min(e1 + k, e2 + k) --> min(e1, e2) + k
-                expr = mutate(new Add(Min::make(add_a->a, add_b->a), ib));
+                expr = mutate(Add::make(Min::make(add_a->a, add_b->a), ib));
             } else {
-                expr = mutate(new Add(Min::make(add_a->a + (ia - ib), add_b->a), ib));
+                expr = mutate(Add::make(Min::make(add_a->a + (ia - ib), add_b->a), ib));
             }
 
         } else if (min_a && is_simple_const(min_a->b) && is_simple_const(b)) {
@@ -1247,7 +1247,7 @@ protected:
             // vectorize.partition
             // max(e + k1, k2) -->  max(e, k2 -k1) + k1
             // Overflow invalidates this rule.
-            expr = mutate(new Add(Max::make(add_a->a, ib - ia), ia));
+            expr = mutate(Add::make(Max::make(add_a->a, ib - ia), ia));
         } else if (global_options.simplify_lift_constant_min_max && 
             add_a && add_b && const_int(add_a->b, &ia) && const_int(add_b->b, &ib)) { //LH
             // vectorize.partition
@@ -1256,9 +1256,9 @@ protected:
             // e.g. max(x + 5, x + 7) is actually x+5 when the type is UInt(8) and
             // x is 250.
             if (ia == ib) {
-                expr = mutate(new Add(Max::make(add_a->a, add_b->a), ib));
+                expr = mutate(Add::make(Max::make(add_a->a, add_b->a), ib));
             } else {
-                expr = mutate(new Add(Max::make(add_a->a + (ia - ib), add_b->a), ib));
+                expr = mutate(Add::make(Max::make(add_a->a + (ia - ib), add_b->a), ib));
             }
 
         } else if (max_a && is_simple_const(max_a->b) && is_simple_const(b)) {

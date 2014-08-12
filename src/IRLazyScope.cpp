@@ -217,15 +217,15 @@ void lazy_scope_test() {
     Expr select = Select::make(x > 3, Select::make(x < 87, input, Cast::make(Int(16), y-17)),
                              Cast::make(Int(16), -17));
     Stmt store = Store::make("buf", select, x - 1);
-    PartitionInfo partition(true);
-    Stmt for_loop = For::make("x", 0, 100, For::Parallel, partition, store);
+    LoopSplitInfo autosplit(true);
+    Stmt for_loop = For::make("x", 0, 100, For::Parallel, autosplit, store);
     Stmt letstmt = LetStmt::make("y", a * 2 + 5, for_loop); //a is undefined here
     Expr call = Call::make(i32, "buf", vec(max(min(x,100),0)));
     Expr call2 = Call::make(i32, "buf", vec(max(min(x-1,100),0)));
     Expr call3 = Call::make(i32, "buf", vec(Expr(Clamp::make(Clamp::Reflect, x+1, 0, 100))));
     Stmt store2 = Store::make("out", call + call2 + call3 + 1 + y, x); // y is undefined here
-    PartitionInfo partition2(InfInterval(1,99));
-    Stmt for_loop2 = For::make("x", 0, 100, For::Serial, partition2, store2);
+    LoopSplitInfo manualsplit(DomInterval(1,99,true));
+    Stmt for_loop2 = For::make("x", 0, 100, For::Serial, manualsplit, store2);
     Stmt pipeline = Pipeline::make("buf", letstmt, Stmt(), for_loop2);
     
     Walker walk;

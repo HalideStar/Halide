@@ -39,8 +39,8 @@ namespace Internal {
 bool expr_match(Expr pattern, Expr expr, std::vector<Expr> &result);
 void expr_match_test();
 
-inline Expr Match(Type t, std::string name) { return Expr(new Variable(t, name)); }
-inline Expr Match(std::string name) { return Expr(new Variable(Int(32), name)); }
+inline Expr Match(Type t, std::string name) { return Variable::make(t, name); }
+inline Expr Match(std::string name) { return Variable::make(Int(32), name); }
 }
 }
 

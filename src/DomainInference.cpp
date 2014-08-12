@@ -851,9 +851,9 @@ protected:
                 // We need to know the DomInterval of the i'th parameter of the called function.
                 domain = func_call->func.domain_intervals(i);
             }
-            newargs.push_back(new Solve(func_call->args[i], domain));
+            newargs.push_back(Solve::make(func_call->args[i], domain));
         }
-        expr = new Call(func_call, newargs);
+        expr = Call::make(func_call, newargs);
         return;
     }
 };

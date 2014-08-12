@@ -657,11 +657,11 @@ Stmt code_1 () {
 }
 
 Stmt code_2() {
-    Expr x = new Variable(Int(32), "x");
-    Expr y = new Variable(Int(32), "y");
-    Expr input1 = new Call(Int(16), "input", vec((x - 10) % 100, Expr(new Clamp(Clamp::Replicate, y-3, 0, 100))));
-    Expr input2 = new Call(Int(16), "input", vec((x + 5) % 100, Expr(new Clamp(Clamp::Replicate, y+2, 0, 100))));
-    Stmt store = new Store("buf", input1 + input2, y * 100 + x);
+    Expr x = Variable::make(Int(32), "x");
+    Expr y = Variable::make(Int(32), "y");
+    Expr input1 = Call::make(Int(16), "input", vec((x - 10) % 100, Expr(Clamp::make(Clamp::Replicate, y-3, 0, 100))));
+    Expr input2 = Call::make(Int(16), "input", vec((x + 5) % 100, Expr(Clamp::make(Clamp::Replicate, y+2, 0, 100))));
+    Stmt store = Store::make("buf", input1 + input2, y * 100 + x);
     LoopSplitInfo autosplit(true); // Select auto loop spliting.
     Stmt inner_loop = For::make("x", 0, 100, For::Serial, autosplit, store);
     Stmt outer_loop = For::make("y", 0, 100, For::Serial, autosplit, inner_loop);
@@ -995,12 +995,16 @@ void test_loop_split_1() {
     //std::cout << "Partitioned:\n" << part << "\n";
 
 	Stmt uniq = uniquify_variable_names(part);
-    code_compare ("uniquifying variables", "Uniquified:", uniq, correct_partitioned);
+    //code_compare ("uniquifying variables", "Uniquified:", uniq, correct_partitioned);
+    code_compare ("uniquifying variables", "Uniquified:", uniq, correct_loop_split);
 	
 	Stmt postsimp = simplify(uniq);
-    code_compare ("post simplifier", "Post Simplified:", postsimp, correct_post_simplify);
+    //code_compare ("post simplifier", "Post Simplified:", postsimp, correct_post_simplify);
+    code_compare ("post simplifier", "Post Simplified:", postsimp, correct_loop_split);
+	
 	Stmt bsimp = bounds_simplify(postsimp);
-    code_compare ("bounds anbalysis simplifier", "Bounds Simplified:", bsimp, correct_bsimp);
+    //code_compare ("bounds anbalysis simplifier", "Bounds Simplified:", bsimp, correct_bsimp);
+    code_compare ("bounds anbalysis simplifier", "Bounds Simplified:", bsimp, correct_loop_split);
 
     // ------------- SECOND TEST ----------------
     global_options = Options();

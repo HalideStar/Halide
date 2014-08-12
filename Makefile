@@ -70,8 +70,8 @@ STDLIB_ARCHS = x86 x86_avx x86_32 arm arm_android $(PTX_ARCHS) $(NATIVE_CLIENT_A
 
 #LH: List extensions separately to support automatic merging.
 # LHHACK: RemoveDeadLets is reinstated as a hack to get Lower.cpp working for now.
-LH_SOURCE_FILES = Border.cpp Clamp.cpp DomainInference.cpp LowerClamp.cpp LoopPartition.cpp Options.cpp Interval.cpp InlineLet.cpp IRCacheMutator.cpp Statistics.cpp CodeLogger.cpp IRLazyScope.cpp Context.cpp IRProcess.cpp InfInterval.cpp BoundsSimplify.cpp IntRange.cpp RemoveDeadLets.cpp
-LH_HEADER_FILES = Border.h Clamp.h DomainInference.h LowerClamp.h LoopPartition.h Options.h Interval.h Solver.h InlineLet.h IRCacheMutator.h Statistics.h CodeLogger.h IRLazyScope.h Context.h IRProcess.h InfInterval.h BoundsAnalysis.h BoundsSimplify.h IntRange.h RemoveDeadLets.h
+LH_SOURCE_FILES = Border.cpp Clamp.cpp DomainInference.cpp LowerClamp.cpp LoopPartition.cpp Options.cpp Interval.cpp InlineLet.cpp IRCacheMutator.cpp Statistics.cpp CodeLogger.cpp IRLazyScope.cpp Context.cpp IRProcess.cpp DomInterval.cpp BoundsSimplify.cpp IntRange.cpp RemoveDeadLets.cpp
+LH_HEADER_FILES = Border.h Clamp.h DomainInference.h LowerClamp.h LoopPartition.h Options.h Interval.h Solver.h InlineLet.h IRCacheMutator.h Statistics.h CodeLogger.h IRLazyScope.h Context.h IRProcess.h DomInterval.h BoundsAnalysis.h BoundsSimplify.h IntRange.h RemoveDeadLets.h
 SOURCES = $(LH_SOURCE_FILES:%.cpp=src/%.cpp) $(SOURCE_FILES:%.cpp=src/%.cpp)
 OBJECTS = $(LH_SOURCE_FILES:%.cpp=$(BUILD_DIR)/%.o) $(SOURCE_FILES:%.cpp=$(BUILD_DIR)/%.o)
 GOBJECTS = $(LH_SOURCE_FILES:%.cpp=build_g/%.o) $(SOURCE_FILES:%.cpp=build_g/%.o)

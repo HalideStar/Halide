@@ -180,7 +180,7 @@ public:
         // If it is the main loop, keep debug level, otherwise kill debug.
         code_logger.log() << "------- Begin loop " << op->name << " " << op->loop_split << "\n";
         enter(op->body);
-        code_logger.log() << "    interval " << op->name << ": " << bounds.bounds(new Variable(Int(32), op->name)) << "\n";
+        code_logger.log() << "    interval " << op->name << ": " << bounds.bounds(Variable::make(Int(32), op->name)) << "\n";
         leave(op->body);
         if (op->loop_split.status != LoopSplitInfo::Main && 
             op->loop_split.status != LoopSplitInfo::Ordinary) {

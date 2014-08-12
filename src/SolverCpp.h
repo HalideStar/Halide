@@ -674,16 +674,16 @@ protected:
         if (min_e && is_constant_expr(min_e->a)) {
             // Min, Max: push outside of Solve nodes.
             // solve(min(k,v)) on (a,b) --> min(k,solve(v)). 
-            expr = mutate(new Min(solve(min_e->b, v_apply(inverseMin, op->v, bounds.bounds(min_e->a))), min_e->a));
+            expr = mutate(Min::make(solve(min_e->b, v_apply(inverseMin, op->v, bounds.bounds(min_e->a))), min_e->a));
         } else if (min_e && is_constant_expr(min_e->b)) {
             // solve(min(v,k)) on (a,b) --> min(solve(v),k). 
-            expr = mutate(new Min(solve(min_e->a, v_apply(inverseMin, op->v, bounds.bounds(min_e->b))), min_e->b));
+            expr = mutate(Min::make(solve(min_e->a, v_apply(inverseMin, op->v, bounds.bounds(min_e->b))), min_e->b));
         } else if (max_e && is_constant_expr(max_e->a)) {
             // solve(max(k,v)) on (a,b) --> max(k,solve(v)). 
-            expr = mutate(new Max(solve(max_e->b, v_apply(inverseMax, op->v, bounds.bounds(max_e->a))), max_e->a));
+            expr = mutate(Max::make(solve(max_e->b, v_apply(inverseMax, op->v, bounds.bounds(max_e->a))), max_e->a));
         } else if (max_e && is_constant_expr(max_e->b)) {
             // solve(max(v,k)) on (a,b) --> max(solve(v),k). 
-            expr = mutate(new Max(solve(max_e->a, v_apply(inverseMax, op->v, bounds.bounds(max_e->b))), max_e->b));
+            expr = mutate(Max::make(solve(max_e->a, v_apply(inverseMax, op->v, bounds.bounds(max_e->b))), max_e->b));
         } else {
             Solver::visit(op);
         }
@@ -825,16 +825,16 @@ protected:
         } else if (min_e && is_constant_expr(min_e->a)) {
             // Min, Max: push outside of Solve nodes.
             // solve(min(k,v)) on (a,b) --> min(k,solve(v)). 
-            expr = mutate(new Min(solve(min_e->b, solve_clamp_limits(op->v, op->type, Expr(), min_e->a, true)), min_e->a));
+            expr = mutate(Min::make(solve(min_e->b, solve_clamp_limits(op->v, op->type, Expr(), min_e->a, true)), min_e->a));
         } else if (min_e && is_constant_expr(min_e->b)) {
             // solve(min(v,k)) on (a,b) --> min(solve(v),k). 
-            expr = mutate(new Min(solve(min_e->a, solve_clamp_limits(op->v, op->type, Expr(), min_e->b, true)), min_e->b));
+            expr = mutate(Min::make(solve(min_e->a, solve_clamp_limits(op->v, op->type, Expr(), min_e->b, true)), min_e->b));
         } else if (max_e && is_constant_expr(max_e->a)) {
             // solve(max(k,v)) on (a,b) --> max(k,solve(v)). 
-            expr = mutate(new Max(solve(max_e->b, solve_clamp_limits(op->v, op->type, max_e->a, Expr(), true)), max_e->a));
+            expr = mutate(Max::make(solve(max_e->b, solve_clamp_limits(op->v, op->type, max_e->a, Expr(), true)), max_e->a));
         } else if (max_e && is_constant_expr(max_e->b)) {
             // solve(max(v,k)) on (a,b) --> max(solve(v),k). 
-            expr = mutate(new Max(solve(max_e->a, solve_clamp_limits(op->v, op->type, max_e->b, Expr(), true)), max_e->b));
+            expr = mutate(Max::make(solve(max_e->a, solve_clamp_limits(op->v, op->type, max_e->b, Expr(), true)), max_e->b));
         } else if (clamp_e) {
             // clamp.
             if (clamp_e->clamptype == Clamp::None) {
@@ -843,7 +843,7 @@ protected:
                 // This particular border handler does NOT use the clamp limits!
                 std::vector<DomInterval> result = op->v;
                 result[Domain::Computable] = op->v[Domain::Valid];
-                expr = mutate(new Clamp(Clamp::None, solve(clamp_e->a, result)));
+                expr = mutate(Clamp::make(Clamp::None, solve(clamp_e->a, result)));
             } else {
                 // Require clamp limits to be constant expressions - i.e. not dependent on other index variables.
                 if (! is_constant_expr(clamp_e->min) || ! is_constant_expr(clamp_e->max)) {
@@ -855,7 +855,7 @@ protected:
                 // Replicate can be partially effective.
                 // Tile could possibly be partially effective, although the tile dimensions may come into play.
                 bool partial = clamp_e->clamptype == Clamp::Replicate; 
-                expr = mutate(new Clamp(clamp_e->clamptype, 
+                expr = mutate(Clamp::make(clamp_e->clamptype, 
                                         solve(clamp_e->a, solve_clamp_limits(op->v, op->type, clamp_e->min, clamp_e->max, partial)), 
                                         clamp_e->min, clamp_e->max, clamp_e->p1));
             }
@@ -989,8 +989,8 @@ void checkSolver(Expr a, Expr b) {
 void logSolver(Expr a, Expr b) {
     LoopSolver s;
     s.loglevel = 0;
-    a = new TargetVar("x", new TargetVar("y", a, Expr()), Expr());
-    b = new TargetVar("x", new TargetVar("y", b, Expr()), Expr());
+    a = TargetVar::make("x", TargetVar::make("y", a, Expr()), Expr());
+    b = TargetVar::make("x", TargetVar::make("y", b, Expr()), Expr());
     Expr r = s.simplify(a);
     if (!equal(b, r)) {
         std::cout << std::endl << "Solve failure: " << std::endl;
