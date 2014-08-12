@@ -208,7 +208,7 @@ void IRProcess::visit(const Allocate *op) {
     process(op->body);
 }
 
-void IRVisitor::visit(const Free *op) {
+void IRProcess::visit(const Free *op) {
 }
 
 void IRProcess::visit(const Realize *op) {
