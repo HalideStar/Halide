@@ -25,8 +25,8 @@ EXPORT Internal::RefCount &ref_count<Border::BorderBase>(const Border::BorderBas
 
 //LHHACK: NEED TO RESOLVE PROBLEM HERE: This destroy method is considered invalid because the
 // destructor is not virtual.
-//template<>
-//EXPORT void destroy<Border::BorderBase>(const Border::BorderBase *f) {delete f;}
+template<>
+EXPORT void destroy<Border::BorderBase>(const Border::BorderBase *f) {delete f;}
 }
 
 namespace Border {
