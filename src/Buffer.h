@@ -79,6 +79,7 @@ struct BufferContents {
         buf.extent[1] = y_size;
         buf.extent[2] = z_size;
         buf.extent[3] = w_size;
+        buf.stride[0] = 1;
         buf.stride[1] = x_alloc;
         buf.stride[2] = x_alloc * y_alloc;
         buf.stride[3] = x_alloc * y_alloc * z_alloc;
