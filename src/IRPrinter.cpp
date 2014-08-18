@@ -388,7 +388,7 @@ void IRPrinter::visit(const Div *op) {
     print(op->b);
     stream << ')';
 }
-
+            
 void IRPrinter::visit(const Mod *op) {
     stream << '(';
     print(op->a);
@@ -680,7 +680,7 @@ void IRPrinter::visit(const StmtTargetVar *op) {
     indent += 2;
     print(op->body);
     indent -= 2;
-    
+
     do_indent();
     stream << "}" << endl;
 }

@@ -4,7 +4,7 @@
 # 'make test_apps' checks some of the apps build and run (but does not check their output)
 
 # Set RUNDEBUG to select debugging options for running test programs
-RUNDEBUG = HL_DEBUG_LOGFILE=2 HL_NUMTHREADS=4 HL_DEBUG_CODEGEN=0
+RUNDEBUG = HL_DEBUG_LOGFILE=0 HL_NUMTHREADS=4 HL_DEBUG_CODEGEN=0 MALLOC_TRACE=$@.trace
 
 CXX ?= g++ 
 LLVM_CONFIG ?= llvm-config
@@ -48,14 +48,15 @@ ifdef BUILD_PREFIX
 BUILD_DIR = build/$(BUILD_PREFIX)
 BIN_DIR = bin/$(BUILD_PREFIX)
 DISTRIB_DIR=distrib/$(BUILD_PREFIX)
+# LH: Add library directory to build library for static linking
 LIB_DIR=lib/$(BUILD_PREFIX)
 else
 BUILD_DIR = build
 BIN_DIR = bin
 DISTRIB_DIR=distrib
+# LH: Add library directory to build library for static linking
 LIB_DIR = lib
 endif
-
 
 SOURCE_FILES = CodeGen.cpp CodeGen_Internal.cpp CodeGen_X86.cpp CodeGen_GPU_Host.cpp CodeGen_PTX_Dev.cpp CodeGen_GPU_Dev.cpp CodeGen_Posix.cpp CodeGen_ARM.cpp IR.cpp IRMutator.cpp IRPrinter.cpp IRVisitor.cpp CodeGen_C.cpp Substitute.cpp ModulusRemainder.cpp Bounds.cpp Derivative.cpp Func.cpp Simplify.cpp IREquality.cpp Util.cpp Function.cpp IROperator.cpp Lower.cpp Log.cpp Parameter.cpp Reduction.cpp RDom.cpp Tracing.cpp StorageFlattening.cpp VectorizeLoops.cpp UnrollLoops.cpp BoundsInference.cpp IRMatch.cpp StmtCompiler.cpp integer_division_table.cpp SlidingWindow.cpp StorageFolding.cpp InlineReductions.cpp RemoveTrivialForLoops.cpp Deinterleave.cpp DebugToFile.cpp Type.cpp JITCompiledModule.cpp EarlyFree.cpp UniquifyVariableNames.cpp
 
@@ -68,7 +69,7 @@ HEADERS = $(HEADER_FILES:%.h=src/%.h)
 
 STDLIB_ARCHS = x86 x86_avx x86_32 arm arm_android $(PTX_ARCHS) $(NATIVE_CLIENT_ARCHS)
 
-#LH: List extensions separately to support automatic merging.
+#LH: Extended source files are listed separately so that Git merge is easier.
 # LHHACK: RemoveDeadLets is reinstated as a hack to get Lower.cpp working for now.
 LH_SOURCE_FILES = Border.cpp Clamp.cpp DomainInference.cpp LowerClamp.cpp LoopPartition.cpp Options.cpp Interval.cpp InlineLet.cpp IRCacheMutator.cpp Statistics.cpp CodeLogger.cpp IRLazyScope.cpp Context.cpp IRProcess.cpp DomInterval.cpp BoundsSimplify.cpp IntRange.cpp RemoveDeadLets.cpp
 LH_HEADER_FILES = Border.h Clamp.h DomainInference.h LowerClamp.h LoopPartition.h Options.h Interval.h Solver.h InlineLet.h IRCacheMutator.h Statistics.h CodeLogger.h IRLazyScope.h Context.h IRProcess.h DomInterval.h BoundsAnalysis.h BoundsSimplify.h IntRange.h RemoveDeadLets.h
@@ -76,6 +77,7 @@ SOURCES = $(LH_SOURCE_FILES:%.cpp=src/%.cpp) $(SOURCE_FILES:%.cpp=src/%.cpp)
 OBJECTS = $(LH_SOURCE_FILES:%.cpp=$(BUILD_DIR)/%.o) $(SOURCE_FILES:%.cpp=$(BUILD_DIR)/%.o)
 GOBJECTS = $(LH_SOURCE_FILES:%.cpp=build_g/%.o) $(SOURCE_FILES:%.cpp=build_g/%.o)
 HEADERS = $(HEADER_FILES:%.h=src/%.h) $(LH_HEADER_FILES:%.h=src/%.h)
+# LH: Rename the library so that comparisons can be performed
 NAME = HalideStar
 
 
@@ -94,6 +96,7 @@ $(BIN_DIR)/lib$(NAME).a: $(OBJECTS) $(INITIAL_MODULES)
 $(BIN_DIR)/lib$(NAME).so: $(BIN_DIR)/lib$(NAME).a
 	$(CXX) -shared $(OBJECTS) $(INITIAL_MODULES) $(LIBS) -o $(BIN_DIR)/lib$(NAME).so
 
+# LH: Debug version of the library for static linking
 debug: $(LIB_DIR)/libg$(NAME).a include/Halide.h gtest_internal
 
 $(LIB_DIR)/libg$(NAME).a: $(GOBJECTS) $(INITIAL_MODULES)
@@ -137,6 +140,8 @@ RUNTIME_LL_STUBS_arm_nacl = src/runtime/arm.ll
 
 # Include the generated make rules
 -include $(OBJECTS:.o=.d)
+
+# LH: Include generated make rules for the debugging compilation
 -include $(GOBJECTS:.o=.d)
 
 $(BUILD_DIR)/initmod.%.cpp: $(BIN_DIR)/bitcode2cpp src/runtime/*.cpp src/runtime/*.ll $(BUILD_DIR)/llvm_ok $(BUILD_DIR)/clang_ok
@@ -159,6 +164,7 @@ $(BUILD_DIR)/%.o: src/%.cpp src/%.h $(BUILD_DIR)/llvm_ok
 # -MF: Specify the file for the generated make rules.
 # -MT: Specify the target for the generated make rules.
 
+# LH: build_g builds the debugging library (-g option)
 build_g/%.o: src/%.cpp src/%.h build/llvm_ok
 	@-mkdir -p build_g
 	$(CXX) $(CXX_FLAGS) -g -c $< -o $@ -MMD -MP -MF build_g/$*.d -MT build_g/$*.o 
@@ -180,6 +186,8 @@ ERROR_TESTS = $(shell ls test/error/*.cpp)
 
 # TODO: move this implementation into Makefile.tests which contains a .NOTPARALLEL rule?
 tests: build_tests run_tests
+
+# LH: Add jit speed test to the list of tests to be run
 tests: test_jit_speed_fast
 
 run_tests: $(TESTS:test/%.cpp=test_%) $(ERROR_TESTS:test/error/%.cpp=error_%)
@@ -194,14 +202,20 @@ $(BIN_DIR)/test_%: test/%.cpp $(BIN_DIR)/lib$(NAME).so include/Halide.h
 $(BIN_DIR)/error_%: test/error/%.cpp $(BIN_DIR)/lib$(NAME).so include/Halide.h
 	$(CXX) $(TEST_CXX_FLAGS) -O3 $<  -Iinclude -L$(BIN_DIR) -l$(NAME) -lpthread -ldl -o $@	
 
-$(BIN_DIR)/test_jit_speed: test/jit_speed.cpp $(BIN_DIR)/lib$(NAME).so include/Halide.h
-	$(CXX) $(TEST_CXX_FLAGS) -O3 $<  -DHALIDE_NEW=1 -DHALIDE_VERSION=999999 -Iinclude -L$(BIN_DIR) -l$(NAME) -lpthread -ldl -o $@	
-
+# LH: Add RUNDEBUG options and specify log file name for debug output
 test_%: $(BIN_DIR)/test_%
 	@-mkdir -p tmp
 	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) ../$<
 	@-echo
 
+error_%: $(BIN_DIR)/error_%
+	@-mkdir -p tmp
+	cd tmp ; DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) ../$< 2>&1 | egrep --q "Assertion.*failed"
+	@-echo
+
+# LH: My jit speed test.
+$(BIN_DIR)/test_jit_speed: test/jit_speed.cpp $(BIN_DIR)/lib$(NAME).so include/Halide.h
+	$(CXX) $(TEST_CXX_FLAGS) -O3 $<  -DHALIDE_NEW=1 -DHALIDE_VERSION=999999 -Iinclude -L$(BIN_DIR) -l$(NAME) -lpthread -ldl -o $@	
 
 #LH: Compilation with debugging option and static link of debugging library
 gtests: $(TESTS:test/%.cpp=gtest_%)
@@ -211,12 +225,14 @@ $(BIN_DIR)/gtest_internal: test/internal.cpp $(LIB_DIR)/libg$(NAME).a
 
 $(BIN_DIR)/gtest_%: test/%.cpp $(LIB_DIR)/libg$(NAME).a include/Halide.h
 	$(CXX) -g $(TEST_CXX_FLAGS) $<  -Iinclude -L$(LIB_DIR) -lg$(NAME) -lpthread -ldl -o $@	
-    
+
+# LH: Run the compiler stress test without debugging options RUNDEBUG    
 test_jit_stress: $(BIN_DIR)/test_jit_stress
 	@-mkdir -p tmp
 	cd tmp ; HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) ../$<
 	@-echo
 
+# LH: Run the fast jit speed test without RUNDEBUG options
 test_jit_speed_fast: $(BIN_DIR)/test_jit_speed
 	@-mkdir -p tmp
 	cd tmp ; HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) ../$<
@@ -227,16 +243,18 @@ test_jit_speed: $(BIN_DIR)/test_jit_speed
 	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) ../$< -log 5
 	@-echo
 
+# LH: gdbtest_... is a target that starts gdb on a test program
 gdbtest_%: $(BIN_DIR)/test_%
 	@-mkdir -p tmp
 	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) gdb ../$<
 	@-echo
 
-error_%: $(BIN_DIR)/error_%
+gdbgtest_%: $(BIN_DIR)/gtest_%
 	@-mkdir -p tmp
-	cd tmp ; DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) ../$< 2>&1 | egrep --q "Assertion.*failed"
+	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) gdb ../$<
 	@-echo
 
+# LH: gtest_... starts the -g compiled version of the specific test
 gtest_%: $(BIN_DIR)/gtest_%
 	@-mkdir -p tmp
 	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) ../$<

@@ -1091,10 +1091,12 @@ void domain_expr_test()
 {
     Image<uint8_t> in(20,40);
     Image<uint8_t> inb(30,35);
-    Func f("fred"), g("gold"), h("ham"), fa("fa"), fb("fb"), fc("fc");
+    Func f("fred"), g("gold"), h("ham"), fa("fa"), fb("fb"), fc("fc"), finb("finb");
     Var x("x"), y("y"), a("a"), b("b"), ext("fff.extent.0");
     Expr False = Internal::make_bool(false);
     Expr True = Internal::make_bool(true);
+	
+	finb() = inb;
 
     check_domain_expr(Domain::Valid, vecS("iv.0", "iv.1"), in, Domain(0, 19, 0, 39));
     check_domain_expr(Domain::Valid, vecS("x", "y"), in(x-2,y), Domain(2, 21, 0, 39));
@@ -1163,7 +1165,7 @@ void domain_expr_test()
     Func ffa("ffa");
     //ffa = fa();
     ffa = fa();
-    ffa.local(g,inb);
+    ffa.local(g,finb);
     // Declaring fa to be a kernel function overrides the shifts implicit in the definition of fa.
     // For g, this means that the valid domain is copied but for inb the computable domain is restricting the valid
     // domain.

@@ -135,7 +135,7 @@ void Function::define_reduction(const vector<Expr> &args, Expr value) {
         assert(args[i].defined() && "Undefined expression in left-hand-side of reduction");
         if (const Variable *var = args[i].as<Variable>()) {           
             if (!var->param.defined() && !var->reduction_domain.defined()) {
-                if (var->name != contents.ptr->args[i]) {
+                if (var->name != contents.ptr->args[i]) { // Report additional information for failure
                     std::cout << "Error: Pure argument " << i << " (\"" << var->name << "\") to update step must have same name as \"" << contents.ptr->args[i] << "\" in initialisation step\n";
                 }
                 assert(var->name == contents.ptr->args[i] && 

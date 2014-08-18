@@ -23,15 +23,15 @@ struct FunctionContents {
     std::vector<std::string> args;
     Expr value;
     Schedule schedule;
-	
-	//LH
-	// Forward domain inference and domain manipulation for border handling.
-	// The valid domain is the domain over which this function is useful and meaningful.
-	// For example, the valid domain of an edge detector would normally be the same as the input image
-	// with border handling used to provide useful results at the borders of the image.
-	// The computable domain is the domain over which this function is known to be computable.
-	// For example, the valid domain may be extended indefinitely by replicating the border pixels.
-	std::vector<Domain> domains;
+
+    //LH
+    // Forward domain inference and domain manipulation for border handling.
+    // The valid domain is the domain over which this function is useful and meaningful.
+    // For example, the valid domain of an edge detector would normally be the same as the input image
+    // with border handling used to provide useful results at the borders of the image.
+    // The computable domain is the domain over which this function is known to be computable.
+    // For example, the valid domain may be extended indefinitely by replicating the border pixels.
+    std::vector<Domain> domains;
 
     Expr reduction_value;
     std::vector<Expr> reduction_args;
@@ -77,6 +77,7 @@ public:
 
     /** Get the name of the function */
     const std::string &name() const {
+        assert(contents.ptr && "Attempt to find name of Function with no contents");
         return contents.ptr->name;
     }
 
@@ -101,13 +102,13 @@ public:
         return contents.ptr->schedule;
     }   
     
-	//LH
-	/** Get a handle to a domain for the purpose of modifying it */
-	Domain &set_domain(Domain::DomainType dt);
+    //LH
+    /** Get a handle to a domain for the purpose of modifying it */
+    Domain &set_domain(Domain::DomainType dt);
 
-	//LH
-	/** Get a handle to a domain for the purpose of inspecting it */
-	const Domain &domain(Domain::DomainType dt) const;
+    //LH
+    /** Get a handle to a domain for the purpose of inspecting it */
+    const Domain &domain(Domain::DomainType dt) const;
     
     //LH
     /** Get the corresponding interval of all the domains, for a particular index */

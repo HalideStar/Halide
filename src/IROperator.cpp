@@ -173,7 +173,6 @@ bool is_two(Expr e) {
     return false;
 }
 
-
 int int_cast_constant(Type t, int val) {
     // Unsigned of less than 32 bits is masked to select the appropriate bits
     if (t.is_uint()) {
@@ -252,7 +251,7 @@ void check_defined(const std::string &op, const Expr &a, const Expr &b) {
 
 void match_types(Expr &a, Expr &b) {
     if (a.type() == b.type()) return;
-    
+
     // First widen to match
     if (a.type().is_scalar() && b.type().is_vector()) {
         a = Broadcast::make(a, b.type().width);
@@ -307,7 +306,7 @@ int infinity_count(Expr e) {
     const Infinity *inf = e.as<Infinity>();
     const Cast *cast = e.as<Cast>();
     const Broadcast *broadcast = e.as<Broadcast>();
-    
+
     if (broadcast) return infinity_count(broadcast->value);
     if (cast) return infinity_count(cast->value);
     if (inf) return inf->count;
@@ -327,6 +326,6 @@ Expr convert_infinity(Expr e) {
     assert(e.defined() && "Cannot convert undefined to infinity - type and direction must be specified");
     return convert_infinity(e, e.type(), 0);
 }
-
+    
 }
 }

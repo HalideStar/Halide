@@ -71,7 +71,7 @@ Func::Func(Buffer b) : func(unique_name('f')),
     (*this)() = Internal::Call::make(b, args);
 }
 */
-
+# ifdef IMAGE_TO_FUNC
 void Func::constructor(Buffer b) {
     func = Function(unique_name('f'));
     error_handler = NULL;
@@ -89,7 +89,9 @@ void Func::constructor(Buffer b) {
 Func::Func(Buffer b) {    
     constructor(b);
 }
+# endif
 
+# ifdef FUNC_EXPLICIT_COPY
 void Func::clear() {
     // Retain the name that the programmer assigned to this Func object.
     copy(Func(name()));
@@ -105,6 +107,7 @@ void Func::copy(Func f) {
     arg_values = f.arg_values;
     image_param_args = f.image_param_args;
 }
+# endif
         
 const string &Func::name() const {
     return func.name();
@@ -281,7 +284,7 @@ void ScheduleHandle::set_dim_type(Var var, For::ForType t) {
                    "Can't vectorize across more than one variable");
         }
     }
-    
+        
     if (! found) // LH provide more information if cannot find dimensions
     {
         Internal::log(0) << "Searched for " << var.name() << " in";
@@ -326,11 +329,14 @@ ScheduleHandle &ScheduleHandle::split(Var old, Var outer, Var inner, Expr factor
                 dims[j-1] = dims[j-2];
             }
             dims[i+1].var = outer_name;
-            dims[i].loop_split = LoopSplitInfo(false); // Do not partition the inner loop
+            dims[i+1].for_type = dims[i].for_type;
+            // If loop splitting was applied to the unsplit variable, it must now
+            // be applied to the outer variable, not the inner variable.
+            // The main loop bounds must now be unzoomed by the variable split factor
+            // to derive bounds on the outer variable.
             dims[i+1].loop_split.interval = unzoom(dims[i+1].loop_split.interval, factor);
+            dims[i].loop_split = LoopSplitInfo(false); // Do not split the inner loop
             
-            //std::cout << "outer: " << dims[i].partition << "\n";
-            //std::cout << "inner: " << dims[i+1].partition << "\n";
         }
     }
         
@@ -458,6 +464,7 @@ ScheduleHandle &ScheduleHandle::cuda_threads(Var tx) {
     rename(tx, Var("threadidx"));
     return *this;
 }
+ 
 namespace {
 void record_partition(Internal::Schedule &schedule, Var var, LoopSplitInfo info) {
     bool found = false;
@@ -481,12 +488,12 @@ void record_partition(Internal::Schedule &schedule, Var var, LoopSplitInfo info)
     return;
 }
 }
-
+ 
 ScheduleHandle &ScheduleHandle::loop_split(Var var, bool auto_split) {
     record_partition(schedule, var, LoopSplitInfo(auto_split));
     return *this;
 }
-
+ 
 ScheduleHandle &ScheduleHandle::loop_split(Var var, DomInterval interval) {
     record_partition(schedule, var, LoopSplitInfo(interval));
     return *this;
@@ -875,38 +882,32 @@ FuncRefVar::FuncRefVar(Internal::Function f, const vector<Var> &a) : func(f) {
         args[i] = a[i].name();
     }
 }           
-
+    
 //LH
 /** Get a handle to the valid domain for the purpose of modifying it */
 Domain &Func::set_domain(Domain::DomainType dt) {
-	return func.set_domain(dt);
+    return func.set_domain(dt);
 }
 
 //LH
 /** Get a handle to the valid domain for the purpose of inspecting it */
 const Domain &Func::domain(Domain::DomainType dt) const {
-	return func.domain(dt);
+    return func.domain(dt);
 }
 
 //LH
 /** Set the valid domain in a schedule format */
 Func &Func::domain(Domain::DomainType dt, Domain d) {
-	func.set_domain(dt) = d;
-	return *this;
+    func.set_domain(dt) = d;
+    return *this;
 }
 
 //LH
 /** Set the valid domain to be the same as an existing Func in a schedule format */
 Func &Func::domain(Domain::DomainType dt, Func f) {
-	func.set_domain(dt) = f.domain(dt);
-	return *this;
+    func.set_domain(dt) = f.domain(dt);
+    return *this;
 }
-
-//void Func::operator=(Func f) {
-//    std::cout << "Simple defining " << name() << "\n";
-    //assert(0);
-//    (*this)() = Expr(f);
-//}
 
 //LH
 /** Methods to indicate that the current function is a local operator of other functions. */
@@ -981,7 +982,8 @@ void FuncRefVar::operator=(Expr e) {
     code_logger.reset();
     code_logger.name(func.name());
     code_logger.section(100, "definition");
-    code_logger.log() << func.name() << "(";
+    //code_logger.log() << func.name();
+    code_logger.log() << "(";
     if (a.size() > 0) code_logger.log() << a[0];
     for (size_t i = 1; i < a.size(); i++) code_logger.log() << ", " << a[i];
     code_logger.log() << ") = \n";

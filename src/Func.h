@@ -390,7 +390,7 @@ public:
      * name, and define it to return the given expression (which may
      * not contain free variables). */
     EXPORT Func(Expr e);
-
+# ifdef IMAGE_TO_FUNC
 private:
     void constructor(Buffer b);
 public:
@@ -403,13 +403,15 @@ public:
         constructor(Buffer(image));
     }
     //@}
-    
+# endif
+
+# ifdef FUNC_EXPLICIT_COPY
     /** Reinitialise the current Func object */
     EXPORT void clear();
     
     /** Copy a Func into the current Func object */
     EXPORT void copy(Func f);
-
+# endif
     /** Evaluate this function over some rectangular domain and return
      * the resulting buffer. The buffer should probably be instantly
      * wrapped in an Image class of the appropriate type. That is, do
@@ -962,68 +964,69 @@ public:
     void operator=(Expr e) {
         (*this)() = e;
     }
-    
+
     //LH
     // Dont do this because it prevents using a vector of Func objects.
     /** Define a function to simply call another function. Note that
      * this is not equivalent to the standard c++ operator=. We opt
      * instead for consistency with Halide function definition, of
      * which this is a degenerate case. */
-    //void operator=(const Func &f) {
-    //    (*this)() = f();
-    //}
-	//LH
-	/** Get a handle to a specified domain for the purpose of modifying it */
-	EXPORT Domain &set_domain(Domain::DomainType dt);
+    void operator=(const Func &f) {
+        (*this)() = f();
+    }
 
-	//LH
-	/** Get a handle to the domain for the purpose of inspecting it */
-	EXPORT const Domain &domain(Domain::DomainType dt) const;
-	
-	//LH
-	/** Set the domain in a schedule format */
-	EXPORT Func &domain(Domain::DomainType dt, Domain d);
+    //LH
+    /** Get a handle to a specified domain for the purpose of modifying it */
+    EXPORT Domain &set_domain(Domain::DomainType dt);
 
-	//LH
-	/** Set the domain to be the same as an existing Func in a schedule format */
-	EXPORT Func &domain(Domain::DomainType, Func f);
+    //LH
+    /** Get a handle to the domain for the purpose of inspecting it */
+    EXPORT const Domain &domain(Domain::DomainType dt) const;
+    
+    //LH
+    /** Set the domain in a schedule format */
+    EXPORT Func &domain(Domain::DomainType dt, Domain d);
 
-	/** Get a handle to the valid domain for the purpose of modifying it */
+    //LH
+    /** Set the domain to be the same as an existing Func in a schedule format */
+    EXPORT Func &domain(Domain::DomainType, Func f);
+
+    /** Get a handle to the valid domain for the purpose of modifying it */
     // It is questionable whether the domain information should be blindly copied across
     // or whether there should be some rearrangement of the index variables according to the
     // way that the caller uses the callee.  The real problem here is that explicitly setting the 
     // domain is too low level.  We need higher-level semantic operations for programmers
     // that are related to what they are actually writing - such as kernel operations, border
     // handling etc.
-	Domain &set_valid() { return set_domain(Domain::Valid); }
+    Domain &set_valid() { return set_domain(Domain::Valid); }
 
-	//LH
-	/** Get a handle to the valid domain for the purpose of inspecting it */
-	EXPORT const Domain &valid() const { return domain(Domain::Valid); }
-	
-	//LH
-	/** Set the valid domain in a schedule format */
-	Func &valid(Domain d) { return domain(Domain::Valid, d); }
+    //LH
+    /** Get a handle to the valid domain for the purpose of inspecting it */
+    EXPORT const Domain &valid() const { return domain(Domain::Valid); }
+    
+    //LH
+    /** Set the valid domain in a schedule format */
+    Func &valid(Domain d) { return domain(Domain::Valid, d); }
 
-	//LH
-	/** Set the valid domain to be the same as an existing Func in a schedule format */
-	Func &valid(Func f) { return domain(Domain::Valid, f); }
+    //LH
+    /** Set the valid domain to be the same as an existing Func in a schedule format */
+    Func &valid(Func f) { return domain(Domain::Valid, f); }
 
-	//LH
-	/** Get a handle to the computable domain for the purpose of modifying it */
-	Domain &set_computable() { return set_domain(Domain::Computable); }
+    //LH
+    /** Get a handle to the computable domain for the purpose of modifying it */
+    Domain &set_computable() { return set_domain(Domain::Computable); }
 
-	//LH
-	/** Get a handle to the computable domain for the purpose of inspecting it */
-	const Domain &computable() const { return domain(Domain::Computable); }
+    //LH
+    /** Get a handle to the computable domain for the purpose of inspecting it */
+    const Domain &computable() const { return domain(Domain::Computable); }
 
-	//LH
-	/** Set the computable domain in a schedule format */
-	Func &computable(Domain d) { return domain(Domain::Computable, d); }
+    //LH
+    /** Set the computable domain in a schedule format */
+    Func &computable(Domain d) { return domain(Domain::Computable, d); }
 
-	//LH
-	/** Set the computable domain to be the same as an existing Func in a schedule format */
-	Func &computable(Func f) { return domain(Domain::Computable, f); }
+    //LH
+    /** Set the computable domain to be the same as an existing Func in a schedule format */
+    Func &computable(Func f) { return domain(Domain::Computable, f); }
 
     //LH
     /** Methods to indicate that the current function is a local operation. */
@@ -1039,7 +1042,6 @@ public:
     Type type() const {
         return value().type();
     }
-
 };
 
 

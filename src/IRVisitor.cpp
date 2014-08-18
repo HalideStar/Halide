@@ -10,7 +10,7 @@ IRVisitor::IRVisitor() {
 
 IRVisitor::~IRVisitor() {
 }
-
+    
 void IRVisitor::visit(const IntImm *) {
     defaulted = true;
 }
