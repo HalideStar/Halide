@@ -703,7 +703,7 @@ Stmt schedule_functions(Stmt s, const vector<string> &order,
 
     // Inject a loop over root to give us a scheduling point
     string root_var = Schedule::LoopLevel::root().func + "." + Schedule::LoopLevel::root().var;
-    s = For::make(root_var, 0, 1, For::Serial, s);
+    s = For::make(root_var, 0, 1, For::Serial, LoopSplitInfo(), s);
 
     for (size_t i = order.size()-1; i > 0; i--) {
         Function f = env.find(order[i-1])->second;

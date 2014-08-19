@@ -909,11 +909,6 @@ struct For : public StmtNode<For> {
         return make(oldloop->name, min, extent, oldloop->for_type, oldloop->loop_split, body);
     }
     
-    /** Convenience builder for sample code only - loop split information is not included */
-    static Stmt make(std::string name, Expr min, Expr extent, ForType for_type, Stmt body) {
-        return make(name, min, extent, for_type, LoopSplitInfo(), body);
-    }
-    
 };
 
 /** Store a 'value' to the buffer called 'name' at a given

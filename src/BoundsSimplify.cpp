@@ -214,7 +214,7 @@ Expr bounds_simplify(Expr e) {
 namespace{
 void check(Stmt a, Stmt b, int lo = 0, int hi = 10) {
     // Use loop to set intervals on the variables.
-    Stmt fora = For::make("x", Expr(lo), Expr(hi - lo + 1), For::Serial, a);
+    Stmt fora = For::make("x", Expr(lo), Expr(hi - lo + 1), For::Serial, LoopSplitInfo(), a);
     //Stmt forb = For::make("x", Expr(lo), Expr(hi - lo + 1), For::Serial, b);
     // Simplify a.
     Stmt simpler = bounds_simplify(fora);
@@ -246,13 +246,13 @@ void bounds_simplify_test() {
     vector<Expr> input_site_2_simplified = vec(min(x+1,10));
     vector<Expr> output_site = vec(x+1);
 
-    Stmt loop = For::make("x", 3, 10 /* 3 to 12 inclusive */, For::Serial,  
+    Stmt loop = For::make("x", 3, 10 /* 3 to 12 inclusive */, For::Serial, LoopSplitInfo(),  
                         Provide::make("output", 
                                     Add::make(
                                         Call::make(Int(32), "input", input_site_1),
                                         Call::make(Int(32), "input", input_site_2)),
                                     output_site));
-    Stmt result = For::make("x", 3, 10, For::Serial,  
+    Stmt result = For::make("x", 3, 10, For::Serial, LoopSplitInfo(), 
                         Provide::make("output", 
                                     Add::make(
                                         Call::make(Int(32), "input", input_site_1_simplified),

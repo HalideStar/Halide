@@ -1,3 +1,4 @@
+#include "Features.h"
 #include "Bounds.h"
 #include "IRVisitor.h"
 #include "IR.h"
@@ -182,8 +183,8 @@ private:
         }
     }
 
-	//LH
-	// Bounds of clamp expression
+# if CLAMP_NODE
+    // Bounds of clamp expression
     void visit(const Clamp *op) {
         op->a.accept(this);
         Expr min_a = min, max_a = max;
@@ -194,7 +195,7 @@ private:
 
         log(3) << "Bounds of " << Expr(op) << "\n";
 
-		// Bounds of result are no greater than bounds of hi
+        // Bounds of result are no greater than bounds of hi
         if (min_a.defined() && min_hi.defined()) {
             min = Min::make(min_a, min_hi);
         } else {
@@ -207,7 +208,7 @@ private:
             max = max_a.defined() ? max_a : max_hi;
         }
 
-		// Bounds of result are no smaller than bounds of lo
+        // Bounds of result are no smaller than bounds of lo
         if (min.defined() && min_lo.defined()) {
             min = Max::make(min, min_lo);
         } else {
@@ -222,7 +223,7 @@ private:
 
         log(3) << min << ", " << max << "\n";
     }
-
+# endif
 
     void visit(const Min *op) {
         op->a.accept(this);
@@ -391,17 +392,6 @@ Interval bounds_of_expr_in_scope(Expr expr, const Scope<Interval> &scope) {
     expr.accept(&b);
     return Interval(b.min, b.max);
 }
-
-# if 0
-// Now defined in Interval.cpp
-Interval interval_union(const Interval &a, const Interval &b) {    
-    Expr max, min;
-    log(3) << "Interval union of " << a.min << ", " << a.max << ",  " << b.min << ", " << b.max << "\n";
-    if (a.max.defined() && b.max.defined()) max = Max::make(a.max, b.max);
-    if (a.min.defined() && b.min.defined()) min = Min::make(a.min, b.min);
-    return Interval(min, max);
-}
-# endif
 
 Region region_union(const Region &a, const Region &b) {
     assert(a.size() == b.size() && "Mismatched dimensionality in region union");
@@ -635,7 +625,7 @@ void bounds_test() {
     vector<Expr> input_site_2 = vec(2*x+1);
     vector<Expr> output_site = vec(x+1);
 
-    Stmt loop = For::make("x", 3, 10, For::Serial, 
+    Stmt loop = For::make("x", 3, 10, For::Serial, LoopSplitInfo(), 
                         Provide::make("output", 
                                     Add::make(
                                         Call::make(Int(32), "input", input_site_1),
@@ -646,7 +636,6 @@ void bounds_test() {
     r = regions_called(loop);
     assert(r.find("output") == r.end());
     assert(r.find("input") != r.end());
-    std::cout << r["input"][0].min << " " << r["input"][0].extent << "\n";
     assert(equal(r["input"][0].min, 6));
     assert(equal(r["input"][0].extent, 20));
     r = regions_provided(loop);

@@ -132,11 +132,11 @@ void IRPrinter::test() {
     assert(expr_source.str() == "((x + 3)*((y/2) + 17))");
 
     Stmt store = Store::make("buf", (x * 17) / (x - 3), y - 1);
-    Stmt for_loop = For::make("x", -2, y + 2, For::Parallel, store);
+    Stmt for_loop = For::make("x", -2, y + 2, For::Parallel, LoopSplitInfo(), store);
     vector<Expr> args(1); args[0] = x % 3;
     Expr call = Call::make(i32, "buf", args);
     Stmt store2 = Store::make("out", call + 1, x);
-    Stmt for_loop2 = For::make("x", 0, y, For::Vectorized , store2);
+    Stmt for_loop2 = For::make("x", 0, y, For::Vectorized, LoopSplitInfo(), store2);
     Stmt pipeline = Pipeline::make("buf", for_loop, Stmt(), for_loop2);
     Stmt assertion = AssertStmt::make(y > 3, "y is greater than 3");
     Stmt block = Block::make(assertion, pipeline);
