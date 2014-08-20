@@ -1,0 +1,49 @@
+src/
+
+    IRPrinter.h: Add printers for:
+        std::vector<Expr>, std::vector<Interval>, std::vector<DomInterval>.
+        Func, Domain, Interval, DomInterval, Range, LoopSplitInfo
+        Clamp, Solve, TargetVar, StmtTargetVar and Infinity nodes
+    IRPrinter.cpp: As above plus:
+        Modified For::make constructor
+        Print For loop split information when printing for loop
+    IRVisitor.h, IRVisitor.cpp: Add Clamp, Solve, TargetVar, StmtTargetVar and Infinity nodes.
+  ?     Add defaulted field to detect if the default visitor is used - used in DomainInference - check on this.
+    Image.h: Precompute Domain and store it in the Image (why? really?).
+        Provide method to obtain Domain of an image.
+  ?     Extra parameters for non-zero origin of the image.
+    IntrusivePtr.h: NULLify pointer when disconnecting it from the object. This would be expected to help find bugs, but not yet.
+  * Log.cpp, Log.h: Many changes to add functionality. Some of it is probably too much like the fine-grained control
+        that looks for specific HL_DEBUG_... variables. However, the sectioning into log file is probably worth keeping.
+ ** Lower.cpp: Many changes to add more control for logging (generating separate files for each stage, with the
+        code logged in them). 
+        Modified For::make constructors.
+        Additional lowering passes for border handling optimisation etc.
+    Parameter.cpp, Parameter.h: Add small routines to return variable names representing the min and extent of
+        an image parameter in a given dimension.  Useful for domain inference.
+    RDom.h: Add RDom constructors using Image and Func (the latter being domain inference based).
+        Requires the simplifier to convert domain bounds into extent as used in RDom.
+ ?? RemoveDeadLets.cpp, .h: Not yet sure whether it is safe to remove these entirely.
+    RemoveTrivialForLoops.cpp: Modified For::make constructor.
+    Schedule.h: Add LoopSplitInfo to the Dim structure to record loop splitting options for each dimension.
+        Add LoopSplitSettings to the Schedule to record schedules such as loop_split(true), loop_split_all etc.
+  ? Scope.h: The stack is a pair of T object and int.  Not sure why?????
+ ** Simplify.cpp: Many new rules and many changes including using cached mutator and lazy scope.
+    Simplify.h: Interface 'proved' function to use Simplifier as a theorem prover.
+        LIFT_CONSTANT_MIN_MAX: Definition controlling simplification of min, max containing constant addend expression.
+        simplify_clear() interface to clear the simplifier cache (e.g. when proved may use incorrect cached information about a variable).
+    SlidingWindow.h, SlidingWindow.cpp: Externalise expr_depends_on_var and add stmt_depends_on_var.
+    SlidingWindow.cpp: Modified For::make constructor.
+    Substitute.cpp: Modified For::make constructor.
+    UniqueifyVariablesNames.cpp: Modified For::make constructor.
+    Util.h, Util.cpp: Add vecS functions to construct vectors of strings.
+    Util.cpp: When $ appears in unique name, strip it and generate a new unique name. This preserves
+        programmer-specified names and it useful for generating related function names (e.g. in border handling).
+    Var.h: Var::gen similar to Var::implicit but avoid conflicts (used for border handling code generation)
+
+
+src/runtime/
+    fake_thread_pool.cpp, gcd_thread_pool.cpp, posix_thread_pool.cpp
+    (any file defining halide_custom_do_par_for): Return immediately for degenerate loop cases.
+test/
+    simd_op_check.cpp: Some cases fail with the simplifier, so are removed.

@@ -6,7 +6,6 @@
  */
 
 #include <string>
-#include <sstream>
 
 namespace Halide {
 namespace Internal {
@@ -77,12 +76,10 @@ public:
         return contents.ptr->is_buffer;
     }
 
-    //LH
     /** Get an expression representing the extent of this image
      * parameter in the given dimension */
     Expr extent(int x) const;
 
-    //LH
     /** Get an expression representing the min of this image
      * parameter in the given dimension */
     Expr min(int x) const;

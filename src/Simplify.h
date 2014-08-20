@@ -23,7 +23,7 @@ namespace Internal {
 // @{
 Stmt simplify(Stmt);
 Expr simplify(Expr);
-// @}  
+// @}     
 
 /** Use the simplifier to test whether an expression can be
  * evaluated to true.  Disproved parameter (if used) tests
@@ -83,6 +83,7 @@ inline T div_imp(T a, T b) {
     return quotient; 
 }
 
+// Clear the mutator cache within the simplifier.
 void simplify_clear();
 
 void simplify_test();

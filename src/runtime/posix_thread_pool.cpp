@@ -186,7 +186,7 @@ WEAK void *halide_worker_thread(void *void_arg) {
 }
 
 WEAK void halide_do_par_for(void (*f)(int, uint8_t *), int min, int size, uint8_t *closure) {
-    if (size <= 0) return; //LH
+    if (size <= 0) return; // Discard degenerate parallel loops.
     if (halide_custom_do_par_for) {
         (*halide_custom_do_par_for)(f, min, size, closure);
         return;

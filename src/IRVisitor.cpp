@@ -246,23 +246,22 @@ void IRVisitor::visit(const Solve *op) {
     defaulted = true;
     op->body.accept(this);
     // Does not visit the Solve data, the intervals.
-}
+} 
     
 void IRVisitor::visit(const TargetVar *op) {
     defaulted = true;
     op->body.accept(this);
-}
+}  
     
 void IRVisitor::visit(const StmtTargetVar *op) {
     defaulted = true;
     op->body.accept(this);
-}
+} 
     
 void IRVisitor::visit(const Infinity *op) {
     defaulted = true;
-}
-    
-
+}  
+ 
 }
 }
 

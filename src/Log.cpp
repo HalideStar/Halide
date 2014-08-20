@@ -128,14 +128,14 @@ void log::constructor(std::string filename, int verbosity, std::string section) 
             stream = 0;
         }
     }
-}
+}  
 
 log::~log() {
     if (stream != &std::cerr) { 
         delete stream; 
         stream = 0;
     }
-}
+} 
 
    
 }

@@ -24,9 +24,10 @@
 #include "DebugToFile.h"
 #include "EarlyFree.h"
 #include "UniquifyVariableNames.h"
+
 // LHHACK: remove_dead_lets called in loop split
 #include "RemoveDeadLets.h"
-
+ 
 #include "LowerClamp.h"
 #include "LoopPartition.h"
 #include "BoundsSimplify.h"
@@ -441,9 +442,11 @@ private:
             // Paste in the args directly - introducing too many let
             // statements messes up all our peephole matching
             
-            if (func.args().size() < args.size()) { //LH
+            // Added check to ensure that the function is not called with more arguments than it has
+            if (func.args().size() < args.size()) {
                 std::cout << "Too many arguments for call to " << func.name() << "  Expect " << func.args().size() << " got " << args.size() << "\n";
             }
+ 
             for (size_t i = 0; i < args.size(); i++) {
                 body = substitute(func.name() + "." + func.args()[i], 
                                   args[i], body);
@@ -575,9 +578,7 @@ void propagate_schedule_all(Function f) {
     PropagateScheduleAll prop(f);
     prop.do_propagate_schedule();
 }
-
-
-
+   
 /* Find all the externally referenced buffers in a stmt */
 class FindBuffers : public IRVisitor {
 public:

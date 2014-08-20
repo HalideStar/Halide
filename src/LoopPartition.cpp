@@ -1,3 +1,4 @@
+#include <sstream>
 #include "LoopPartition.h"
 #include "BoundsAnalysis.h"
 #include "IR.h"

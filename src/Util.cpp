@@ -81,7 +81,7 @@ string unique_name(const string &name) {
         return unique_name('z');
     }    
 
-    // Ensure the '$' character doesn't appear in the prefix. This lets
+    // Check the '$' character doesn't appear in the prefix. This lets
     // us separate the name from the number using '$' as a delimiter,
     // which guarantees uniqueness of the generated name, without
     // having to track all name generated so far.

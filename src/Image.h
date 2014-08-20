@@ -30,11 +30,9 @@ private:
     T *base;
     int stride_1, stride_2, stride_3, dims;
     // @}
-    
-    //LH
-    Domain dom;
 
-    //LH
+    Domain dom;
+  
     /** Compute the domain of the image for use in domain inference.
      * The domain is precomputed so that a reference to it can be returned later on.
      */
@@ -83,9 +81,9 @@ private:
             stride_1 = stride_2 = stride_3 = 0;
             dims = 0;
         }
-        compute_domain(); //LH
+        compute_domain();
     }
-    
+
 public:
     /** Construct an undefined image handle */
     Image() : base(NULL), stride_1(0), stride_2(0), stride_3(0), dims(0) {}
@@ -307,18 +305,17 @@ public:
      */
     operator Expr() const {return (*this)();}
 
-    //LH
+
     /** Return the domain of an image. */
     const Domain &domain(Domain::DomainType dtype) const {
         return dom;
     }
-
-    // LH
+ 
     inline const Domain &valid() const {
         return domain(Domain::Valid); 
     }
     
-    // LH
+ 
     inline const Domain &computable() const {
         return domain(Domain::Computable);
     }

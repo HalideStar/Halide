@@ -12,7 +12,6 @@
 namespace Halide {
 namespace Internal {
 
-
 /** A schedule for a halide function, which defines where, when, and
  * how it should be evaluated. */
 struct Schedule {
@@ -82,7 +81,7 @@ struct Schedule {
     struct Dim {
         std::string var;
         For::ForType for_type;
-        LoopSplitInfo loop_split; //LH
+        LoopSplitInfo loop_split;
     };
     /** The list and ordering of dimensions used to evaluate this
      * function, after all splits have taken place. The first
@@ -92,7 +91,7 @@ struct Schedule {
      * each dimension. These get inferred from how the function is
      * used, what the splits are, and any optional bounds in the list below. */
     std::vector<Dim> dims;
-    
+
     /** Class to hold settings for loop splitting. 
      * Instance loop_split_settings: Records the settings specified by the user
      * Instance loop_split_compile: Records the settings in effect during a compilation */
@@ -109,7 +108,7 @@ struct Schedule {
         LoopSplitSettings() : auto_split(LoopSplitInfo::Undefined), auto_split_all(LoopSplitInfo::Undefined), 
             split_borders(LoopSplitInfo::Undefined), split_borders_all(LoopSplitInfo::Undefined) {}
     } loop_split_settings, loop_split_compile;
-    
+ 
     /** The list and order of dimensions used to store this
      * function. The first dimension in the vector corresponds to the
      * innermost dimension for storage (i.e. which dimension is

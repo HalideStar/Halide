@@ -85,7 +85,7 @@ public:
         count--;
     }
 };
-    
+
 template<typename T>
 std::ostream &operator<<(std::ostream &stream, Scope<T>& s) {
     stream << "{\n";
@@ -97,7 +97,7 @@ std::ostream &operator<<(std::ostream &stream, Scope<T>& s) {
     stream << "}";
     return stream;
 }
-
+    
 }
 }
 

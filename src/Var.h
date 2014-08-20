@@ -5,6 +5,7 @@
  * Defines the Var - the front-end variable 
  */
 
+#include "HalideFeatures.h"
 #include <string>
 #include "Util.h"
 #include "IR.h"
@@ -110,11 +111,16 @@ public:
         return Var(str.str());
     }
     
+# ifdef HALIDE_BORDER
+    // Var::gen creates "generated" variable names that are distinct from the
+    // implicit variable names so that you can use them for code generation and
+    // not have conflicts if implicit variables are later added to the same function.
     static Var gen(int n) {
         std::ostringstream str;
         str << "gen." << n;
         return Var(str.str());
     }
+# endif
     
     /** A Var can be treated as an Expr of type Int(32) */
     operator Expr() {

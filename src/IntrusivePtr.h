@@ -77,7 +77,7 @@ public:
 
     ~IntrusivePtr() {
         decref(ptr);
-		ptr = NULL; // Do not leave the pointer dangling to a deallocated or dropped content object
+        ptr = NULL; // Do not leave the pointer dangling to a deallocated or dropped content object
     }
 
     IntrusivePtr() : ptr(NULL) {

@@ -25,15 +25,9 @@
 #else
 #define EXPORT
 #endif
-//LH
-// We need cmath for the definition of hmod_imp
-// If this is too untidy, we could make this a separate include file.
-#include <cmath>
-#include <stdio.h>
 #endif
 
 namespace Halide { 
-
 namespace Internal {
 
 /** Build small vectors of up to 6 elements. If we used C++11 and

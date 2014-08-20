@@ -234,7 +234,7 @@ ostream &operator<<(ostream &out, const LoopSplitInfo &info) {
     }
     return out;
 }
-
+ 
 ostream &operator<<(ostream &out, Clamp::ClampType type) {
     switch (type) {
     case Clamp::None:
@@ -260,7 +260,7 @@ ostream &operator<<(ostream &out, Clamp::ClampType type) {
     }
     return out;
 }
-
+ 
 ostream &operator<<(ostream &stream, Stmt ir) {
     if (!ir.defined()) {
         stream << "(undefined)" << std::endl;

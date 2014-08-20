@@ -172,7 +172,7 @@ RDom::RDom(const Func &f) {
         std::cout << "RVar[" << i << "]: " << vars[i]->name() << " " << vars[i]->min() << " " << vars[i]->extent() << "\n";
     }
 }
-
+ 
 int RDom::dimensions() const {
     return (int)domain.domain().size();
 }

@@ -22,7 +22,7 @@ Stmt sliding_window(Stmt s, const std::map<std::string, Function> &env);
 /** Utility routine to determine whether an expression/statement depends on a variable. */
 bool expr_depends_on_var(Expr e, std::string var);
 bool stmt_depends_on_var(Stmt e, std::string var);
-
+ 
 }
 }
 
