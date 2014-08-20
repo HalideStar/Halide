@@ -187,9 +187,6 @@ ERROR_TESTS = $(shell ls test/error/*.cpp)
 # TODO: move this implementation into Makefile.tests which contains a .NOTPARALLEL rule?
 tests: build_tests run_tests
 
-# LH: Add jit speed test to the list of tests to be run
-tests: test_jit_speed_fast
-
 run_tests: $(TESTS:test/%.cpp=test_%) $(ERROR_TESTS:test/error/%.cpp=error_%)
 build_tests: $(TESTS:test/%.cpp=$(BIN_DIR)/test_%) $(ERROR_TESTS:test/error/%.cpp=$(BIN_DIR)/error_%)
 
@@ -213,10 +210,6 @@ error_%: $(BIN_DIR)/error_%
 	cd tmp ; DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) ../$< 2>&1 | egrep --q "Assertion.*failed"
 	@-echo
 
-# LH: My jit speed test.
-$(BIN_DIR)/test_jit_speed: test/jit_speed.cpp $(BIN_DIR)/lib$(NAME).so include/Halide.h
-	$(CXX) $(TEST_CXX_FLAGS) -O3 $<  -DHALIDE_NEW=1 -DHALIDE_VERSION=999999 -Iinclude -L$(BIN_DIR) -l$(NAME) -lpthread -ldl -o $@	
-
 #LH: Compilation with debugging option and static link of debugging library
 gtests: $(TESTS:test/%.cpp=gtest_%)
 
@@ -230,17 +223,6 @@ $(BIN_DIR)/gtest_%: test/%.cpp $(LIB_DIR)/libg$(NAME).a include/Halide.h
 test_jit_stress: $(BIN_DIR)/test_jit_stress
 	@-mkdir -p tmp
 	cd tmp ; HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) ../$<
-	@-echo
-
-# LH: Run the fast jit speed test without RUNDEBUG options
-test_jit_speed_fast: $(BIN_DIR)/test_jit_speed
-	@-mkdir -p tmp
-	cd tmp ; HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) ../$<
-	@-echo
-
-test_jit_speed: $(BIN_DIR)/test_jit_speed
-	@-mkdir -p tmp
-	cd tmp ; $(RUNDEBUG) HL_LOG_NAME=$@ DYLD_LIBRARY_PATH=../$(BIN_DIR) LD_LIBRARY_PATH=../$(BIN_DIR) ../$< -log 5
 	@-echo
 
 # LH: gdbtest_... is a target that starts gdb on a test program

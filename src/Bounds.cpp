@@ -1,4 +1,4 @@
-#include "Features.h"
+#include "HalideFeatures.h"
 #include "Bounds.h"
 #include "IRVisitor.h"
 #include "IR.h"

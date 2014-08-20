@@ -1,3 +1,4 @@
+#include "HalideFeatures.h"
 #include "IR.h"
 #include "Function.h"
 #include "Scope.h"
@@ -172,11 +173,13 @@ void Function::define_reduction(const vector<Expr> &args, Expr value) {
     }
     value.accept(&counter);
 
+# ifdef HALIDE_CIRCULAR_REFERENCE_ADJUST
     for (size_t i = 0; i < counter.calls.size(); i++) {
         contents.ptr->ref_count.decrement();
         assert(!contents.ptr->ref_count.is_zero() && 
                "Bug: removed too many circular references when defining reduction\n");
     }
+# endif
 
     // First add the pure args in order
     for (size_t i = 0; i < pure_args.size(); i++) {

@@ -1,17 +1,16 @@
 #include <Halide.h>
 #include <stdio.h>
-#include <mcheck.h>
+//#include <mcheck.h>
 
 using namespace Halide;
 
 int main(int argc, char **argv) {
 
-	mtrace();
+	//mtrace();
 	
     // Recursive functions can create circular references. These could
     // cause leaks. Run this test under valgrind to check.
-    for (int i = 0; i < 100; i++) {
-	    printf ("%d\n", i);
+    for (int i = 0; i < 10000; i++) {
         Func f;
         Var x;
         RDom r(0, 10);

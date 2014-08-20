@@ -27,7 +27,7 @@ using std::map;
 
 // Insert nodes for the solver.
 // For loops define target variables.
-// Comparisons, min, max, mod are all targets for loop partition optimisation.
+// Comparisons, min, max, mod are all targets for loop splitting optimisation.
 // Let statements are aggressively inlined.
 class LoopPreSolver : public InlineLet {
     std::vector<std::string> varlist;
@@ -39,9 +39,9 @@ class LoopPreSolver : public InlineLet {
     BoundsAnalysis bounds;
     
     virtual void visit(const For *op) {
-        // Only serial and parallel for loops can be partitioned.
+        // Only serial and parallel for loops can be loop split.
         // Vector and Unrolled for loops, if present, become intervals for the solver to deal with.
-        // Also, any loop that is marked not to be partitioned becomes an interval for the solver
+        // Also, any loop that is marked not to be loop split becomes an interval for the solver
         // (this happens to the inner loop of a split, such as split parallel execution).
         if (op->loop_split.may_be_split() && 
             (op->for_type == For::Serial || op->for_type == For::Parallel) ){
@@ -79,7 +79,7 @@ class LoopPreSolver : public InlineLet {
     }
     
     // Solve the non-constant side of a min expression.
-    // If we can partition the loop so that one side is always <= or >= the other side
+    // If we can split the loop so that one side is always <= or >= the other side
     // then min can be eliminated.
     virtual void visit(const Min *op) {
         // Min(a,b).
@@ -148,7 +148,7 @@ class LoopPreSolver : public InlineLet {
 # endif
     
     // Do not solve for equality/inequality because it does not generate a useful
-    // loop partition (a single case is isolated).  Note that, for small loops,
+    // loop split (a single case is isolated).  Note that, for small loops,
     // loop unrolling may make each case individual; then each case is optimised separately
     // anhow and can be optimised.  So... if a code module uses equality tests on
     // an index variable then a likely candidate for optimisation is to unroll the variable
@@ -253,7 +253,7 @@ bool has_variable_match(std::string pattern, Expr e) {
     return matcher.result;
 }
 
-// Perform loop partition optimisation on For loops
+// Perform loop splitting optimisation on For loops
 class LoopSplitting : public IRMutator {
     using IRMutator::visit;
 private:
@@ -268,11 +268,11 @@ public:
     Stmt solved;
 
 protected:
-    // Insert a partition point into a list.  Search to find a compatible expression and update that expression.
+    // Insert a loop split point into a list.  Search to find a compatible expression and update that expression.
     // An expression is compatible if we can either prove that the new point is <= or > than the existing point.
     // For end points list (is_end true) replace expression with new point if new point <= expression.
     // For start points list (is_end false) replace expresison with new point if new point > expression.
-    void insert_partition_point(Expr point, std::vector<Expr> &points, bool is_end) {
+    void insert_loop_split_point(Expr point, std::vector<Expr> &points, bool is_end) {
         bool disproved;
         size_t i;
         if (infinity_count(point) != 0)
@@ -293,8 +293,8 @@ protected:
         return;
     }
     
-    // Insert a partition point into the appropriate list; but if numeric update num_start or num_end instead.
-    void insert_partition_point(Expr point, bool hint_end, int ithresh, int &num_start, int &num_end, std::vector<Expr> &starts, std::vector<Expr> &ends) {
+    // Insert a loop split point into the appropriate list; but if numeric update num_start or num_end instead.
+    void insert_loop_split_point(Expr point, bool hint_end, int ithresh, int &num_start, int &num_end, std::vector<Expr> &starts, std::vector<Expr> &ends) {
         int ival;
         if (get_const_int(point, ival)) {
             // A numeric value.  
@@ -305,24 +305,24 @@ protected:
             // Symbolic expression.
             if (has_variable_match(".extent.", point)) {
                 // End point.
-                insert_partition_point(point, ends, true);
+                insert_loop_split_point(point, ends, true);
             } else {
                 // Start point.
-                insert_partition_point(point, starts, false);
+                insert_loop_split_point(point, starts, false);
             }
 #endif
         } else {
             if (hint_end) {
                 // End point.
-                insert_partition_point(point, ends, true);
+                insert_loop_split_point(point, ends, true);
             } else {
                 // Start point.
-                insert_partition_point(point, starts, false);
+                insert_loop_split_point(point, starts, false);
             }
         }
     }
     
-    void partition_points(std::vector<Solution> sol, std::vector<Expr> &starts, std::vector<Expr> &ends) {
+    void loop_split_points(std::vector<Solution> sol, std::vector<Expr> &starts, std::vector<Expr> &ends) {
         starts.clear();
         ends.clear();
         
@@ -352,7 +352,7 @@ protected:
         }
         int ithresh = (imin + imax) / 2;
         
-        // Second pass: put the partition points into appropriate places.
+        // Second pass: put the loop split points into appropriate places.
         // The numeric start is the max of all numerics classified as start
         int num_start = Int(32).imin();
         int num_end = Int(32).imax();
@@ -362,8 +362,8 @@ protected:
                 Expr start = sol[i].intervals[j].min;
                 // max means decision is <= max vs > max, so adjust for consistency
                 Expr end = simplify(sol[i].intervals[j].max + 1);
-                insert_partition_point(start, false, ithresh, num_start, num_end, starts, ends);
-                insert_partition_point(end, true, ithresh, num_start, num_end, starts, ends);
+                insert_loop_split_point(start, false, ithresh, num_start, num_end, starts, ends);
+                insert_loop_split_point(end, true, ithresh, num_start, num_end, starts, ends);
             }
         }
         if (num_start > Int(32).imin()) starts.push_back(Expr(num_start));
@@ -407,7 +407,7 @@ protected:
                     log(LOGLEVEL) << solutions[i].var << " " << solutions[i].intervals << "\n";
                 }
 # endif               
-                // Compute loop partition points for each end of the loop.
+                // Compute loop split points for each end of the loop.
                 // If the information that we get is purely numeric, then we need to
                 // guess what is the beginning and what is the end.
                 // A reasonable guess is to take the average of the min and max,
@@ -417,7 +417,7 @@ protected:
                 // are end, and those involving .min. but not .extent. are beginning.
                 
                 std::vector<Expr> starts, ends;
-                partition_points(solutions, starts, ends);
+                loop_split_points(solutions, starts, ends);
 # if 0
                 std::cout << "Main loop start: ";
                 for (size_t i = 0; i < starts.size(); i++) {
@@ -430,7 +430,7 @@ protected:
                 std::cout << "\n";
 # endif               
                 // The interval for the main loop is max(starts) to min(ends)-1.
-                // If no partition points are found then the interval has undefined min and/or max.
+                // If no loop split points are found then the interval has undefined min and/or max.
                 Expr part_start = make_infinity(Int(32), -1), part_end = make_infinity(Int(32), 1);
                 if (starts.size() > 0) {
                     part_start = starts[0];
@@ -446,10 +446,10 @@ protected:
                     part_end = part_end - 1;
                 }
                 
-                // Exactness of partition poiunts is not important
+                // Exactness of loop split points is not important
                 part = DomInterval(simplify(part_start), simplify(part_end), true);
                 
-                log(LOGLEVEL) << "Auto partition: " << op->name << " " << part << "\n";
+                log(LOGLEVEL) << "Auto loop split: " << op->name << " " << part << "\n";
             }
             
             if ((part.min.defined() && infinity_count(part.min) == 0) || 
@@ -479,8 +479,8 @@ protected:
                     Stmt new_body = mutate(op->body);
                     int new_return_status = return_status;
                     return_status = save_return_status;
-                log(LOGLEVEL) << "About to partition loop:\n" << Stmt(op);
-                // The partitioned loops are as follows:
+                log(LOGLEVEL) << "About to split loop:\n" << Stmt(op);
+                // The split loops are as follows:
                 // for (x, .min, Min(start - .min, .extent))
                 //     This loop starts at .min and never reaches start.  It also never exceeds .extent.
                 // for (x, Max(start,.min), Min(end,.min+.extent)-Max(start,.min))
@@ -546,7 +546,7 @@ protected:
                 // Build the code.
                 Stmt block; // An undefined block of code.
                 // The before and after loops use the original loop body - their nested loops
-                // are not partitioned.
+                // are not loop split.
                 LoopSplitInfo p = op->loop_split;
                 // Generate the start loop but not if loop_main_separate is true and the nest state is IN_MAIN
                 if (start.defined() && ! (global_options.loop_main_separate && main_nest_state == MAIN_NEST_IN_MAIN)) {
@@ -593,7 +593,7 @@ protected:
                 }
                 //log(0) << "\nOriginal loop:\n";
                 //log(0) << Stmt(op);
-                //log(0) << "\nPartitioned loop:\n";
+                //log(0) << "\nSplit loop:\n";
                 //log(0) << stmt;
                 done = true;
             }
@@ -625,13 +625,13 @@ Stmt loop_split(Stmt s) {
     code_logger.log(solved, "solved");
     LoopSplitting loop_part;
     loop_part.solved = solved;
-    code_logger.section("loop_partition");
+    code_logger.section("loop_split");
     s = loop_part.mutate(s);
-    code_logger.log(s, "loop_partition");
+    code_logger.log(s, "loop_split");
     return s;
 }
 
-// Test loop partition routines.
+// Test loop split routines.
 
 // Test pre processing.
 namespace {
@@ -643,13 +643,13 @@ Stmt code_1 () {
     Expr select = Select::make(x > 3, Select::make(x < 87, input, Cast::make(Int(16), -17)),
                              Cast::make(Int(16), -17));
     Stmt store = Store::make("buf", select, x - 1);
-    LoopSplitInfo autosplit(true); // Select auto partitioning.
+    LoopSplitInfo autosplit(true); // Select auto splitting.
     Stmt for_loop = For::make("x", 0, 100, For::Serial, autosplit, store); // Use serial loop because parallel splitting has issues of efficiency
     Expr call = Call::make(i32, "buf", vec(max(min(x,100),0)));
     Expr call2 = Call::make(i32, "buf", vec(max(min(x-1,100),0)));
     Expr call3 = Call::make(i32, "buf", vec(Expr(Clamp::make(Clamp::Reflect, x+1, 0, 100))));
     Stmt store2 = Store::make("out", call + call2 + call3 + 23, x);
-    LoopSplitInfo manualsplit(DomInterval(1,99,true)); // Specify manual partitioning interval.
+    LoopSplitInfo manualsplit(DomInterval(1,99,true)); // Specify manual splitting interval.
     Stmt for_loop2 = For::make("x", 0, 100, For::Serial, manualsplit, store2);
     Stmt pipeline = Pipeline::make("buf", for_loop, Stmt(), for_loop2);
     
@@ -710,7 +710,7 @@ std::string correct_solved =
 "  }\n"
 "}\n";
 
-// NOTE: The partitioned loop is not yet efficient.  Efficiency is introduced by
+// NOTE: The split loop is not yet efficient.  Efficiency is introduced by
 // BoundsSimplify which uses bounds analysis to simplify the min and max expressions.
 std::string correct_loop_split = 
 "produce buf {\n"
@@ -767,7 +767,7 @@ std::string correct_bsimp =
 "    buf[(x + -1)] = select((3 < x), input((((x + -10) % 100) + 10)), i16(-17))\n"
 "  }\n"
 "  for (x, 10, 90, main auto [-infinity, infinity]) {\n"
-"    buf[(x + -1)] = input(((x + -10) + 10))\n"
+"    buf[(x + -1)] = select((x < 87), input(((x + -10) + 10)), i16(-17))\n"
 "  }\n"
 "  for (x, 110, -10, after) {\n"
 "    buf[(x + -1)] = i16(-17)\n"
@@ -825,7 +825,7 @@ std::string correct_solved =
 "  }\n"
 "}\n";
 
-// NOTE: The partitioned loop is not yet efficient.  Efficiency is introduced by
+// NOTE: The split loop is not yet efficient.  Efficiency is introduced by
 // BoundsSimplify which uses bounds analysis to simplify the min and max expressions.
 std::string correct_loop_split = 
 "produce buf {\n"
@@ -995,7 +995,7 @@ void test_loop_split_1() {
     loop_part.solved = solved;
     Stmt part = loop_part.mutate(simp);
     code_compare ("loop splitting", "Loop Split:", part, correct_loop_split);
-    //std::cout << "Partitioned:\n" << part << "\n";
+    //std::cout << "Loop Split:\n" << part << "\n";
 
 	Stmt uniq = uniquify_variable_names(part);
     code_compare ("uniquifying variables", "Uniquified:", uniq, correct_loop_split); // Nothing happens
@@ -1004,7 +1004,7 @@ void test_loop_split_1() {
     code_compare ("post simplifier", "Post Simplified:", postsimp, correct_post_simplify);
 	
 	Stmt bsimp = bounds_simplify(postsimp);
-    code_compare ("bounds anbalysis simplifier", "Bounds Simplified:", bsimp, correct_bsimp);
+    code_compare ("bounds analysis simplifier", "Bounds Simplified:", bsimp, correct_bsimp);
 
     // ------------- SECOND TEST ----------------
     global_options = Options();
@@ -1016,17 +1016,17 @@ void test_loop_split_1() {
     
     Stmt code2 = code_2();
 
-    std::cout << "Raw:\n" << code2 << "\n";
+    //std::cout << "Raw:\n" << code2 << "\n";
     Stmt simp2 = simplify(code2);
     //code_compare ("simplify called from loop split", "Simplified code:", simp2, correct_simplified2);
-    std::cout << "Simplified:\n" << simp2 << "\n";
+    //std::cout << "Simplified:\n" << simp2 << "\n";
     Stmt pre2 = LoopPreSolver().mutate(simp2);
-    std::cout << "LoopPreSolver:\n" << pre2 << "\n";
+    //std::cout << "LoopPreSolver:\n" << pre2 << "\n";
     //code_compare ("loop split pre-solver", "Presolved code:", pre2, correct_presolver2);
     
     Stmt solved2 = loop_solver(pre2);
     //code_compare ("loop split solver", "Solved code:", solved2, correct_solved2);
-    std::cout << "Solved:\n" << solved2 << "\n";
+    //std::cout << "Solved:\n" << solved2 << "\n";
     //std::vector<Solution> solutions22 = extract_solutions("x", Stmt(), solved2);
     //for (size_t i = 0; i < solutions.size(); i++) {
     //    std::cout << solutions2[i].var << " " << solutions2[i].intervals << "\n";
@@ -1037,8 +1037,10 @@ void test_loop_split_1() {
     LoopSplitting loop_part2;
     loop_part.solved = solved2;
     Stmt part2 = loop_part.mutate(simp2);
-    std::cout << "Loop Split:\n" << part2 << "\n";
+    //std::cout << "Loop Split:\n" << part2 << "\n";
     //code_compare ("loop splitting", "Loop Split:", part2, correct_loop_split)2;
+    
+    std::cout << "Warning: Loop Splitting Tests seem to be incorrect in detail\n";
     
     global_options = the_options;
 }
@@ -1046,21 +1048,21 @@ void test_loop_split_1() {
 void loop_split_test() {
     test_loop_split_1();
     
-    std::cout << "Loop Partition test passed\n";
+    std::cout << "Loop Splitting test passed\n";
 }
 
-class EffectivePartition : public IRVisitor {
+class EffectiveLoopSplit : public IRVisitor {
 public:
     int failing;
     
-    EffectivePartition() : failing(false) {}
+    EffectiveLoopSplit() : failing(false) {}
 private:
     using IRVisitor::visit;
     
     virtual void visit(const For *op) {
         // For loops that are marked Main are worthy of consideration.
         // For loops marked Before or After are not.
-        // For loops that are marked not to be partitioned are worthy of consideration -
+        // For loops that are marked not to be loop split are worthy of consideration -
         // these arise from variable splitting.
         // Potential problems: The Before or After loops may be degenerate.
         if (op->loop_split.status == LoopSplitInfo::Main || ! op->loop_split.may_be_split()) {
@@ -1112,7 +1114,7 @@ private:
  * this test, but the purpose of the test is for those programs that should be fully
  * clean after splitting has been applied. */
 bool is_effective_loop_split(Stmt s) {
-    EffectivePartition eff;
+    EffectiveLoopSplit eff;
     s.accept(&eff);
     return !eff.failing;
 }
