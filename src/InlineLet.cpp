@@ -128,13 +128,5 @@ void InlineLet::visit(const For *op) {
     }        
 }
 
-# if 0
-void loop_partition_test() {
-    test_loop_partition_1();
-    
-    std::cout << "Loop Partition test passed\n";
-}
-# endif
-
 }
 }

@@ -198,10 +198,6 @@ protected:
     virtual void visit(const FloatImm *);
     virtual void visit(const Cast *);
     virtual void visit(const Variable *);
-    virtual void visit(const BitAnd *); //LH
-    virtual void visit(const BitOr *); //LH
-    virtual void visit(const BitXor *); //LH
-    virtual void visit(const SignFill *); //LH
     virtual void visit(const Clamp *); //LH
     virtual void visit(const Add *);
     virtual void visit(const Sub *);

@@ -393,6 +393,7 @@ Interval bounds_of_expr_in_scope(Expr expr, const Scope<Interval> &scope) {
     return Interval(b.min, b.max);
 }
 
+// interval_union is defined in Interval.cpp
 Region region_union(const Region &a, const Region &b) {
     assert(a.size() == b.size() && "Mismatched dimensionality in region union");
     Region result;

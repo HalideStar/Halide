@@ -1041,13 +1041,13 @@ protected:
             add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) { //LH
             // min(e + k1, k2) -->  min(e, k2 -k1) + k1
             // Overflow invalidates this rule.
-            // vectorize.partition
+            // vectorize.loopsplit
             expr = mutate(Add::make(Min::make(add_a->a, ib - ia), ia));
         } else if (global_options.simplify_lift_constant_min_max && 
             add_a && add_b && const_int(add_a->b, &ia) && const_int(add_b->b, &ib)) { //LH
             // min(e1 + k1, e2 + k2) -->  min(e1 + (k1 - k2), e2) + k2
             // Rule is only applied to Int(32) constants because overflow would invalidate it.
-            // vectorize.partition
+            // vectorize.loopsplit
             if (ia == ib) {
                 // Special case: min(e1 + k, e2 + k) --> min(e1, e2) + k
                 expr = mutate(Add::make(Min::make(add_a->a, add_b->a), ib));
@@ -1059,7 +1059,7 @@ protected:
             // min(min(x, 4), 5) -> min(x, 4)
             expr = Min::make(min_a->a, mutate(Min::make(min_a->b, b)));
         } else if (sub_a && sub_b && const_int(sub_a->a, &ia) && const_int(sub_b->a, &ib)) { //LH
-            // vectorize.partition
+            // vectorize.loopsplit
             // min(k1 - e1, k2 - e2) --> k2 + min((k1 - k2) - e1, 0 - e2)
             //                       --> k2 - max(e1 - (k1 - k2), e2)
             //                       --> k2 - max(e1 + (k2 - k1), e2)
@@ -1071,12 +1071,12 @@ protected:
                 expr = mutate(Sub::make(ib, Max::make(sub_a->b + (ib - ia), sub_b->b)));
             }
         } else if (sub_a && sub_b && equal(sub_a->b, sub_b->b)) { //LH
-            // vectorize.partition
+            // vectorize.loopsplit
             // min(e1 - e, e2 - e) --> min(e1, e2) - e
             // Overflow invalidates this rule.
             expr = mutate(Sub::make(Min::make(sub_a->a, sub_b->a), sub_b->b));
         } else if (div_a && div_b && const_int(div_a->b, &ia) && const_int(div_b->b, &ib) && ia == ib) { //LH
-            // vectorize.partition
+            // vectorize.loopsplit
             // min(e1 / k, e2 / k) --> if (k > 0): min(e1,e2) / k
             //                         if (k < 0): max(e1,e2) / k
             // This rule is not affected by overflow.
@@ -1244,13 +1244,13 @@ protected:
 
         } else if (global_options.simplify_lift_constant_min_max && 
             add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) { //LH
-            // vectorize.partition
+            // vectorize.loopsplit
             // max(e + k1, k2) -->  max(e, k2 -k1) + k1
             // Overflow invalidates this rule.
             expr = mutate(Add::make(Max::make(add_a->a, ib - ia), ia));
         } else if (global_options.simplify_lift_constant_min_max && 
             add_a && add_b && const_int(add_a->b, &ia) && const_int(add_b->b, &ib)) { //LH
-            // vectorize.partition
+            // vectorize.loopsplit
             // max(e1 + k1, e2 + k2) -->  max(e1 + (k1 - k2), e2) + k2
             // Overflow invalidates this rule (and many of the rules above).
             // e.g. max(x + 5, x + 7) is actually x+5 when the type is UInt(8) and
@@ -1265,7 +1265,7 @@ protected:
             // max(max(x, 4), 5) -> max(x, 5)
             expr = Max::make(max_a->a, mutate(Max::make(max_a->b, b)));
         } else if (sub_a && sub_b && const_int(sub_a->a, &ia) && const_int(sub_b->a, &ib)) { //LH
-            // vectorize.partition
+            // vectorize.loopsplit
             // max(k1 - e1, k2 - e2) --> k2 + max((k1 - k2) - e1, 0 - e2)
             //                       --> k2 - min(e1 - (k1 - k2), e2)
             //                       --> k2 - min(e1 + (k2 - k1), e2)
@@ -1277,12 +1277,12 @@ protected:
                 expr = mutate(Sub::make(ib, Min::make(sub_a->b + (ib - ia), sub_b->b)));
             }
         } else if (sub_a && sub_b && equal(sub_a->b, sub_b->b)) { //LH
-            // vectorize.partition
+            // vectorize.loopsplit
             // max(e1 - e, e2 - e) --> max(e1, e2) - e
             // Overflow invalidates this rule.
             expr = mutate(Sub::make(Max::make(sub_a->a, sub_b->a), sub_b->b));
         } else if (div_a && div_b && const_int(div_a->b, &ia) && const_int(div_b->b, &ib) && ia == ib) { //LH
-            // vectorize.partition
+            // vectorize.loopsplit
             // max(e1 / k, e2 / k) --> if (k > 0): max(e1,e2) / k
             //                         if (k < 0): min(e1,e2) / k
             // This rule is not affected by overflow.

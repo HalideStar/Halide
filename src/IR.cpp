@@ -107,8 +107,8 @@ void assert_same_type(std::string opname, Expr a, Expr b) {
     assert(0 && "Mismatched types");
 }
 
-// Partition information is defined if auto_partition has been set or if
-// a partition interval has been specified.  Since the interval is an Ival,
+// Loop Split information is defined if auto_split has been set or if
+// a loop split interval has been specified.  Since the interval is a DomInterval,
 // it should not contain undefined() expressions, but Infinity means undefined
 // in this case.
 const bool LoopSplitInfo::defined() const { 

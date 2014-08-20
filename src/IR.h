@@ -820,7 +820,7 @@ namespace Internal {
 /** Information for loop splitting from the .loop_split schedule.
  * It is stored in the Dim portion of the Schedule, and later into the For loops. */
     struct LoopSplitInfo {
-        /** One option is for the user to partition the main loop manually.
+        /** One option is for the user to split the main loop manually.
          * Specify an DomInterval for the loop.  The bounds can be expressions.
          * If not used, the expressions will be undefined. */
         Halide::DomInterval interval;

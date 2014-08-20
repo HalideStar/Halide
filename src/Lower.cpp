@@ -24,7 +24,7 @@
 #include "DebugToFile.h"
 #include "EarlyFree.h"
 #include "UniquifyVariableNames.h"
-// LHHACK: remove_dead_lets called in loop partition
+// LHHACK: remove_dead_lets called in loop split
 #include "RemoveDeadLets.h"
 
 #include "LowerClamp.h"
@@ -879,7 +879,7 @@ Stmt do_bounds_simplify(Stmt s, int section) {
     return s;
 }
 
-Stmt do_loop_partition(Stmt s, int section) {
+Stmt do_loop_split(Stmt s, int section) {
     code_logger.section(section);
     if (global_options.loop_split) {
 		log(1) << "Simplifying...\n";
@@ -980,7 +980,7 @@ Stmt lower(Function f) {
 
 # if 0
     // Untried recently.
-    s = do_loop_partition(s, 320);
+    s = do_loop_split(s, 320);
 #endif
 
     code_logger.section(340);
@@ -1012,7 +1012,7 @@ Stmt lower(Function f) {
     log(2) << "Simplified: \n" << s << "\n\n";
     code_logger.log(s, "simplify");
 
-    s = do_loop_partition(s, 460);
+    s = do_loop_split(s, 460);
 
 # if LOWER_CLAMP == 490
     //LH
@@ -1059,7 +1059,7 @@ Stmt lower(Function f) {
     log(2) << "Injected early frees: \n" << s << "\n\n";
     
 
-    //s = do_loop_partition(s, 560); // More difficult to work with ramp.
+    //s = do_loop_split(s, 560); // More difficult to work with ramp.
     
     code_logger.section(800);
     log(1) << "Simplifying...\n";

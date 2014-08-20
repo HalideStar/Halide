@@ -466,7 +466,7 @@ ScheduleHandle &ScheduleHandle::cuda_threads(Var tx) {
 }
  
 namespace {
-void record_partition(Internal::Schedule &schedule, Var var, LoopSplitInfo info) {
+void record_loop_split(Internal::Schedule &schedule, Var var, LoopSplitInfo info) {
     bool found = false;
     vector<Schedule::Dim> &dims = schedule.dims;
     for (size_t i = 0; (!found) && i < dims.size(); i++) {
@@ -490,12 +490,12 @@ void record_partition(Internal::Schedule &schedule, Var var, LoopSplitInfo info)
 }
  
 ScheduleHandle &ScheduleHandle::loop_split(Var var, bool auto_split) {
-    record_partition(schedule, var, LoopSplitInfo(auto_split));
+    record_loop_split(schedule, var, LoopSplitInfo(auto_split));
     return *this;
 }
  
 ScheduleHandle &ScheduleHandle::loop_split(Var var, DomInterval interval) {
-    record_partition(schedule, var, LoopSplitInfo(interval));
+    record_loop_split(schedule, var, LoopSplitInfo(interval));
     return *this;
 }
 

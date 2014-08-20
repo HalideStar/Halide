@@ -577,28 +577,6 @@ void CodeGen::visit(const Variable *op) {
     value = sym_get(op->name);
 }
 
-//LH 
-// Bit-wise operators on integers
-void CodeGen::visit(const BitAnd *op) {
-    assert(! op->type.is_float() && "Code generator found BitAnd with floating point type");
-    value = builder->CreateAnd(codegen(op->a), codegen(op->b));
-}
-
-void CodeGen::visit(const BitOr *op) {
-    assert(! op->type.is_float() && "Code generator found BitOr with floating point type");
-    value = builder->CreateOr(codegen(op->a), codegen(op->b));
-}
-
-void CodeGen::visit(const BitXor *op) {
-    assert(! op->type.is_float() && "Code generator found BitXor with floating point type");
-    value = builder->CreateXor(codegen(op->a), codegen(op->b));
-}
-
-void CodeGen::visit(const SignFill *op) {
-    assert(op->type.is_int() && "Code generator found SignFill that is not signed integer type");
-    // Arithmetic shift right by one less than the number of bits of the data type.
-    value = builder->CreateAShr(codegen(op->value), codegen(make_const(op->type, op->type.bits-1)));
-}
 
 void CodeGen::visit(const Clamp *op) {
     assert(false && "Code generator found Clamp that should have been replaced with primitives");

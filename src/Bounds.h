@@ -16,6 +16,7 @@
 namespace Halide {
 namespace Internal {
 
+// Interval is defined in Interval.h
 /** Given an expression in some variables, and a map from those
  * variables to their bounds (in the form of (minimum possible value,
  * maximum possible value)), compute two expressions that give the
