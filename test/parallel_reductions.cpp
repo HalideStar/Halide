@@ -26,8 +26,6 @@ int main(int argc, char **argv) {
         
         Image<int> im = f2.realize();
         
-        printf("f2.realize completed\n");
-        
         int correct = (256*255)/2;
         if (im(0) != correct) {
             printf("im(0) = %d instead of %d\n", im(0), correct);
@@ -70,12 +68,8 @@ int main(int argc, char **argv) {
         f2.update().vectorize(i, 4).parallel(i);
         
         out.vectorize(i, 4).parallel(i);
-        
-        printf ("Second test. f2.realize...\n");
 
         Image<int> result = out.realize(256);
-        
-        printf ("Second test realize completed.\n");
         
         for (int i = 0; i < 256; i++) {
             if (result(i) != correct(i)) {
