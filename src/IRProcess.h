@@ -1,6 +1,7 @@
 #ifndef HALIDE_IR_PROCESS_H
 #define HALIDE_IR_PROCESS_H
 
+#include "HalideFeatures.h"
 #include "IRVisitor.h"
 
 /** \file
@@ -31,11 +32,9 @@ public:
     virtual void visit(const FloatImm *);
     virtual void visit(const Cast *);
     virtual void visit(const Variable *);
-    virtual void visit(const BitAnd *);
-    virtual void visit(const BitOr *);
-    virtual void visit(const BitXor *);
-    virtual void visit(const SignFill *);
+# ifdef HALIDE_CLAMP_NODE
     virtual void visit(const Clamp *);
+# endif
     virtual void visit(const Add *);
     virtual void visit(const Sub *);
     virtual void visit(const Mul *);

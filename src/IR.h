@@ -239,10 +239,6 @@ struct Stmt : public IRHandle {
 /** The actual IR nodes begin here. Remember that all the Expr
  * nodes also have a public "type" property */
  
-}
-
-namespace Internal {
-
 /** Cast a node from one type to another */
 struct Cast : public ExprNode<Cast> {
     Expr value;
@@ -252,76 +248,6 @@ struct Cast : public ExprNode<Cast> {
 
         Cast *node = new Cast;
         node->type = t;
-        node->value = v;
-        return node;
-    }
-};
-
-//LH
-/** Bit-wise AND */
-struct BitAnd : public ExprNode<BitAnd> {
-    Expr a, b;
-
-    static Expr make(Expr a, Expr b) {
-        assert_defined_same_type("BitAnd", a, b);
-        assert((a.type().is_int() || a.type().is_uint()) && "lhs of BitAnd is not an integer type");
-        assert((b.type().is_int() || b.type().is_uint()) && "rhs of BitAnd is not an integer type");
-        
-        BitAnd *node = new BitAnd;
-        node->type = a.type();
-        node->a = a;
-        node->b = b;
-        return node;
-    }
-};
-
-//LH
-/** Bit-wise OR */
-struct BitOr : public ExprNode<BitOr> {
-    Expr a, b;
-
-    static Expr make(Expr a, Expr b) {
-        assert_defined_same_type("BitOr", a, b);
-        assert((a.type().is_int() || a.type().is_uint()) && "lhs of BitOr is not an integer type");
-        assert((b.type().is_int() || b.type().is_uint()) && "rhs of BitOr is not an integer type");
-        
-        BitOr *node = new BitOr;
-        node->type = a.type();
-        node->a = a;
-        node->b = b;
-        return node;
-    }
-};
-
-//LH
-/** Bit-wise XOR */
-struct BitXor : public ExprNode<BitXor> {
-    Expr a, b;
-
-    static Expr make(Expr a, Expr b) {
-        assert_defined_same_type("BitXor", a, b);
-        assert((a.type().is_int() || a.type().is_uint()) && "lhs of BitXor is not an integer type");
-        assert((b.type().is_int() || b.type().is_uint()) && "rhs of BitXor is not an integer type");
-        
-        BitXor *node = new BitXor;
-        node->type = a.type();
-        node->a = a;
-        node->b = b;
-        return node;
-    }
-};
-
-//LH
-/** Fill integer with the sign bit */
-struct SignFill : public ExprNode<SignFill> {
-    Expr value;
-
-    static Expr make(Expr v) {
-        assert(v.defined() && "SignFill of undefined");
-        assert((v.type().is_int() || v.type().is_uint()) && "parameter of SignFill is not an integer type");
-        
-        SignFill *node = new SignFill;
-        node->type = v.type();
         node->value = v;
         return node;
     }

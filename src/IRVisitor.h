@@ -5,6 +5,7 @@
  * Defines the base class for things that recursively walk over the IR
  */
 
+#include "HalideFeatures.h"
 namespace Halide {
 
 struct Expr;
@@ -16,11 +17,9 @@ struct IntImm;
 struct FloatImm;
 struct Cast;
 struct Variable;
-struct BitAnd; //LH
-struct BitOr; //LH
-struct BitXor; //LH
-struct SignFill; //LH
-struct Clamp; //LH
+#ifdef HALIDE_CLAMP_NODE
+struct Clamp;
+#endif
 struct Add;
 struct Sub;
 struct Mul;
@@ -80,11 +79,9 @@ public:
     virtual void visit(const FloatImm *);
     virtual void visit(const Cast *);
     virtual void visit(const Variable *);
-    virtual void visit(const BitAnd *);
-    virtual void visit(const BitOr *);
-    virtual void visit(const BitXor *);
-    virtual void visit(const SignFill *);
+#ifdef HALIDE_CLAMP_NODE
     virtual void visit(const Clamp *);
+#endif
     virtual void visit(const Add *);
     virtual void visit(const Sub *);
     virtual void visit(const Mul *);

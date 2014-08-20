@@ -1,3 +1,4 @@
+#include "HalideFeatures.h"
 #include "IRMutator.h"
 #include "Log.h"
 #include "IRPrinter.h"
@@ -83,16 +84,7 @@ void IRMutator::visit(const Cast *op) {
     else expr = Cast::make(op->type, value);
 }
 
-void IRMutator::visit(const BitAnd *op)  {mutate_binary_operator(this, op, &expr, &stmt);} //LH
-void IRMutator::visit(const BitOr *op)   {mutate_binary_operator(this, op, &expr, &stmt);} //LH
-void IRMutator::visit(const BitXor *op)  {mutate_binary_operator(this, op, &expr, &stmt);} //LH
-//LH
-void IRMutator::visit(const SignFill *op) {
-    Expr a = mutate(op->value);
-    if (a.same_as(op->value)) expr = op;
-    else expr = SignFill::make(a);
-}
-//LH
+# ifdef HALIDE_CLAMP_NODE
 void IRMutator::visit(const Clamp *op) {
     Expr a = mutate(op->a);
 	Expr min = mutate(op->min);
@@ -108,6 +100,7 @@ void IRMutator::visit(const Clamp *op) {
 		p1.same_as(op->p1)) expr = op;
     else expr = Clamp::make(op->clamptype,a,min,max,p1);
 }
+# endif
 
 void IRMutator::visit(const Add *op)     {mutate_binary_operator(this, op, &expr, &stmt);}
 void IRMutator::visit(const Sub *op)     {mutate_binary_operator(this, op, &expr, &stmt);}

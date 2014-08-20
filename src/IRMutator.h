@@ -5,6 +5,7 @@
  * Defines a base class for passes over the IR that modify it 
  */
 
+#include "HalideFeatures.h"
 #include "IRProcess.h"
 #include "IR.h"
 
@@ -63,11 +64,9 @@ protected:
     virtual void visit(const FloatImm *);
     virtual void visit(const Cast *);
     virtual void visit(const Variable *);
-    virtual void visit(const BitAnd *); //LH
-    virtual void visit(const BitOr *); //LH
-    virtual void visit(const BitXor *); //LH
-    virtual void visit(const SignFill *); //LH
-    virtual void visit(const Clamp *); //LH
+# ifdef HALIDE_CLAMP_NODE
+    virtual void visit(const Clamp *);
+# endif
     virtual void visit(const Add *);
     virtual void visit(const Sub *);
     virtual void visit(const Mul *);

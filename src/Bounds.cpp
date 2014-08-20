@@ -183,7 +183,7 @@ private:
         }
     }
 
-# if CLAMP_NODE
+# ifdef HALIDE_CLAMP_NODE
     // Bounds of clamp expression
     void visit(const Clamp *op) {
         op->a.accept(this);

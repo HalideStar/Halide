@@ -1,6 +1,7 @@
 #ifndef HALIDE_IR_PRINTER_H
 #define HALIDE_IR_PRINTER_H
 
+#include "HalideFeatures.h"
 #include "IRVisitor.h"
 #include "Type.h"
 #include "IR.h"
@@ -105,11 +106,9 @@ protected:
     void visit(const FloatImm *);
     void visit(const Cast *);
     void visit(const Variable *);
-    void visit(const BitAnd *); //LH
-    void visit(const BitOr *); //LH
-    void visit(const BitXor *); //LH
-    void visit(const SignFill *); //LH
-    void visit(const Clamp *); //LH
+# ifdef HALIDE_CLAMP_NODE
+    void visit(const Clamp *);
+# endif
     void visit(const Add *);
     void visit(const Sub *);
     void visit(const Mul *);

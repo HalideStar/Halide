@@ -7,6 +7,7 @@
  * it more pleasant to work with Halide expressions.
  */
 
+#include "HalideFeatures.h"
 #include "IR.h"
 #include "Options.h"
 
@@ -354,11 +355,14 @@ inline Expr min(Expr a, Expr b) {
 inline Expr clamp(Expr a, Expr min_val, Expr max_val) {
     assert(a.defined() && min_val.defined() && max_val.defined() &&
            "clamp of undefined");
+# ifdef HALIDE_CLAMP_NODE
     if (global_options.clamp_as_node) {
         min_val = cast(a.type(), min_val);
         max_val = cast(a.type(), max_val);
         return Internal::Clamp::make(Internal::Clamp::Replicate, a, min_val, max_val);
-    } else {
+    } else 
+# endif
+    {
         // This is the original Halide desugar of clamp()
         min_val = cast(a.type(), min_val);
         max_val = cast(a.type(), max_val);

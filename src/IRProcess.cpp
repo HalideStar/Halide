@@ -1,3 +1,4 @@
+#include "HalideFeatures.h"
 #include "IRProcess.h"
 #include "IR.h"
 #include "IRPrinter.h"
@@ -23,30 +24,8 @@ void IRProcess::visit(const Variable *op) {
     //std::cout << "IRProcess visit " << Expr(op) << "\n";
 }
 
-//LH
-void IRProcess::visit(const BitAnd *op) {
-    process(op->a);
-    process(op->b);
-}
-
-//LH
-void IRProcess::visit(const BitOr *op) {
-    process(op->a);
-    process(op->b);
-}
-
-//LH
-void IRProcess::visit(const BitXor *op) {
-    process(op->a);
-    process(op->b);
-}
-
-//LH
-void IRProcess::visit(const SignFill *op) {
-    process(op->value);
-}
-
-//LH
+# ifdef HALIDE_CLAMP_NODE
+// Clamp node
 void IRProcess::visit(const Clamp *op) {
     process(op->a);
 	process(op->min);
@@ -54,6 +33,7 @@ void IRProcess::visit(const Clamp *op) {
 	if (op->clamptype == Internal::Clamp::Tile)
 		process(op->p1);
 }
+# endif
 
 void IRProcess::visit(const Add *op) {
     process(op->a);

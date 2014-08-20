@@ -1,3 +1,4 @@
+#include "HalideFeatures.h"
 #include "IR.h"
 #include "IRPrinter.h"
 #include <iostream>
@@ -41,11 +42,9 @@ template<> EXPORT IRNodeType ExprNode<IntImm>::_type_info = {};
 template<> EXPORT IRNodeType ExprNode<FloatImm>::_type_info = {};
 template<> EXPORT IRNodeType ExprNode<Cast>::_type_info = {};
 template<> EXPORT IRNodeType ExprNode<Variable>::_type_info = {};
-template<> EXPORT IRNodeType ExprNode<BitAnd>::_type_info = {};
-template<> EXPORT IRNodeType ExprNode<BitOr>::_type_info = {};
-template<> EXPORT IRNodeType ExprNode<BitXor>::_type_info = {};
-template<> EXPORT IRNodeType ExprNode<SignFill>::_type_info = {};
+#ifdef HALIDE_CLAMP_NODE
 template<> EXPORT IRNodeType ExprNode<Clamp>::_type_info = {};
+#endif
 template<> EXPORT IRNodeType ExprNode<Add>::_type_info = {};
 template<> EXPORT IRNodeType ExprNode<Sub>::_type_info = {};
 template<> EXPORT IRNodeType ExprNode<Mul>::_type_info = {};

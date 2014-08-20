@@ -3,11 +3,14 @@
 
 // This include file is included in IR.h.  Do not inclucde this file explicitly; use IR.h instead.
 
+#include "HalideFeatures.h"
+
 namespace Halide {
 namespace Internal {
 /** Clamp and related functions that restrict the range of an expression.
  * The output value is restricted to the inclusive interval (min,max).
  */
+#ifdef HALIDE_CLAMP_NODE
 struct Clamp : public ExprNode<Clamp> {
     // a, min and max are defined for all clamp-like operations.
     // a is the expression being clamped, min and max are the range limits inclusive.
@@ -60,7 +63,7 @@ public:
 		return node;
 	}
 };
-
+#endif
 
 }
 }

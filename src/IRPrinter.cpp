@@ -308,41 +308,8 @@ void IRPrinter::visit(const Variable *op) {
     stream << op->name;
 }
     
-//LH
-void IRPrinter::visit(const BitAnd *op) {
-    stream << '(';
-    print(op->a);
-    stream << " & ";
-    print(op->b);
-    stream << ')';
-}
-
-//LH
-void IRPrinter::visit(const BitOr *op) {
-    stream << '(';
-    print(op->a);
-    stream << " | ";
-    print(op->b);
-    stream << ')';
-}
-
-//LH
-void IRPrinter::visit(const BitXor *op) {
-    stream << '(';
-    print(op->a);
-    stream << " ^ ";
-    print(op->b);
-    stream << ')';
-}
-
-//LH
-void IRPrinter::visit(const SignFill *op) {
-    stream << "signfill(";
-    print(op->value);
-    stream << ')';
-}
-
-//LH
+# ifdef HALIDE_CLAMP_NODE
+// Clamp operator for border handling
 void IRPrinter::visit(const Clamp *op) {
     stream << "Clamp::" << op->clamptype <<"(";
     print(op->a);
@@ -356,6 +323,7 @@ void IRPrinter::visit(const Clamp *op) {
 	//}
     stream << ')';
 }
+# endif
 
 void IRPrinter::visit(const Add *op) {
     stream << '(';

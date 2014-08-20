@@ -3,7 +3,7 @@
 
 # define HALIDE_DOMAIN_INFERENCE 1
 // Introduce the Clamp node used for border handing
-# define HALIDE_CLAMP_NODE 1
+# define HALIDE_CLAMP_NODE
 
 // Adjust reference counts for circular references
 // Disable this option to overcome a bug that appears in the test

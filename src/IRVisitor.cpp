@@ -1,3 +1,4 @@
+#include "HalideFeatures.h"
 #include "IRVisitor.h"
 #include "IR.h"
 
@@ -28,34 +29,7 @@ void IRVisitor::visit(const Variable *) {
     defaulted = true;
 }
 
-//LH
-void IRVisitor::visit(const BitAnd *op) {
-    defaulted = true;
-    op->a.accept(this);
-    op->b.accept(this);
-}
-
-//LH
-void IRVisitor::visit(const BitOr *op) {
-    defaulted = true;
-    op->a.accept(this);
-    op->b.accept(this);
-}
-
-//LH
-void IRVisitor::visit(const BitXor *op) {
-    defaulted = true;
-    op->a.accept(this);
-    op->b.accept(this);
-}
-
-//LH
-void IRVisitor::visit(const SignFill *op) {
-    defaulted = true;
-    op->value.accept(this);
-}
-
-//LH
+# ifdef HALIDE_CLAMP_NODE
 void IRVisitor::visit(const Clamp *op) {
     defaulted = true;
     op->a.accept(this);
@@ -64,6 +38,7 @@ void IRVisitor::visit(const Clamp *op) {
 	if (op->clamptype == Internal::Clamp::Tile)
 		op->p1.accept(this);
 }
+# endif
 
 void IRVisitor::visit(const Add *op) {
     defaulted = true;
