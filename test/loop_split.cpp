@@ -159,6 +159,8 @@ void check_const(std::string s, Image<uint8_t> output, int k) {
 
 double fastest_time = 99999999.0, slowest_time = 0.0;
 std::string fastest_id, slowest_id;
+double greatest_speedup = 0.0, least_speedup = 99999999.0;
+std::string greatest_speedup_id, least_speedup_id;
 
 void compare(std::string s, Func norm_nobound, Func part_nobound, 
              void (*check)(std::string, Image<uint8_t>, int), int k) {
@@ -235,7 +237,7 @@ void compare(std::string s, Func norm_nobound, Func part_nobound,
         }
         if (tpart_nobound > tnorm_nobound) nfail++;
     }
-    double time_norm, time_part;
+    double time_norm, time_part, speedup;
     time_norm = total_norm / tot_done_norm;
     time_part = total_part / tot_done_part;
     if (time_part < fastest_time) {
@@ -253,6 +255,15 @@ void compare(std::string s, Func norm_nobound, Func part_nobound,
     if (time_norm > slowest_time) {
         slowest_time = time_norm;
         slowest_id = s + " norm";
+    }
+    speedup = time_norm / time_part;
+    if (speedup > greatest_speedup) {
+        greatest_speedup = speedup;
+        greatest_speedup_id = s;
+    }
+    if (speedup < least_speedup) {
+        least_speedup = speedup;
+        least_speedup_id = s;
     }
     if (auto_test) {
         printf ("%20s: speed-up %.2f times   %.3f %.3f\n", s.c_str(), 
@@ -486,7 +497,9 @@ std::string test_idlist_all[] = { "_", "_b", "_v8", /* "_v8_m", */ "_b_v8", "_b_
 std::string one_id[] = { "_v8", "" };
 //# define IDLIST one_id    
 
-std::string auto_idlist[] = { "_v8", "_b_v8", "_p1", "_p4", "_p1_v8", "" };
+// For auto testing (in the test suite) just run with vectorized to 8 to ensure that loop splitting has
+// a speed-up benefit.
+std::string auto_idlist[] = { "_v8", "" };
 
 main (int argc, char **argv) {
     auto_test = argc < 2;
@@ -496,6 +509,8 @@ main (int argc, char **argv) {
     Var x("x"), y("y"), yi("yi");
     init(x,y) = cast(UInt(8), (x + y * 123) % 256);
     input = init.realize(WIDTH,HEIGHT);
+    Func finput("finput");
+    finput = input;
     
     Func init1d("init1d");
     init1d(x) = cast(UInt(8), (x * 23) % 256);
@@ -510,7 +525,8 @@ main (int argc, char **argv) {
     
     Halide::global_options.loop_split = true;
     Halide::global_options.loop_split_all = false; // Never have loop split as the default
-    std::cout << global_options;
+    if (! auto_test)
+        std::cout << global_options;
 
     const int max_diag = 9;
 
@@ -626,7 +642,7 @@ main (int argc, char **argv) {
             if (SPEED_WRAP || auto_test) {
                 std::ostringstream ss;
                 ss << "wrap_" << k;
-                Func b = Border::wrap(input);
+                Func b = Border::wrap(finput);
                 Expr e = b(x-k,y-k) + b(x+k,y+k);
                 test(ss.str(),idlist[j],e,k,WIDTH-1-k,k,HEIGHT-1-k, check_wrap, k);
             }
@@ -634,24 +650,27 @@ main (int argc, char **argv) {
             if (SPEED_CONSTANT || auto_test) {
                 std::ostringstream ss;
                 ss << "const_" << k;
-                Func b = Border::constant(1)(input);
+                Func b = Border::constant(1)(finput);
                 Expr e = b(x-k,y-k) + b(x+k,y+k);
                 test(ss.str(),idlist[j],e,k,WIDTH-1-k,k,HEIGHT-1-k, check_const, k);
             }
         }
     }
     
-    printf ("Slowest: %7.3f %s\n", slowest_time, slowest_id.c_str());
-    printf ("Fastest: %7.3f %s\n", fastest_time, fastest_id.c_str());
-
-#if 0
-    Func cons = Border::constant(0)(input);
-    Expr part_nobound = cons(x-1,y-1) + cons(x+1,y+1);
-    test("cons0", part_nobound,1,WIDTH-2,1,HEIGHT-2,undefined);
-    
-    Func blurx("blurx");
-    blurx(x,y) = input(clamp(x-1,0,WIDTH-1),y) + input(x,y) + input(clamp(x+1,0,WIDTH-1),y);
-    Expr blury = blurx(x,clamp(y-1,0,HEIGHT-1)) + blurx(x,y) + blurx(x,clamp(y+1,0,HEIGHT-1));
-    test("blur", blury,1,WIDTH-2,1,HEIGHT-2,blurx);
-#endif
+    if (auto_test) {
+        if (least_speedup < 0.5) {
+            printf ("SERIOUS PROBLEM! Loop split should be faster.\n");
+            return -1;
+        }
+        if (least_speedup < 1.0) {
+            printf ("WARNING! Loop split should be faster.\n");
+        } else {
+            printf ("Success!\n");
+        }
+        return 0;
+    } else {
+        printf ("Slowest: %7.3f %s\n", slowest_time, slowest_id.c_str());
+        printf ("Fastest: %7.3f %s\n", fastest_time, fastest_id.c_str());
+    }
+    return 0;
 }
