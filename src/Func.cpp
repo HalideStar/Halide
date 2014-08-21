@@ -15,7 +15,6 @@
 #include <iostream>
 #include <fstream>
 
-//LH
 #include "DomainInference.h"
 #include "Interval.h"
 #include "CodeLogger.h"
@@ -285,7 +284,7 @@ void ScheduleHandle::set_dim_type(Var var, For::ForType t) {
         }
     }
         
-    if (! found) // LH provide more information if cannot find dimensions
+    if (! found) // Provide more information if cannot find dimensions
     {
         Internal::log(0) << "Searched for " << var.name() << " in";
         for (size_t i = 0; (!found) && i < dims.size(); i++) {
@@ -324,7 +323,7 @@ ScheduleHandle &ScheduleHandle::split(Var old, Var outer, Var inner, Expr factor
             outer_name = old_name + "." + outer.name();
             dims[i].var = inner_name;
             //dims.push_back(dims[dims.size()-1]);
-            dims.push_back(Schedule::Dim()); //LH Push back an empty Dim object
+            dims.push_back(Schedule::Dim()); // Push back an empty Dim object
             for (size_t j = dims.size(); j > i+1; j--) {
                 dims[j-1] = dims[j-2];
             }
@@ -464,7 +463,7 @@ ScheduleHandle &ScheduleHandle::cuda_threads(Var tx) {
     rename(tx, Var("threadidx"));
     return *this;
 }
- 
+
 namespace {
 void record_loop_split(Internal::Schedule &schedule, Var var, LoopSplitInfo info) {
     bool found = false;
@@ -476,7 +475,7 @@ void record_loop_split(Internal::Schedule &schedule, Var var, LoopSplitInfo info
         }
     }
     
-    if (! found) // LH provide more information if cannot find dimensions
+    if (! found) // Provide more information if cannot find dimensions
     {
         Internal::log(0) << "Searched for " << var.name() << " in";
         for (size_t i = 0; (!found) && i < dims.size(); i++) {
@@ -498,7 +497,7 @@ ScheduleHandle &ScheduleHandle::loop_split(Var var, DomInterval interval) {
     record_loop_split(schedule, var, LoopSplitInfo(interval));
     return *this;
 }
-
+ 
 ScheduleHandle &ScheduleHandle::loop_split(bool auto_split) {
     schedule.loop_split_settings.auto_split = auto_split ? LoopSplitInfo::Yes : LoopSplitInfo::No;
     return *this;
@@ -751,7 +750,6 @@ Func &Func::cuda_tile(Var x, Var y, Var z, int x_size, int y_size, int z_size) {
 }
 
 
-// LH
 Func &Func::loop_split(Var x, DomInterval split) {
     ScheduleHandle(func.schedule()).loop_split(x, split);
     return *this;
@@ -785,7 +783,6 @@ Func &Func::loop_split_borders_all(bool split_borders) {
     update().loop_split_borders(split_borders);
     return *this;
 }
-
 
 
 Func &Func::reorder_storage(Var x, Var y) {
@@ -883,33 +880,28 @@ FuncRefVar::FuncRefVar(Internal::Function f, const vector<Var> &a) : func(f) {
     }
 }           
     
-//LH
 /** Get a handle to the valid domain for the purpose of modifying it */
 Domain &Func::set_domain(Domain::DomainType dt) {
     return func.set_domain(dt);
 }
-
-//LH
+ 
 /** Get a handle to the valid domain for the purpose of inspecting it */
 const Domain &Func::domain(Domain::DomainType dt) const {
     return func.domain(dt);
 }
 
-//LH
 /** Set the valid domain in a schedule format */
 Func &Func::domain(Domain::DomainType dt, Domain d) {
     func.set_domain(dt) = d;
     return *this;
 }
 
-//LH
 /** Set the valid domain to be the same as an existing Func in a schedule format */
 Func &Func::domain(Domain::DomainType dt, Func f) {
     func.set_domain(dt) = f.domain(dt);
     return *this;
 }
 
-//LH
 /** Methods to indicate that the current function is a local operator of other functions. */
 Func &Func::local(Func f1) {
     Internal::log(0) << name() << ".local(" << f1.name() << ")\n";
@@ -982,7 +974,7 @@ void FuncRefVar::operator=(Expr e) {
     code_logger.reset();
     code_logger.name(func.name());
     code_logger.section(100, "definition");
-    //code_logger.log() << func.name();
+    code_logger.log() << func.name();
     code_logger.log() << "(";
     if (a.size() > 0) code_logger.log() << a[0];
     for (size_t i = 1; i < a.size(); i++) code_logger.log() << ", " << a[i];
@@ -1013,7 +1005,7 @@ void FuncRefVar::operator/=(Expr e) {
 }
 
 FuncRefVar::operator Expr() const {
-    if (! func.value().defined()) { //LH
+    if (! func.value().defined()) {
         std::cerr << "Attempt to call undefined function " << func.name() << "\n";
         assert(func.value().defined() && "Can't call function with undefined value");
     }

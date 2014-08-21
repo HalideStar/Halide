@@ -927,7 +927,6 @@ Stmt lower(Function f) {
     code_logger.log(s, "simplify");
 
 # if LOWER_CLAMP == 240
-    //LH
     // Lowering Clamp here does not produce the same results as using the original clamp.
     code_logger.section(240);
     log(1) << "Lowering Clamp early\n";
@@ -956,7 +955,6 @@ Stmt lower(Function f) {
     code_logger.log(s, "bounds");
     
 # if LOWER_CLAMP == 290
-    //LH
     // Lowering Clamp here does not produce the same results as using the original clamp.
     code_logger.section(290);
     log(1) << "Lowering Clamp late\n";
@@ -1016,7 +1014,6 @@ Stmt lower(Function f) {
     s = do_loop_split(s, 460);
 
 # if LOWER_CLAMP == 490
-    //LH
     code_logger.section(490);
     log(1) << "Lowering Clamp at 490\n";
     s = lower_clamp(s);

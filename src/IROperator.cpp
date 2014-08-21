@@ -205,7 +205,7 @@ Expr make_const(Type t, int val) {
     return Cast::make(t, val);
 }
 
-Expr make_infinity(Type t, int count) { //LH
+Expr make_infinity(Type t, int count) {
     //if (t.is_vector()) {
     //    return Broadcast::make(make_infinity(t.element_of(), count), t.width);
     //}

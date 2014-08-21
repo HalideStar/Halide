@@ -4,7 +4,6 @@
 #include "Scope.h"
 #include <set>
 
-//LH
 #include "Log.h"
 
 namespace Halide {
@@ -102,12 +101,11 @@ void Function::define(const vector<string> &args, Expr value) {
     contents.ptr->args = args;
         
     for (size_t i = 0; i < args.size(); i++) {
-        Schedule::Dim d = {args[i], For::Serial, LoopSplitInfo()}; //LH
+        Schedule::Dim d = {args[i], For::Serial, LoopSplitInfo()};
         contents.ptr->schedule.dims.push_back(d);
         contents.ptr->schedule.storage_dims.push_back(args[i]);
     }        
 
-    //LH
     // Compute forward domain inference.
     log(2,"DI") << "Domain inference for " << name() << "\n";
     contents.ptr->domains = domain_inference(args, value);
@@ -183,18 +181,17 @@ void Function::define_reduction(const vector<Expr> &args, Expr value) {
 
     // First add the pure args in order
     for (size_t i = 0; i < pure_args.size(); i++) {
-        Schedule::Dim d = {pure_args[i], For::Serial, LoopSplitInfo()}; //LH
+        Schedule::Dim d = {pure_args[i], For::Serial, LoopSplitInfo()};
         contents.ptr->reduction_schedule.dims.push_back(d);
     }
 
     // Then add the reduction domain outside of that
     for (size_t i = 0; i < check.reduction_domain.domain().size(); i++) {
-        Schedule::Dim d = {check.reduction_domain.domain()[i].var, For::Serial, LoopSplitInfo()}; //LH
+        Schedule::Dim d = {check.reduction_domain.domain()[i].var, For::Serial, LoopSplitInfo()};
         contents.ptr->reduction_schedule.dims.push_back(d);
     }
 }
 
-//LH
 // Get the corresponding interval of all the domains
 const std::vector<DomInterval> Function::domain_intervals(int index) const {
     std::vector<DomInterval> intervals;
@@ -207,7 +204,6 @@ const std::vector<DomInterval> Function::domain_intervals(int index) const {
     return intervals;
 }
 
-//LH
 /** Get a handle to a domain for the purpose of modifying it */
 Domain &Function::set_domain(Domain::DomainType dt) {
     log(4,"DOMINF") << "Writing domain " << (int) dt << " in " << contents.ptr->name << "\n";
@@ -217,7 +213,6 @@ Domain &Function::set_domain(Domain::DomainType dt) {
     return contents.ptr->domains[dt];
 }
 
-//LH
 /** Get a handle to a domain for the purpose of inspecting it */
 const Domain &Function::domain(Domain::DomainType dt) const {
     log(4,"DOMINF") << "Reading domain " << (int) dt << " of " << contents.ptr->name << "\n";

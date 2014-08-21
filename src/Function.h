@@ -11,7 +11,6 @@
 #include <string>
 #include <vector>
 
-//LH
 #include "DomainInference.h"
 
 namespace Halide { 
@@ -24,7 +23,6 @@ struct FunctionContents {
     Expr value;
     Schedule schedule;
 
-    //LH
     // Forward domain inference and domain manipulation for border handling.
     // The valid domain is the domain over which this function is useful and meaningful.
     // For example, the valid domain of an edge detector would normally be the same as the input image
@@ -102,15 +100,12 @@ public:
         return contents.ptr->schedule;
     }   
     
-    //LH
     /** Get a handle to a domain for the purpose of modifying it */
     Domain &set_domain(Domain::DomainType dt);
 
-    //LH
     /** Get a handle to a domain for the purpose of inspecting it */
     const Domain &domain(Domain::DomainType dt) const;
     
-    //LH
     /** Get the corresponding interval of all the domains, for a particular index */
     const std::vector<DomInterval> domain_intervals(int index) const;
 

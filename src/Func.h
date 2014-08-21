@@ -17,7 +17,7 @@
 #include "JITCompiledModule.h"
 #include "Image.h"
 #include "Util.h"
-// LH
+
 #include "DomainInference.h"
 #include "Interval.h"
 
@@ -286,7 +286,7 @@ public:
     // @}
 
 
-    //LH
+
     /** Index-set split a loop by specifying bounds for the main loop.
      * Overrides automatic loop splitting (for the specified variable) if previously specified. 
      * Because of automatic type conversion, you can pass any type of IntRange
@@ -666,7 +666,6 @@ public:
                            int x_size, int y_size, int z_size);
     // @}
 
-    //LH
     /** Scheduling of loop splitting. */
     EXPORT Func &loop_split(Var var, DomInterval mainloop);
     EXPORT Func &loop_split(Var var, bool auto_split = true);
@@ -965,8 +964,7 @@ public:
         (*this)() = e;
     }
 
-    //LH
-    // Dont do this because it prevents using a vector of Func objects.
+    // This may prevent using a vector of Func objects.
     /** Define a function to simply call another function. Note that
      * this is not equivalent to the standard c++ operator=. We opt
      * instead for consistency with Halide function definition, of
@@ -975,19 +973,15 @@ public:
         (*this)() = f();
     }
 
-    //LH
     /** Get a handle to a specified domain for the purpose of modifying it */
     EXPORT Domain &set_domain(Domain::DomainType dt);
 
-    //LH
     /** Get a handle to the domain for the purpose of inspecting it */
     EXPORT const Domain &domain(Domain::DomainType dt) const;
     
-    //LH
     /** Set the domain in a schedule format */
     EXPORT Func &domain(Domain::DomainType dt, Domain d);
 
-    //LH
     /** Set the domain to be the same as an existing Func in a schedule format */
     EXPORT Func &domain(Domain::DomainType, Func f);
 
@@ -1000,35 +994,27 @@ public:
     // handling etc.
     Domain &set_valid() { return set_domain(Domain::Valid); }
 
-    //LH
     /** Get a handle to the valid domain for the purpose of inspecting it */
     EXPORT const Domain &valid() const { return domain(Domain::Valid); }
     
-    //LH
     /** Set the valid domain in a schedule format */
     Func &valid(Domain d) { return domain(Domain::Valid, d); }
 
-    //LH
     /** Set the valid domain to be the same as an existing Func in a schedule format */
     Func &valid(Func f) { return domain(Domain::Valid, f); }
 
-    //LH
     /** Get a handle to the computable domain for the purpose of modifying it */
     Domain &set_computable() { return set_domain(Domain::Computable); }
 
-    //LH
     /** Get a handle to the computable domain for the purpose of inspecting it */
     const Domain &computable() const { return domain(Domain::Computable); }
 
-    //LH
     /** Set the computable domain in a schedule format */
     Func &computable(Domain d) { return domain(Domain::Computable, d); }
 
-    //LH
     /** Set the computable domain to be the same as an existing Func in a schedule format */
     Func &computable(Func f) { return domain(Domain::Computable, f); }
 
-    //LH
     /** Methods to indicate that the current function is a local operation. */
     EXPORT Func &local(Func f1);
     EXPORT Func &local(Func f1, Func f2);
@@ -1037,7 +1023,6 @@ public:
     EXPORT Func &local(Func f1, Func f2, Func f3, Func f4, Func f5);
     EXPORT Func &local(Func f1, Func f2, Func f3, Func f4, Func f5, Func f6);
     
-    //LH
     /** Get the type of this Func node */
     Type type() const {
         return value().type();

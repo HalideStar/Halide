@@ -76,7 +76,7 @@ void mutate_binary_operator(IRMutator *mutator, const T *op, Expr *expr, Stmt *s
 
 void IRMutator::visit(const IntImm *op)   {expr = op;}
 void IRMutator::visit(const FloatImm *op) {expr = op;}
-void IRMutator::visit(const Variable *op) { /*std::cout << "Variable mutate\n";*/ expr = op;}
+void IRMutator::visit(const Variable *op) {expr = op;}
 
 void IRMutator::visit(const Cast *op) {
     Expr value = mutate(op->value);
@@ -230,7 +230,6 @@ void IRMutator::visit(const For *op) {
         body.same_as(op->body)) {
         stmt = op;
     } else {
-        //stmt = For::make(op->name, min, extent, op->for_type, body);
         stmt = For::make(op, min, extent, body);
     }
 }
@@ -303,23 +302,23 @@ void IRMutator::visit(const Solve *op) {
     Expr body = mutate(op->body);
     if (body.same_as(op->body)) expr = op;
     else expr = Solve::make(body, op->v);
-}
+} 
 
 void IRMutator::visit(const TargetVar *op) {
     Expr body = mutate(op->body);
     if (body.same_as(op->body)) expr = op;
     else expr = TargetVar::make(op, body);
-}
+} 
 
 void IRMutator::visit(const StmtTargetVar *op) {
     Stmt body = mutate(op->body);
     if (body.same_as(op->body)) stmt = op;
     else stmt = StmtTargetVar::make(op, body);
-}
+} 
 
 void IRMutator::visit(const Infinity *op) {
     expr = op;  // There are no children to mutate
-}
+} 
 
 // end namespace Internal
 }

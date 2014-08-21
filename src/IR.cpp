@@ -95,7 +95,7 @@ void assert_defined_same_type(std::string opname, Expr a, Expr b) {
     std::cerr << opname << "(" << a << ", " << b << ") has mismatched types " 
         << a.type() << " and " << b.type() << std::endl;
     assert(0 && "Mismatched types");
-}
+} 
 
 /** Ensure that two operands are of the same type if they are both defined */
 void assert_same_type(std::string opname, Expr a, Expr b) {
@@ -104,7 +104,7 @@ void assert_same_type(std::string opname, Expr a, Expr b) {
     std::cerr << opname << "(" << a << ", " << b << ") has mismatched types " 
         << a.type() << " and " << b.type() << std::endl;
     assert(0 && "Mismatched types");
-}
+}  
 
 // Loop Split information is defined if auto_split has been set or if
 // a loop split interval has been specified.  Since the interval is a DomInterval,
@@ -114,18 +114,16 @@ const bool LoopSplitInfo::defined() const {
     return auto_split != Undefined || 
            (interval.min.defined() && interval.max.defined() && 
             ! interval.min.as<Infinity>() && ! interval.max.as<Infinity>()); 
-}
+} 
 
 const bool LoopSplitInfo::interval_defined() const { 
     return (interval.min.defined() && interval.max.defined() && 
             ! interval.min.as<Infinity>() && ! interval.max.as<Infinity>()); 
-}
+}  
 
 const bool LoopSplitInfo::may_be_split() const { 
     return auto_split != No || interval_defined(); 
-}
-
-
+} 
 
 }
 }

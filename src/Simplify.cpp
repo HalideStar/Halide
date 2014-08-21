@@ -458,7 +458,7 @@ protected:
             // Broadcast + Broadcast
             expr = Broadcast::make(mutate(broadcast_a->value + broadcast_b->value),
                                  broadcast_a->width);
-        } else if (equal(a, b)) { //LH
+        } else if (equal(a, b)) {
             // Adding an expression to itself - multiply by 2 instead
             // (which ends up being a bit shift operation for efficiency)
             expr = mutate(a * 2);
@@ -468,7 +468,7 @@ protected:
             else expr = mutate((add_a->a + b) + add_a->b);
         } else if (add_b && is_simple_const(add_b->b)) {
             expr = mutate((a + add_b->a) + add_b->b);
-        } else if (sub_a && is_simple_const(sub_a->a)) { //LH
+        } else if (sub_a && is_simple_const(sub_a->a)) {
             // (kaa - ab) + kb --> (kaa + kb) - ab
             // (kaa - ab) + b --> kaa + (b - ab)
             if (is_simple_const(b)) expr = mutate((sub_a->a + b) - sub_a->b);
@@ -487,15 +487,15 @@ protected:
             expr = mutate(mul_a->b * (mul_a->a + mul_b->a));
         } else if (mul_a && mul_b && equal(mul_a->a, mul_b->b)) {
             expr = mutate(mul_a->a * (mul_a->b + mul_b->a));
-        } else if (mul_a && equal(mul_a->a, b) && ! is_const(b)) { //LH
+        } else if (mul_a && equal(mul_a->a, b) && ! is_const(b)) {
             expr = mutate(b * (mul_a->b + 1));
-        } else if (mul_a && equal(mul_a->b, b) && ! is_const(b)) { //LH
+        } else if (mul_a && equal(mul_a->b, b) && ! is_const(b)) {
             expr = mutate(b * (mul_a->a + 1));
-        } else if (mul_b && equal(mul_b->a, a) && ! is_const(a)) { //LH
+        } else if (mul_b && equal(mul_b->a, a) && ! is_const(a)) {
             expr = mutate(a * (mul_b->b + 1));
-        } else if (mul_b && equal(mul_b->b, a) && ! is_const(a)) { //LH
+        } else if (mul_b && equal(mul_b->b, a) && ! is_const(a)) {
             expr = mutate(a * (mul_b->a + 1));
-        } else if ((b.as<Max>() || b.as<Min>()) && ! (a.as<Max>() || a.as<Min>())) { //LH
+        } else if ((b.as<Max>() || b.as<Min>()) && ! (a.as<Max>() || a.as<Min>())) {
             // Push max/min to LHS of add to reduce cases elsewhere (especially in LT).
             expr = mutate(b + a);
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
@@ -538,7 +538,7 @@ protected:
             assert(0 && "Conflicting infinity"); // subtraction of conflicting infinities
         } else if (is_zero(b)) {
             expr = a;
-        } else if (is_zero(a) && sub_b) { //LH
+        } else if (is_zero(a) && sub_b) {
             // 0 - ba - bb --> bb - ba
             expr = mutate(sub_b->b - sub_b->a);
         } else if (equal(a, b)) {
@@ -589,7 +589,7 @@ protected:
             else expr = mutate((add_a->a - b) + add_a->b);
         } else if (add_b && is_simple_const(add_b->b)) {
             // ka - (ba + kbb) --> (ka - kbb) - ba
-            if (is_simple_const(a)) expr = mutate((a - add_b->b) - add_b->a); //LH
+            if (is_simple_const(a)) expr = mutate((a - add_b->b) - add_b->a);
             // a - (ba + kbb) --> (a - ba) - kbb
             else expr = mutate((a - add_b->a) - add_b->b);
         } else if (sub_a && is_simple_const(sub_a->a) && is_simple_const(b)) {
@@ -598,8 +598,8 @@ protected:
             // ka - (ba - kbb) --> (ka + kbb) - ba
             if (is_simple_const(a)) expr = mutate((a + sub_b->b) - sub_b->a);
             // a - (ba - kbb) --> (a - ba) + kbb
-            else expr = mutate((a - sub_b->a) + sub_b->b); //LH
-        } else if (sub_b && is_simple_const(sub_b->a)) { //LH
+            else expr = mutate((a - sub_b->a) + sub_b->b);
+        } else if (sub_b && is_simple_const(sub_b->a)) {
             // ka - (kba - bb) --> bb + (ka - kba)
             if (is_simple_const(a)) expr = mutate(sub_b->b + (a - sub_b->a));
             // a - (kba - bb) --> (a + bb) - kba
@@ -613,13 +613,13 @@ protected:
             expr = mutate(mul_a->b * (mul_a->a - mul_b->a));
         } else if (mul_a && mul_b && equal(mul_a->a, mul_b->b)) {
             expr = mutate(mul_a->a * (mul_a->b - mul_b->a));
-        } else if (mul_a && equal(mul_a->a, b) && ! is_const(b)) { //LH
+        } else if (mul_a && equal(mul_a->a, b) && ! is_const(b)) {
             expr = mutate(b * (mul_a->b - 1));
-        } else if (mul_a && equal(mul_a->b, b) && ! is_const(b)) { //LH
+        } else if (mul_a && equal(mul_a->b, b) && ! is_const(b)) {
             expr = mutate(b * (mul_a->a - 1));
-        } else if (mul_b && equal(mul_b->a, a) && ! is_const(a)) { //LH
+        } else if (mul_b && equal(mul_b->a, a) && ! is_const(a)) {
             expr = mutate(a * (1 - mul_b->b));
-        } else if (mul_b && equal(mul_b->b, a) && ! is_const(a)) { //LH
+        } else if (mul_b && equal(mul_b->b, a) && ! is_const(a)) {
             expr = mutate(a * (1 - mul_b->a));
         } else if (a.same_as(op->a) && b.same_as(op->b)) {
             expr = op;
@@ -871,7 +871,7 @@ protected:
     // Utility routine to compare ramp/broadcast with ramp/broadcast by comparing both ends.
     // Returns true if the comparison result is consistent.  Returns false if it is not.
     // When the result is false, if op is not null then it sets expr from a, b and op.
-    bool compare_lt(Expr a, Expr base_a, Expr stride_a, Expr b, Expr base_b, Expr stride_b, int width, const LT *op) { //LH
+    bool compare_lt(Expr a, Expr base_a, Expr stride_a, Expr b, Expr base_b, Expr stride_b, int width, const LT *op) {
         // Compare two ramps and/or broadcast nodes.
         Expr first_lt = simplify(base_a < base_b);
         Expr last_lt = simplify(base_a + stride_a * (width-1) < base_b + stride_b * (width - 1));
@@ -894,7 +894,7 @@ protected:
 
     // vector_min: If it can prove that one vector is the minimum, set the expression to that vector.
     // Otherwise, return result expression based on a, b and op.
-    bool vector_min(Expr a, Expr base_a, Expr stride_a, Expr b, Expr base_b, Expr stride_b, int width, const Min *op) { //LH
+    bool vector_min(Expr a, Expr base_a, Expr stride_a, Expr b, Expr base_b, Expr stride_b, int width, const Min *op) {
         // Try to find if a <= b; i.e. if (b<a) is false.
         bool a_lt_b = compare_lt(a, base_a, stride_a, b, base_b, stride_b, width, 0);
         if (a_lt_b && is_zero(expr)) {
@@ -918,7 +918,7 @@ protected:
         return false;
     }
 
-    bool vector_max(Expr a, Expr base_a, Expr stride_a, Expr b, Expr base_b, Expr stride_b, int width, const Max *op) { //LH
+    bool vector_max(Expr a, Expr base_a, Expr stride_a, Expr b, Expr base_b, Expr stride_b, int width, const Max *op) {
         // Try to find if a <= b; i.e. if (b<a) is false.
         bool a_lt_b = compare_lt(a, base_a, stride_a, b, base_b, stride_b, width, 0);
         if (a_lt_b && is_zero(expr)) {
@@ -1006,12 +1006,12 @@ protected:
             expr = b;
         } else if (broadcast_a && broadcast_b) {
             expr = mutate(Broadcast::make(Min::make(broadcast_a->value, broadcast_b->value), broadcast_a->width));
-        } else if (broadcast_a && ramp_b) { //LH
+        } else if (broadcast_a && ramp_b) {
             // Simplify the minimum if possible
             vector_min(a, broadcast_a->value, 0, b, ramp_b->base, ramp_b->stride, ramp_b->width, op);
-        } else if (ramp_a && broadcast_b) { //LH
+        } else if (ramp_a && broadcast_b) {
             vector_min(a, ramp_a->base, ramp_a->stride, b, broadcast_b->value, 0, ramp_a->width, op);
-        } else if (ramp_a && ramp_b) { //LH
+        } else if (ramp_a && ramp_b) {
             vector_min(a, ramp_a->base, ramp_a->stride, b, ramp_b->base, ramp_b->stride, ramp_b->width, op);
         } else if (add_a && const_int(add_a->b, &ia) && 
                    add_b && const_int(add_b->b, &ib) && 
@@ -1038,13 +1038,13 @@ protected:
             }
 
         } else if (global_options.simplify_lift_constant_min_max && 
-            add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) { //LH
+            add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) {
             // min(e + k1, k2) -->  min(e, k2 -k1) + k1
             // Overflow invalidates this rule.
             // vectorize.loopsplit
             expr = mutate(Add::make(Min::make(add_a->a, ib - ia), ia));
         } else if (global_options.simplify_lift_constant_min_max && 
-            add_a && add_b && const_int(add_a->b, &ia) && const_int(add_b->b, &ib)) { //LH
+            add_a && add_b && const_int(add_a->b, &ia) && const_int(add_b->b, &ib)) {
             // min(e1 + k1, e2 + k2) -->  min(e1 + (k1 - k2), e2) + k2
             // Rule is only applied to Int(32) constants because overflow would invalidate it.
             // vectorize.loopsplit
@@ -1058,7 +1058,7 @@ protected:
         } else if (min_a && is_simple_const(min_a->b) && is_simple_const(b)) {
             // min(min(x, 4), 5) -> min(x, 4)
             expr = Min::make(min_a->a, mutate(Min::make(min_a->b, b)));
-        } else if (sub_a && sub_b && const_int(sub_a->a, &ia) && const_int(sub_b->a, &ib)) { //LH
+        } else if (sub_a && sub_b && const_int(sub_a->a, &ia) && const_int(sub_b->a, &ib)) {
             // vectorize.loopsplit
             // min(k1 - e1, k2 - e2) --> k2 + min((k1 - k2) - e1, 0 - e2)
             //                       --> k2 - max(e1 - (k1 - k2), e2)
@@ -1070,12 +1070,12 @@ protected:
             } else {
                 expr = mutate(Sub::make(ib, Max::make(sub_a->b + (ib - ia), sub_b->b)));
             }
-        } else if (sub_a && sub_b && equal(sub_a->b, sub_b->b)) { //LH
+        } else if (sub_a && sub_b && equal(sub_a->b, sub_b->b)) {
             // vectorize.loopsplit
             // min(e1 - e, e2 - e) --> min(e1, e2) - e
             // Overflow invalidates this rule.
             expr = mutate(Sub::make(Min::make(sub_a->a, sub_b->a), sub_b->b));
-        } else if (div_a && div_b && const_int(div_a->b, &ia) && const_int(div_b->b, &ib) && ia == ib) { //LH
+        } else if (div_a && div_b && const_int(div_a->b, &ia) && const_int(div_b->b, &ib) && ia == ib) {
             // vectorize.loopsplit
             // min(e1 / k, e2 / k) --> if (k > 0): min(e1,e2) / k
             //                         if (k < 0): max(e1,e2) / k
@@ -1086,7 +1086,7 @@ protected:
                 expr = mutate(Div::make(Max::make(div_a->a, div_b->a), ia));
             }
 # if 1
-        } else if (clamp_expr_int(a, &e1, &k1, &k2) && const_int(b, &k3) && k1 < k2) { //LH
+        } else if (clamp_expr_int(a, &e1, &k1, &k2) && const_int(b, &k3) && k1 < k2) {
             // simplify bounds checks
             // min(clamp(x, k1, k2), k3)
 			// Expression arises from nested clamp expressions due to inlining
@@ -1095,16 +1095,16 @@ protected:
             // Case k1 >= k3: min(clamp(x, k1, k2), k3) --> k3.  This is a special case of the max_a rule below.
 			if (k1 >= k3) expr = b;
             else expr = clamp(e1, k1, std::min(k2, k3));   
-        } else if (clamp_expr_int(a, &e1, &k1, &k2) && clamp_expr_int(b, &e2, &k3, &k4) && k1 == k3 && k2 == k4) { //LH
+        } else if (clamp_expr_int(a, &e1, &k1, &k2) && clamp_expr_int(b, &e2, &k3, &k4) && k1 == k3 && k2 == k4) {
             // simplify bounds checks
             // min(clamp(e1, k1, k2), clamp(e2, k1, k2)) ==> clamp(min(e1, e2), k1, k2)
             expr = mutate(clamp(Min::make(e1, e2), k1, k2));
-        } else if (add_a && clamp_expr_int(add_a->a, &e1, &k1, &k2) && clamp_expr_int(b, &e2, &k3, &k4) && const_int(add_a->b, &ia) && k1 == k3 - ia && k2 == k4 - ia) { //LH
+        } else if (add_a && clamp_expr_int(add_a->a, &e1, &k1, &k2) && clamp_expr_int(b, &e2, &k3, &k4) && const_int(add_a->b, &ia) && k1 == k3 - ia && k2 == k4 - ia) {
             // simplify bounds checks
             // min(clamp(e1, k3-ia, k4-ia) + ia, clamp(e2, k3, k4)) ==> clamp(min(e1+ia, e2), k3, k4)
             // Same rule as above, but applied after constant addition has been lifted out of clamp.
             expr = mutate(clamp(min(e1 + ia, e2), k3, k4));
-        } else if (add_b && clamp_expr_int(add_b->a, &e1, &k1, &k2) && clamp_expr_int(a, &e2, &k3, &k4) && const_int(add_b->b, &ia) && k1 == k3 - ia && k2 == k4 - ia) { //LH
+        } else if (add_b && clamp_expr_int(add_b->a, &e1, &k1, &k2) && clamp_expr_int(a, &e2, &k3, &k4) && const_int(add_b->b, &ia) && k1 == k3 - ia && k2 == k4 - ia) {
             // simplify bounds checks
             // min(clamp(e2, k3, k4), clamp(e1, k3-ia, k4-ia) + ia) ==> clamp(min(e1+ia, e2), k3, k4)
             // Same rule as above, but in reverse
@@ -1125,7 +1125,7 @@ protected:
         } else if (min_a_a_a_a && equal(min_a_a_a_a->b, b)) {
             // min(min(min(min(min(x, y), z), w), l), y) -> min(min(min(min(x, y), z), w), l)
             expr = a;            
-        } else if (max_a && const_int(max_a->b, &k1) && const_int(b, &k2) && k1 >= k2) { //LH
+        } else if (max_a && const_int(max_a->b, &k1) && const_int(b, &k2) && k1 >= k2) {
 			// min(max(x, k1), k2) -> k2 when k1 >= k2
 			expr = b;
 # if 0
@@ -1133,7 +1133,7 @@ protected:
 		} else if (global_options.simplify_nested_clamp && 
 				   clamp_upper_a && const_int(b, &k3) && const_int(clamp_lower_a->b, &k2) && 
                    const_int(clamp_upper_a->b, &k1) &&
-			       k1 >= k2 && k3 >= k2) { //LH
+			       k1 >= k2 && k3 >= k2) {
             // min(max(min(x, k1), k2), k3)
 			// Expression arises from nested clamp expressions due to inlining
 			// k1 <= k2 --> min(k2, k3) to be simplified further.  Max rule should capture that.
@@ -1213,12 +1213,12 @@ protected:
             expr = b;
         } else if (broadcast_a && broadcast_b) {
             expr = mutate(Broadcast::make(Max::make(broadcast_a->value, broadcast_b->value), broadcast_a->width));
-        } else if (broadcast_a && ramp_b) { //LH
+        } else if (broadcast_a && ramp_b) {
             // Simplify the maximum if possible
             vector_max(a, broadcast_a->value, 0, b, ramp_b->base, ramp_b->stride, ramp_b->width, op);
-        } else if (ramp_a && broadcast_b) { //LH
+        } else if (ramp_a && broadcast_b) {
             vector_max(a, ramp_a->base, ramp_a->stride, b, broadcast_b->value, 0, ramp_a->width, op);
-        } else if (ramp_a && ramp_b) { //LH
+        } else if (ramp_a && ramp_b) {
             vector_max(a, ramp_a->base, ramp_a->stride, b, ramp_b->base, ramp_b->stride, ramp_b->width, op);
         } else if (add_a && const_int(add_a->b, &ia) && add_b && const_int(add_b->b, &ib) && equal(add_a->a, add_b->a)) {
             // max(x + 3, x - 2) -> x - 2
@@ -1243,13 +1243,13 @@ protected:
             }
 
         } else if (global_options.simplify_lift_constant_min_max && 
-            add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) { //LH
+            add_a && const_int(add_a->b, &ia) && const_int(b, &ib)) {
             // vectorize.loopsplit
             // max(e + k1, k2) -->  max(e, k2 -k1) + k1
             // Overflow invalidates this rule.
             expr = mutate(Add::make(Max::make(add_a->a, ib - ia), ia));
         } else if (global_options.simplify_lift_constant_min_max && 
-            add_a && add_b && const_int(add_a->b, &ia) && const_int(add_b->b, &ib)) { //LH
+            add_a && add_b && const_int(add_a->b, &ia) && const_int(add_b->b, &ib)) {
             // vectorize.loopsplit
             // max(e1 + k1, e2 + k2) -->  max(e1 + (k1 - k2), e2) + k2
             // Overflow invalidates this rule (and many of the rules above).
@@ -1264,7 +1264,7 @@ protected:
         } else if (max_a && is_simple_const(max_a->b) && is_simple_const(b)) {
             // max(max(x, 4), 5) -> max(x, 5)
             expr = Max::make(max_a->a, mutate(Max::make(max_a->b, b)));
-        } else if (sub_a && sub_b && const_int(sub_a->a, &ia) && const_int(sub_b->a, &ib)) { //LH
+        } else if (sub_a && sub_b && const_int(sub_a->a, &ia) && const_int(sub_b->a, &ib)) {
             // vectorize.loopsplit
             // max(k1 - e1, k2 - e2) --> k2 + max((k1 - k2) - e1, 0 - e2)
             //                       --> k2 - min(e1 - (k1 - k2), e2)
@@ -1276,12 +1276,12 @@ protected:
             } else {
                 expr = mutate(Sub::make(ib, Min::make(sub_a->b + (ib - ia), sub_b->b)));
             }
-        } else if (sub_a && sub_b && equal(sub_a->b, sub_b->b)) { //LH
+        } else if (sub_a && sub_b && equal(sub_a->b, sub_b->b)) {
             // vectorize.loopsplit
             // max(e1 - e, e2 - e) --> max(e1, e2) - e
             // Overflow invalidates this rule.
             expr = mutate(Sub::make(Max::make(sub_a->a, sub_b->a), sub_b->b));
-        } else if (div_a && div_b && const_int(div_a->b, &ia) && const_int(div_b->b, &ib) && ia == ib) { //LH
+        } else if (div_a && div_b && const_int(div_a->b, &ia) && const_int(div_b->b, &ib) && ia == ib) {
             // vectorize.loopsplit
             // max(e1 / k, e2 / k) --> if (k > 0): max(e1,e2) / k
             //                         if (k < 0): min(e1,e2) / k
@@ -1291,7 +1291,7 @@ protected:
             } else {
                 expr = mutate(Div::make(Min::make(div_a->a, div_b->a), ia));
             }
-        } else if (clamp_expr_int(a, &e1, &k1, &k2) && const_int(b, &k3) && k1 < k2) { //LH
+        } else if (clamp_expr_int(a, &e1, &k1, &k2) && const_int(b, &k3) && k1 < k2) {
             // simplify nested clamp expressions
             // max(clamp(x, k1, k2), k3)
 			// Expression arises from nested clamp expressions due to inlining
@@ -1301,17 +1301,17 @@ protected:
             // Otherwise: max(clamp(x, k1, k2), k3) --> clamp(x, max(k1, k3), k2)
 			if (k3 >= k2) expr = b;
             else expr = clamp(e1, std::max(k1, k3), k2);
-        } else if (clamp_expr_int(a, &e1, &k1, &k2) && clamp_expr_int(b, &e2, &k3, &k4) && k1 == k3 && k2 == k4) { //LH
+        } else if (clamp_expr_int(a, &e1, &k1, &k2) && clamp_expr_int(b, &e2, &k3, &k4) && k1 == k3 && k2 == k4) {
             // simplify bounds checks
             // max(clamp(e1, k1, k2), clamp(e2, k1, k2)) ==> clamp(max(e1, e2), k1, k2)
             //expr = mutate(clamp(Expr(Max::make(e1, e2)), k1, k2));
             expr = mutate(Max::make(Min::make(Max::make(e1, e2), k2), k1));
-        } else if (add_a && clamp_expr_int(add_a->a, &e1, &k1, &k2) && clamp_expr_int(b, &e2, &k3, &k4) && const_int(add_a->b, &ia) && k1 == k3 - ia && k2 == k4 - ia) { //LH
+        } else if (add_a && clamp_expr_int(add_a->a, &e1, &k1, &k2) && clamp_expr_int(b, &e2, &k3, &k4) && const_int(add_a->b, &ia) && k1 == k3 - ia && k2 == k4 - ia) {
             // simplify bounds checks
             // max(clamp(e1, k3-ia, k4-ia) + ia, clamp(e2, k3, k4)) ==> clamp(max(e1+ia, e2), k3, k4)
             // Same rule as above, but applied after lifting of a constant out of the enclosed expression
             expr = mutate(clamp(max(e1 + ia, e2), k3, k4));
-        } else if (add_b && clamp_expr_int(add_b->a, &e1, &k1, &k2) && clamp_expr_int(a, &e2, &k3, &k4) && const_int(add_b->b, &ia) && k1 == k3 - ia && k2 == k4 - ia) { //LH
+        } else if (add_b && clamp_expr_int(add_b->a, &e1, &k1, &k2) && clamp_expr_int(a, &e2, &k3, &k4) && const_int(add_b->b, &ia) && k1 == k3 - ia && k2 == k4 - ia) {
             // simplify bounds checks
             // max(clamp(e2, k3, k4), clamp(e1, k3-ia, k4-ia) + ia) ==> clamp(max(e1+ia, e2), k3, k4)
             // Same rule as above, but applied in reverse
@@ -1340,7 +1340,7 @@ protected:
         } else if (max_a_a_a_a && equal(max_a_a_a_a->b, b)) {
             // max(max(max(max(max(x, y), z), w), l), y) -> max(max(max(max(x, y), z), w), l)
             expr = a;            
-        } else if (min_a && const_int(min_a->b, &k1) && const_int(b, &k2) && k2 >= k1) { //LH
+        } else if (min_a && const_int(min_a->b, &k1) && const_int(b, &k2) && k2 >= k1) {
             // degenerate clamp expression
 			// max(min(x, k1), k2) -> k2 when k1 <= k2
 			expr = b;
@@ -1349,7 +1349,7 @@ protected:
 		} else if (global_options.simplify_nested_clamp && 
 				   max_a_min_a && const_int(b, &ib) && const_int(min_a->b, &ib2) && 
                    const_int(max_a_min_a->b, &ib3) &&
-			       ib < ib2 && ib2 > ib3) { //LH
+			       ib < ib2 && ib2 > ib3) {
             // max(min(max(x, k1), k2), k3)
 			// Expression arises from nested clamp expressions due to inlining
 			// k1 >= k2 --> max(k2, k3) to be simplified further.  Min rule should capture that.
@@ -1524,23 +1524,23 @@ protected:
             // Ramps with matching stride
             Expr bases_lt = (ramp_a->base < ramp_b->base);
             expr = mutate(Broadcast::make(bases_lt, ramp_a->width));
-        } else if (ramp_a && broadcast_b) { //LH
+        } else if (ramp_a && broadcast_b) {
             compare_lt(a, ramp_a->base, ramp_a->stride, b, broadcast_b->value, 0, ramp_a->width, op);
-        } else if (broadcast_a && ramp_b) { //LH
+        } else if (broadcast_a && ramp_b) {
             compare_lt(a, broadcast_a->value, 0, b, ramp_b->base, ramp_b->stride, ramp_b->width, op);
-        } else if (ramp_a && ramp_b) { //LH
+        } else if (ramp_a && ramp_b) {
             compare_lt(a, ramp_a->base, ramp_a->stride, b, ramp_b->base, ramp_b->stride, ramp_b->width, op);
-        } else if (is_const(a) && add_b && is_const(add_b->b)) { //LH
+        } else if (is_const(a) && add_b && is_const(add_b->b)) {
             // Constant on LHS and add with constant on RHS
             expr = mutate(a - add_b->b < add_b->a);
-        } else if (is_const(a) && sub_b && is_const(sub_b->b)) { //LH
+        } else if (is_const(a) && sub_b && is_const(sub_b->b)) {
             // Constant on LHS and subtract constant on RHS
             expr = mutate(a + sub_b->b < sub_b->a);
-        } else if (is_const(a) && sub_b && is_const(sub_b->a)) { //LH
+        } else if (is_const(a) && sub_b && is_const(sub_b->a)) {
             // Constant on LHS and subtract from constant on RHS
             expr = mutate(sub_b->b < sub_b->a - a);
 
-        } else if (min_b && const_int(a, &ia) && min_div_expr(b, &e1, &k1, &kd) && k1 <= ia) { //LH
+        } else if (min_b && const_int(a, &ia) && min_div_expr(b, &e1, &k1, &kd) && k1 <= ia) {
             // ************ Shortcut rules *****************
             // specialised rule to simplify clamp in vectorised ISS loop
             // ia < Min((k1 - e1) / kd, ...) * kd + e1  can be DISPROVED as follows.
@@ -1549,35 +1549,35 @@ protected:
             //     ia >= k1   implies  ia < Min(...) is false
             // Otherwise, it is undecided.
             expr = const_false(op->type.width);
-        } else if (min_a && const_int(b, &ib) && min_div_expr(a, &e1, &k1, &kd) && k1 < ib) { //LH
+        } else if (min_a && const_int(b, &ib) && min_div_expr(a, &e1, &k1, &kd) && k1 < ib) {
             // specialised rule to simplify clamp in vectorised ISS loop
             // Min((k1 - e1) / kd, ...) * kd + e1  <  ib  can be PROVED as follows.
             //    (k1-e1) / kd * kd + e1 < ib   (Min(x,y) <= x)
             //    k1-e1 + e1 < ib               (x / kd * kd <= x)
             //    k1 < ib
             expr = const_true(op->type.width);
-        } else if (min_a && sub_b && const_int(sub_b->a, &ib) && min_div_mul_expr(a, &e1, &k1, &kd) && equal(sub_b->b, e1) && k1 < ib) { //LH
+        } else if (min_a && sub_b && const_int(sub_b->a, &ib) && min_div_mul_expr(a, &e1, &k1, &kd) && equal(sub_b->b, e1) && k1 < ib) {
             // specialised rule to simplify select in vectorised ISS loop
             // Min((k1 - e1) / kd, ...) * kd  <  ib - e1  can be PROVED as follows.
             //    (k1-e1) / kd * kd + e1 < ib   (Min(x,y) <= x)
             //    k1-e1 + e1 < ib               (x / kd * kd <= x)
             //    k1 < ib
             expr = const_true(op->type.width);
-        } else if (max_a && const_int(b, &ib) && max_div_expr(a, &e1, &k1, &kd) && k1 - (kd - 1) >= ib) { //LH
+        } else if (max_a && const_int(b, &ib) && max_div_expr(a, &e1, &k1, &kd) && k1 - (kd - 1) >= ib) {
             // Max((k1-e1)/kd,...)*kd + e1 < ib  can be DISPROVED.
             // Max((k1-e1)/kd,...)*kd + e1 >= ib
             //    (k1-e1)/kd*kd + e1 >= ib     (Max(x,y) >= x)
             //    (k1-e1-(kd-1)) + e1 >= ib      (x / kd * kd >= x - (kd-1): floor division rule)
             //    k1 - (kd - 1) >= ib
             expr = const_false(op->type.width);
-        } else if (max_a && sub_b && const_int(sub_b->a, &ib) && max_div_mul_expr(a, &e1, &k1, &kd) && equal(sub_b->b, e1) && k1 - (kd - 1) >= ib) { //LH
+        } else if (max_a && sub_b && const_int(sub_b->a, &ib) && max_div_mul_expr(a, &e1, &k1, &kd) && equal(sub_b->b, e1) && k1 - (kd - 1) >= ib) {
             // Max((k1-e1)/kd,...)*kd < ib - e1  can be DISPROVED.
             // Max((k1-e1)/kd,...)*kd + e1 >= ib
             //    (k1-e1)/kd*kd + e1 >= ib     (Max(x,y) >= x)
             //    (k1-e1-(kd-1)) + e1 >= ib      (x / kd * kd >= x - (kd-1): floor division rule)
             //    k1 - (kd - 1) >= ib
             expr = const_false(op->type.width);
-        } else if (max_b && const_int(a, &ia) && max_div_expr(b, &e1, &k1, &kd) && k1 - (kd - 1) > ia) { //LH
+        } else if (max_b && const_int(a, &ia) && max_div_expr(b, &e1, &k1, &kd) && k1 - (kd - 1) > ia) {
             // ia < Max((k1-e1)/kd,...)*kd + e1  can be PROVED
             //    ia < (k1-e1)/kd*kd + e1      (Max(x,y) >= x)
             //    ia < (k1-e1-(kd-1)) + e1     (x / kd * kd >= x - (kd-1))
@@ -1585,7 +1585,7 @@ protected:
             expr = const_true(op->type.width);
             // ************* End of shortcut rules ****************
 
-        } else if (max_mul_a && is_positive_const(mul_a->b) && (proved_either(max_mul_a->a * mul_a->b >= b, max_mul_a->b * mul_a->b >= b, disproved) || disproved)) { // LH
+        } else if (max_mul_a && is_positive_const(mul_a->b) && (proved_either(max_mul_a->a * mul_a->b >= b, max_mul_a->b * mul_a->b >= b, disproved) || disproved)) {
             // specialised rule for expressions that arise in vectorised loops.
             // max(e1, e2) * k < e3  for k > 0
             // Proof positive:
@@ -1594,7 +1594,7 @@ protected:
             //    prove that e1 * k >= e3 or that e2 * k >= e3
             if (disproved) expr = const_true(op->type.width); // Proof positive
             else expr = const_false(op->type.width); // Proof negative
-        } else if (max_mul_b && is_positive_const(mul_b->b) && (proved_either(a < max_mul_b->a * mul_b->b, a < max_mul_b->b * mul_b->b, disproved) || disproved)) { // LH
+        } else if (max_mul_b && is_positive_const(mul_b->b) && (proved_either(a < max_mul_b->a * mul_b->b, a < max_mul_b->b * mul_b->b, disproved) || disproved)) {
             // specialised rule for expressions that arise in vectorised loops.
             // e3 < max(e1, e2) * k  for k > 0
             // Proof positive:
@@ -1603,7 +1603,7 @@ protected:
             //    prove that e3 >= e1 * k  and that  e3 >= e2 * k
             if (disproved) expr = const_false(op->type.width); // Proof negative
             else expr = const_true(op->type.width); // Proof positive
-        } else if (min_mul_a && is_positive_const(mul_a->b) && (proved_either(min_mul_a->a * mul_a->b < b, min_mul_a->b * mul_a->b < b, disproved) || disproved)) { // LH
+        } else if (min_mul_a && is_positive_const(mul_a->b) && (proved_either(min_mul_a->a * mul_a->b < b, min_mul_a->b * mul_a->b < b, disproved) || disproved)) {
             // specialised rule for expressions that arise in vectorised loops.
             // min(e1, e2) * k < e3  for k > 0
             // Proof positive:
@@ -1612,7 +1612,7 @@ protected:
             //    prove that e1 * k >= e3 and that e2 * k >= e3
             if (disproved) expr = const_false(op->type.width); // Proof negative
             else expr = const_true(op->type.width); // Proof positive
-        } else if (min_mul_b && is_positive_const(mul_b->b) && (proved_either(a >= min_mul_b->a * mul_b->b, a >= min_mul_b->b * mul_b->b, disproved) || disproved)) { // LH
+        } else if (min_mul_b && is_positive_const(mul_b->b) && (proved_either(a >= min_mul_b->a * mul_b->b, a >= min_mul_b->b * mul_b->b, disproved) || disproved)) {
             // specialised rule for expressions that arise in vectorised loops.
             // e3 < min(e1, e2) * k  for k > 0
             // Proof positive:
@@ -1621,7 +1621,7 @@ protected:
             //    prove that e3 >= e1 * k or that e3 >= e2 * k >= e3
             if (disproved) expr = const_true(op->type.width); // Proof positive
             else expr = const_false(op->type.width); // Proof negative
-        } else if (mul_a && div_mul_expr(a, &e1, &k1, &kd) && sub_b && const_int(sub_b->a, &k2) && equal(sub_b->b, e1) && (k1 < k2 || k1 >= k2 + kd - 1)) { //LH
+        } else if (mul_a && div_mul_expr(a, &e1, &k1, &kd) && sub_b && const_int(sub_b->a, &k2) && equal(sub_b->b, e1) && (k1 < k2 || k1 >= k2 + kd - 1)) {
             // specialised rule to simplify expressions that arise in vectorised loops.
             // (k1 - e1) / kd * kd < (k2 - e1)
             // Proof positive:
@@ -1637,7 +1637,7 @@ protected:
             if (k1 < k2) expr = const_true(op->type.width);
             else expr = const_false(op->type.width);
             code_logger.log() << "        Result " << expr << "\n";
-        } else if (mul_b && div_mul_expr(b, &e1, &k1, &kd) && sub_a && const_int(sub_a->a, &k2) && equal(sub_a->b, e1) && (k2 + kd - 1 < k1 || k2 >= k1)) { //LH
+        } else if (mul_b && div_mul_expr(b, &e1, &k1, &kd) && sub_a && const_int(sub_a->a, &k2) && equal(sub_a->b, e1) && (k2 + kd - 1 < k1 || k2 >= k1)) {
             // specialised rule to simplify expressions that arise in vectorised loops.
             // (k2 - e1) < (k1 - e1) / kd * kd
             // Proof positive:
@@ -1666,17 +1666,17 @@ protected:
             expr = mutate(sub_a->b < sub_b->b);
         } else if (sub_a && sub_b && equal(sub_a->b, sub_b->b)) {
             expr = mutate(sub_a->a < sub_b->a);
-        } else if (add_b && !(min_a || max_a || mul_a) && (add_b->a.as<Mul>() || add_b->a.as<Min>() || add_b->a.as<Max>())) { //LH
+        } else if (add_b && !(min_a || max_a || mul_a) && (add_b->a.as<Mul>() || add_b->a.as<Min>() || add_b->a.as<Max>())) {
             // Push the add to the other side to expose the min/max/mul
             expr = mutate(a - add_b->b < add_b->a);
-        } else if (sub_b && !(min_a || max_a || mul_a) && (sub_b->a.as<Mul>() || sub_b->a.as<Min>() || sub_b->a.as<Max>())) { //LH
+        } else if (sub_b && !(min_a || max_a || mul_a) && (sub_b->a.as<Mul>() || sub_b->a.as<Min>() || sub_b->a.as<Max>())) {
             // Push the subtract to the other side to expose the min/max/mul
             expr = mutate(a + sub_b->b < sub_b->a);
-        } else if (sub_b && !(min_a || max_a || mul_a) && (sub_b->b.as<Mul>() || sub_b->b.as<Min>() || sub_b->b.as<Max>())) { //LH
+        } else if (sub_b && !(min_a || max_a || mul_a) && (sub_b->b.as<Mul>() || sub_b->b.as<Min>() || sub_b->b.as<Max>())) {
             // Push the min/max/mul to the other side to expose it
             expr = mutate(sub_b->b < sub_b->a - a);
         } else if (sub_div_int(a, &e1, &k1, &kd) && sub_div_int(b, &e2, &k2, &kd2) && kd == kd2 &&
-            equal(e1, e2) && (k1 >= k2 || k1 < k2 - (kd-1))) { //LH
+            equal(e1, e2) && (k1 >= k2 || k1 < k2 - (kd-1))) {
             // ***********************************************************************
             // Allow comparison of index split points in vectorised code
             // (k1 - e) / kd < (k2 - e) / kd.  
@@ -1684,11 +1684,11 @@ protected:
             // True if k1 < (k2 - (kd-1)).
             if (k1 >= k2) expr = const_false(op->type.width);
             else expr = const_true(op->type.width);
-        } else if (add_a && ! min_b && ! max_b && ! mul_b) { //LH
+        } else if (add_a && ! min_b && ! max_b && ! mul_b) {
             // Rearrange so that all adds and subs are on the rhs to cut down on further cases
             // Exception: min/max/mul on RHS keeps the add/sub away
             expr = mutate(add_a->a < (b - add_a->b));
-        } else if (sub_a && ! min_b && ! max_b && ! mul_b) { //LH
+        } else if (sub_a && ! min_b && ! max_b && ! mul_b) {
             expr = mutate(sub_a->a < (b + sub_a->b));
         } else if (add_b && equal(add_b->a, a)) {
             // Subtract a term from both sides
@@ -1703,7 +1703,7 @@ protected:
                    equal(mul_a->b, mul_b->b)) {
             // Divide both sides by a constant
             expr = mutate(mul_a->a < mul_b->a);
-        } else if (mul_a && const_castint(b, &ib) && const_castint(mul_a->b, &ia)) { //LH
+        } else if (mul_a && const_castint(b, &ib) && const_castint(mul_a->b, &ia)) {
             // e * ia < ib  -->  a < (ib / ia) with variants.
             // ia == 0 is not possible - it would already be simplified.
             if (ia > 0) {
@@ -1715,24 +1715,24 @@ protected:
             } else {
                 expr = op; // Impossible
             }
-        } else if (min_a && (proved_either(min_a->b < b, min_a->a < b, disproved) || disproved)) { //LH
+        } else if (min_a && (proved_either(min_a->b < b, min_a->a < b, disproved) || disproved)) {
             // Prove min(x,y) < b by proving x < b or y < b
             // Prove min(x,y) >= b by proving x >= b and y >= b  i.e. disprove both of the above.
             // Because constants are pushed to RHS, it is more likely that min_a->b < b
             // can be resolved quickly
             if (!disproved) expr = const_true(op->type.width);
             else expr = const_false(op->type.width);
-        } else if (min_b && (proved_either(a >= min_b->b, a >= min_b->a, disproved) || disproved)) { //LH
+        } else if (min_b && (proved_either(a >= min_b->b, a >= min_b->a, disproved) || disproved)) {
             // Prove a >= min(x,y) by proving a >= x or a >= y
             // Prove a < min(x,y) by proving a < x and a < y
             if (!disproved) expr = const_false(op->type.width);
             else expr = const_true(op->type.width);
-        } else if (max_a && (proved_either(max_a->b >= b, max_a->a >= b, disproved) || disproved)) { //LH
+        } else if (max_a && (proved_either(max_a->b >= b, max_a->a >= b, disproved) || disproved)) {
             // Prove that max(x,y) >= b by proving x >= b or y >= b
             // Prove that max(x,y) < b by proving x < b and y < b
             if (!disproved) expr = const_false(op->type.width);
             else expr = const_true(op->type.width);
-        } else if (max_b && (proved_either(a < max_b->b, a < max_b->a, disproved) || disproved)) { //LH
+        } else if (max_b && (proved_either(a < max_b->b, a < max_b->a, disproved) || disproved)) {
             // Prove that a < max(x,y) by proving a < x or a < y
             // Prove that a >= max(x,y) by proving a >= x and a >= y
             if (!disproved) expr = const_true(op->type.width);
@@ -2217,9 +2217,9 @@ void simplify_test() {
     check(y + (x + 3), (y + x) + 3);
     check((3 - x) + x, 3);
     check(x + (3 - x), 3);
-    check(1 - (x + 2), -1 - x); //LH
-    check(1 - (x - 2), 3 - x); //LH
-    check(0 - (x + -4), 4 - x); //LH
+    check(1 - (x + 2), -1 - x);
+    check(1 - (x - 2), 3 - x);
+    check(0 - (x + -4), 4 - x);
     check(x*y + x*z, x*(y+z));
     check(x*y + z*x, x*(y+z));
     check(y*x + x*z, x*(y+z));
@@ -2356,7 +2356,7 @@ void simplify_test() {
     check(x * -5 < 15, -3 < x);
     check(x * -5 < 14, -3 < x);
     
-    //LH
+   
     check(LT::make(Ramp::make(0, 1, 8), Broadcast::make(8, 8)), const_true(8));
     check(GT::make(Ramp::make(0, -1, 8), Broadcast::make(1, 8)), const_false(8));
     check(Min::make(Ramp::make(0, 1, 8), Ramp::make(2, 1, 8)), Ramp::make(0, 1, 8));

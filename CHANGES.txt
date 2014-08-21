@@ -1,5 +1,33 @@
 src/
 
+    Bounds.h: Interval moved to Interval.h
+    Bounds.cpp: Interval union moved, add Clamp node, modified For::make interface.
+    BoundsInference.cpp: Modified For::make interface
+    Buffer.h: Support non-zero origin and specified strides.
+    CodeGen.h, CodeGen.cpp: Added new nodes, which do not support code generation actually.
+  ? CodeGen_Posix.cpp: Modified Scope as pair of Allocation, int.  Not sure how this is used now.
+    CodeGen_X86.cpp: Modified For::make interface
+    Func.h: Kernel notation (FuncRefKernel), loop splitting schedules, compile_to_stmt (for timing)
+        Domain inference interface, local() attribute; disabled interface for Image -> Func
+    Func.cpp: Kernel notation, loop spliting, improved error messages
+        Changed method of adding to dims vector because of possible problems with LoopSplitInfo object.
+        
+    Function.h: Domain inference interface, class member.
+    Function.cpp: Domain inference, improved error message.
+    IR.h: float constant from double (for now).  Clamp node.
+        Improved error diagnostics from assert_defined_same_type function.
+        LoopSplitInfo in For.
+        Use IntRange instead of Range.
+    IR.cpp: New node types, LoopSplitInfo, assert_defined_same_type function definitions.
+    IREquality.cpp: Add new node types.
+    IRMatch.h: Add more general matching capabilities using the variable name to code attributes
+        such as type or is_const. Also Match function to build a matching variable name for clarity
+  ?     of pattern writing.  Note sure whether these features are actually used.
+    IRMatch.cpp: Bug fix in expr_match - should test expr.defined not pattern.defined twice.
+    IRMutator.h, IRMutator.cpp: Modified to build on IRProcess so that mutation and tree walking
+        evaluation can be mixed together in one pass.
+    IROperator.h, IROperator.cpp: Add get_const_int, and functions check_defined() to check args
+        infinity builder and recognisers
     IRPrinter.h: Add printers for:
         std::vector<Expr>, std::vector<Interval>, std::vector<DomInterval>.
         Func, Domain, Interval, DomInterval, Range, LoopSplitInfo

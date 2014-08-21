@@ -55,7 +55,6 @@ public:
         code_logger.log() << "BoundsSimplify Mod result: " << expr << "\n";
     }
 
-	//LH
     void visit(const Clamp *op) {
         DomInterval bounds_a = bounds.bounds(op->a);
         DomInterval bounds_min = bounds.bounds(op->min);

@@ -14,7 +14,6 @@
 #include "IntrusivePtr.h"
 #include "Util.h"
 
-//LH
 /* --------------------------------------
  * How to add tree nodes to the IR.
  *
@@ -195,7 +194,7 @@ struct Expr : public Internal::IRHandle {
     EXPORT Expr(float x) : IRHandle(Internal::FloatImm::make(x)) {
     }   
     
-    EXPORT Expr(double x) : IRHandle(Internal::FloatImm::make((float)x)) { //LH
+    EXPORT Expr(double x) : IRHandle(Internal::FloatImm::make((float)x)) {
     }
 
     /** Get the type of this expression node */
@@ -326,8 +325,7 @@ struct Div : public ExprNode<Div> {
 };
 
 /** The remainder of a / b. Mostly equivalent to '%' in C, except that
- * the result here is always positive (//LH: actually, not quite correct.
- * It has the same sign as the modulus b). For floats, this is equivalent
+ * the result here is always has the same sign as the modulus b. For floats, this is equivalent
  * to calling fmod. */
 struct Mod : public ExprNode<Mod> { 
     Expr a, b;
@@ -733,7 +731,7 @@ struct Pipeline : public StmtNode<Pipeline> {
         return node;
     }
 };
-
+    
 // end namespace Internal
 }
 }
@@ -788,7 +786,7 @@ namespace Internal {
          * loop splitting.  i.e. auto_split is Yes or Undefined, or a split interval is defined. */
         const bool may_be_split() const;
     };
-        
+ 
 /** A for loop. Execute the 'body' statement for all values of the
  * variable 'name' from 'min' to 'min + extent'. There are four
  * types of For nodes. A 'Serial' for loop is a conventional
@@ -914,17 +912,7 @@ struct Free : public StmtNode<Free> {
     }
 };
 
-# if 0
-/** A single-dimensional span. Includes all numbers between min and
- * (min + extent - 1) */
-struct Range {
-    Expr min, extent;
-    Range() {}
-    Range(Expr min, Expr extent) : min(min), extent(extent) {
-        assert(min.type() == extent.type() && "Region min and extent must have same type");
-    }
-};
-# endif
+// Range is now define in IntRange.h
 #include "IntRange.h"
 
 /** A multi-dimensional box. The outer product of the elements */
@@ -977,7 +965,7 @@ struct Block : public StmtNode<Block> {
 }
 }
 
-//LH Include the definition of a Domain
+// Include the definition of a Domain
 #include "DomainInference.h"
 
 // Now that we've defined an Expr and ForType, we can include the definition of a function
@@ -1059,8 +1047,8 @@ struct Call : public ExprNode<Call> {
     
     /** Convenience constructor for replacing the args list of an existing call */
     static Expr make(const Call *call, const std::vector<Expr> &a) {
-	    return make(call->type, call->name, a, call->call_type, call->func, call->image, call->param);
-	}
+        return make(call->type, call->name, a, call->call_type, call->func, call->image, call->param);
+    }
 };
 
 /** A named variable. Might be a loop variable, function argument,
