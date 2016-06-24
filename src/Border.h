@@ -44,6 +44,9 @@ public:
     // operator() applies the specific border function to a Halide Func.
     // It uses indexExpr and valueExpr of the derived class.
     Func operator()(Func in);
+    
+    // LHHACK
+    virtual ~BorderBase() { }
 };
 
 /** Border function class is a simple wrapper for pointers to border base class objects.
